@@ -13,6 +13,7 @@ import type {
 } from '@scrapeman/shared-types';
 import type { RequestExecutor } from '../executor.js';
 import { ExecutorError } from '../errors.js';
+import { buildAutoHeaders, mergeHeaders } from '../auto-headers.js';
 
 const DEFAULT_MAX_REDIRECTS = 10;
 const DEFAULT_TOTAL_TIMEOUT_MS = 120_000;
@@ -22,13 +23,19 @@ const DEFAULT_MAX_RESPONSE_BYTES = 200 * 1024 * 1024; // 200 MB
 
 export interface UndiciExecutorOptions {
   maxResponseBytes?: number;
+  autoHeaderEnv?: { version: string; platform: string };
 }
 
 export class UndiciExecutor implements RequestExecutor {
   private readonly maxResponseBytes: number;
+  private readonly autoHeaderEnv: { version: string; platform: string };
 
   constructor(options: UndiciExecutorOptions = {}) {
     this.maxResponseBytes = options.maxResponseBytes ?? DEFAULT_MAX_RESPONSE_BYTES;
+    this.autoHeaderEnv = options.autoHeaderEnv ?? {
+      version: '0.0.0',
+      platform: `${process.platform} ${process.arch}`,
+    };
   }
 
   async execute(
@@ -36,7 +43,9 @@ export class UndiciExecutor implements RequestExecutor {
     options: { signal?: AbortSignal } = {},
   ): Promise<ExecutedResponse> {
     const url = buildUrl(request);
-    const headers = buildHeaders(request);
+    const auto = buildAutoHeaders(request, this.autoHeaderEnv);
+    const disabled = new Set(request.disabledAutoHeaders ?? []);
+    const headers = mergeHeaders(auto, request.headers, disabled);
     const body = buildBody(request.body);
     const totalTimeout = request.options?.timeout?.total ?? DEFAULT_TOTAL_TIMEOUT_MS;
     const followRedirects = request.options?.redirect?.follow ?? true;
@@ -164,16 +173,6 @@ function buildBaseDispatcher(
 function parseProxyScheme(url: string): string {
   const match = /^(\w+):\/\//.exec(url);
   return match?.[1]?.toLowerCase() ?? 'http';
-}
-
-function buildHeaders(request: ScrapemanRequest): Record<string, string> {
-  const headers: Record<string, string> = {};
-  if (request.headers) {
-    for (const [key, value] of Object.entries(request.headers)) {
-      headers[key] = value;
-    }
-  }
-  return headers;
 }
 
 function buildBody(body: BodyConfig | undefined): string | Uint8Array | undefined {
