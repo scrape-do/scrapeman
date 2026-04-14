@@ -6,7 +6,7 @@ schema:
   id: unique stable identifier
   title: short imperative
   milestone: M0..M10
-  owner: developer-core | developer-ui | team-lead | product-manager
+  owner: developer-core | developer-ui | team-lead | product-manager | ninja-scraping | ninja-fullstack
   estimate_hours: rough, 1..40
   depends_on: list of task ids
   tags: [core, ui, infra, research, polish, test]
@@ -822,6 +822,140 @@ tasks:
       - Toggle "inline variables" (on by default)
       - CodeMirror read-only preview with syntax highlight
 
+  # ================= M3.11: In-app git integration =================
+
+  - id: T3G0
+    title: Git IPC layer (simple-git, status/stage/unstage/commit/push/pull/log/diff)
+    milestone: M3.11
+    owner: developer-core
+    estimate_hours: 8
+    depends_on: [T021]
+    tags: [core, infra]
+    acceptance:
+      - simple-git installed and wrapped in main process only (renderer never imports it)
+      - IPC channels: git:status, git:stage, git:unstage, git:commit, git:push, git:pull, git:log, git:diff
+      - git:status returns { isRepo, branch, staged, unstaged, untracked } typed
+      - git:diff returns unified diff string per file
+      - New types in shared-types
+      - git:push and git:pull use OS credential store (no key management)
+      - All handlers registered in main/ipc/git.ts
+
+  - id: T3G1
+    title: Git panel UI (changed files, stage/commit/push/pull, branch in status bar)
+    milestone: M3.11
+    owner: developer-ui
+    estimate_hours: 10
+    depends_on: [T3G0]
+    tags: [ui]
+    acceptance:
+      - Source Control panel in sidebar (collapsible section)
+      - Changed files list with VS Code-style status icons (M/A/D/?)
+      - Stage/unstage individual files; stage all / unstage all buttons
+      - Commit message textarea + commit button (disabled when message empty or nothing staged)
+      - Push / Pull buttons with loading state
+      - Current branch shown in bottom status bar
+
+  - id: T3G2
+    title: Diff viewer (unified line-by-line, green/red, VS Code style)
+    milestone: M3.11
+    owner: developer-ui
+    estimate_hours: 6
+    depends_on: [T3G1]
+    tags: [ui, polish]
+    acceptance:
+      - Click a changed file in the Git panel to open diff view
+      - Line-by-line unified diff rendered as styled divs (green additions, red deletions)
+      - Line numbers shown for both old and new
+      - No Monaco required — plain styled divs sufficient for MVP
+
+  # ================= M3.12: Bruno weak spots =================
+
+  - id: T3W0
+    title: SSE reader — buffered events, stream consumed once
+    milestone: M3.12
+    owner: ninja-scraping
+    estimate_hours: 5
+    depends_on: [T010]
+    tags: [core]
+    acceptance:
+      - text/event-stream responses buffered into SseEvent[] immediately
+      - body.getReader() consumed exactly once — array shared between UI and script sandbox
+      - Handles split chunks, [DONE] termination, JSON data auto-parse, event/id fields
+      - Tests cover split-chunk arrival, multi-event, [DONE] termination
+      - No silent swallow of SSE parse errors
+
+  - id: T3W1
+    title: Large response handling — 2MB threshold, truncate for UI, full for scripts
+    milestone: M3.12
+    owner: ninja-scraping
+    estimate_hours: 6
+    depends_on: [T010]
+    tags: [core]
+    acceptance:
+      - Response body > 2MB truncated before sending to renderer state
+      - Full body remains available to pre/post-request scripts
+      - saveToFile IPC writes full body to disk without passing through renderer
+      - Virtual scroll in response body viewer for JSON/raw (tanstack/virtual)
+      - Test: mock 5MB response, assert renderer gets truncated, scripts get full
+
+  - id: T3W2
+    title: Cookie jar — tough-cookie + FileCookieStore with sync write-through
+    milestone: M3.12
+    owner: ninja-scraping
+    estimate_hours: 6
+    depends_on: [T031]
+    tags: [core]
+    acceptance:
+      - tough-cookie + custom FileCookieStore using fs.writeFileSync on every setCookie
+      - Per-workspace: userData/cookies/<sha1(workspacePath)>.json
+      - Survives app restart (persisted synchronously)
+      - Handles domain scoping, SameSite, httpOnly, expiry
+      - Test: set cookie, instantiate new FileCookieStore from same file, assert cookie present
+
+  - id: T3W3
+    title: OAuth2 token cache — expiresAt, proactive refresh, single in-flight, 401 retry
+    milestone: M3.12
+    owner: ninja-scraping
+    estimate_hours: 7
+    depends_on: [T041]
+    tags: [core]
+    acceptance:
+      - See planning/issues/042-oauth2-client-credentials.md for full spec
+      - In-flight Promise deduplication (not just value cache)
+      - expires_in absent → Number.MAX_SAFE_INTEGER (never expires)
+      - 401 retry: invalidate cache, retry once, no infinite loop
+      - Test: 5 concurrent requests → token endpoint called exactly once
+
+  # ================= M3.13: Auto-headers =================
+
+  - id: T3B0
+    title: buildAutoHeaders() + buildHeaders() + accept-encoding decompress in http-core
+    milestone: M3.13
+    owner: developer-core
+    estimate_hours: 6
+    depends_on: [T010]
+    tags: [core]
+    acceptance:
+      - See planning/issues/001-auto-headers.md for full spec
+      - buildAutoHeaders(request) returns headers to add (UA, Accept-Encoding, Content-Type)
+      - buildHeaders(auto, user, disable, overrides) merges with user-wins semantics
+      - undici decompress:true decompresses response; we add Accept-Encoding manually
+      - Unit tests for every content-type derivation in the table
+
+  - id: T3B1
+    title: AutoHeadersPanel UI — preview, per-header disable, override badge
+    milestone: M3.13
+    owner: developer-ui
+    estimate_hours: 5
+    depends_on: [T3B0]
+    tags: [ui]
+    acceptance:
+      - See planning/issues/001-auto-headers.md for UI section
+      - Panel shows auto-generated headers with "auto" badge
+      - Toggle to disable individual auto-headers
+      - User header with same name shows "override" badge
+      - Changes reflected in Headers tab for transparency
+
   # ================= M9 expansion: multi-format importers =================
 
   - id: T094
@@ -955,10 +1089,10 @@ tasks:
       - Integration test round-trip
 
 totals:
-  task_count: 83
-  total_estimate_hours: 538
-  working_days_at_6h_focus: 90
-  calendar_weeks_2_devs: 10
+  task_count: 93
+  total_estimate_hours: 597
+  working_days_at_6h_focus: 100
+  calendar_weeks_2_devs: 11
   notes: |
     Estimates assume 6 productive hours/day per dev. Team lead estimate overlaps with
     review/pairing time not counted separately. PM hours are lightweight coordination.
@@ -971,5 +1105,10 @@ totals:
       - M9 multi-format importers (T094-T096, 21h)
       - M11 Load runner (T1100-T1105, 45h)
 
-    Calendar: ~10 weeks with 2 devs to M10 internal release.
+    Adds 10 more tasks (+59h) for:
+      - M3.11 In-app git integration (T3G0-T3G2, 24h)
+      - M3.12 Bruno weak spots (T3W0-T3W3, 24h)
+      - M3.13 Auto-headers (T3B0-T3B1, 11h)
+
+    Calendar: ~11 weeks with 2 devs to M10 internal release.
     M11 load runner is +1.5 weeks post-M10, or parallelized with M10 polish.

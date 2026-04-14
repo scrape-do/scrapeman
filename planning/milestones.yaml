@@ -108,6 +108,45 @@ milestones:
       - Copy to clipboard, language switcher
       - Read-only CodeMirror preview
 
+  - id: M3.11
+    name: In-app git integration
+    duration_days: 3
+    goal: |
+      VS Code-style git panel: detect workspace repo, show changed files,
+      stage/unstage, commit, push/pull, line diff viewer. Uses simple-git
+      in the main process only.
+    exit_criteria:
+      - Current branch shown in status bar
+      - Source Control sidebar panel with staged/unstaged file list
+      - Stage individual files or all; unstage; commit with message
+      - Push / Pull with OS credential store (no key management UI)
+      - Click file → line-by-line diff (green/red, VS Code style)
+
+  - id: M3.12
+    name: Bruno weak spots
+    duration_days: 3
+    goal: |
+      Implement the 4 features where Bruno has known bugs: SSE event
+      buffering, large response truncation, cookie persistence, and OAuth2
+      token lifecycle. These are Scrapeman's key differentiators.
+    exit_criteria:
+      - SSE reader buffers SseEvent[] — stream consumed once, never re-read
+      - Response > 2MB truncated for UI, full body available to scripts
+      - Cookie jar (tough-cookie) survives app restart via sync writeFileSync
+      - OAuth2 token cache with expiresAt, proactive refresh, single in-flight, 401 retry once
+
+  - id: M3.13
+    name: Auto-headers (Postman parity)
+    duration_days: 1
+    goal: |
+      Automatic Content-Type, Accept-Encoding, and User-Agent headers with
+      user-wins override semantics. Accept-Encoding triggers undici decompress.
+    exit_criteria:
+      - Content-Type derived from body mode (json/form/multipart/text/none)
+      - Accept-Encoding added; undici decompresses response body
+      - User-Agent: Scrapeman/<version> by default
+      - AutoHeadersPanel shows auto headers with disable/override UI
+
   - id: M4
     name: Auth helpers
     duration_days: 8
@@ -217,5 +256,5 @@ totals:
     including the M3.7-M3.10 interstitial work and the M9 multi-format
     importers, but excluding M11 load runner (post-launch feature).
 
-    Breakdown: M0-M3 (24d) + M3.7-M3.10 (9d) + M4-M10 (44d) = 77d.
+    Breakdown: M0-M3 (24d) + M3.7-M3.13 (16d) + M4-M10 (44d) = 84d.
     M11 load runner is +8d post-launch or parallelized with M9/M10 polish.

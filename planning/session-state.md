@@ -21,9 +21,11 @@ claude
 After starting, paste this into the first prompt:
 
 > Read `planning/session-state.md`, `planning/milestones.yaml`, and the last
-> few TaskList entries. We finished **M3.10 (code export MVP)**. Next up is
-> **M4 — Auth helpers** unless I say otherwise. Run `pnpm -r test` to confirm
-> 93/93 still green, then proceed.
+> few TaskList entries. **M4 Auth helpers is in progress** — T040/T041 already
+> implemented, integration test added. T042 (OAuth2 CC), T043 (auth code),
+> T044 (SigV4) have specs in `planning/issues/`. M3.11 (git), M3.12 (Bruno
+> weak spots), M3.13 (auto-headers) are queued. Run `pnpm -r test` to confirm
+> tests green, then proceed.
 
 ## Status as of 2026-04-14 (session close)
 
@@ -64,21 +66,29 @@ pnpm -r test        # expect: 93 passed
 pnpm -r build       # expect: main + preload + renderer green
 ```
 
-### Next milestone — M4 Auth helpers (planned)
+### Current milestone — M4 Auth helpers (in progress)
 
-Plan lives in `planning/tasks.yaml` T040–T045. Order:
+Plan lives in `planning/tasks.yaml` T040–T045.
 
-1. **T040** Auth type enum + UI switcher (None/Basic/Bearer/ApiKey/OAuth2/AwsSigV4)
-2. **T041** Basic + Bearer + API Key forms + backend wiring
-3. **T042** OAuth2 client credentials (token endpoint, cache, refresh)
-4. **T043** OAuth2 authorization code flow (local callback server, PKCE)
-5. **T044** AWS SigV4 signer (aws4 lib, S3 integration test)
-6. **T045** Auth UI polish — token preview, expiry countdown, force refresh
+| Task | Status | Notes |
+|------|--------|-------|
+| T040 Auth UI switcher | **done** | AuthTab.tsx, 314 lines, all 6 types |
+| T041 Basic/Bearer/ApiKey backend | **done** | applyAuth() in http-core/src/auth/apply.ts; integration test added |
+| T042 OAuth2 client credentials | ready to build | spec: planning/issues/042-oauth2-client-credentials.md |
+| T043 OAuth2 auth code + PKCE | ready to build | spec: planning/issues/043-oauth2-auth-code.md |
+| T044 AWS SigV4 | ready to build | spec: planning/issues/044-aws-sigv4.md |
+| T045 Auth UI polish | blocked on T043+T044 | token preview, expiry countdown, force refresh |
 
-Note: the `AuthConfig` type is already in `@scrapeman/shared-types`,
-`resolveRequest` already substitutes `{{var}}` in auth fields, and the
-format serializer/parser already round-trips all auth types. Most of M4
-is UI + token flow, not new type work.
+Known gaps in existing auth code (to fix in T042):
+- `OAuth2Client` has no in-flight Promise deduplication — concurrent requests each fire a separate token fetch
+- `expires_in` absent → falls back to 3600s instead of `Number.MAX_SAFE_INTEGER`
+- `applyAuth` has no-op stubs for `oauth2` and `awsSigV4` — wired in T042 and T044
+
+### Queued after M4
+
+- **M3.11** In-app git integration (T3G0–T3G2, 24h) — simple-git, source control panel, diff viewer
+- **M3.12** Bruno weak spots (T3W0–T3W3, 24h) — SSE reader, large response, cookie jar, OAuth2 cache
+- **M3.13** Auto-headers (T3B0–T3B1, 11h) — issue #12, spec in planning/issues/001-auto-headers.md
 
 ## Key decisions made mid-session (not in architecture.md yet)
 
