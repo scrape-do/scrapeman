@@ -170,6 +170,18 @@ export const HighlightedInput = forwardRef<HTMLInputElement, HighlightedInputPro
     };
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>): void => {
+      // ⌘A / Ctrl+A — scope select-all to this input only. Without this,
+      // the parent overflow-hidden + transparent-text overlay leaks the
+      // event up to the body and Chromium runs page-level select all.
+      const isMacUA = navigator.userAgent.includes('Mac');
+      const modKey = isMacUA ? e.metaKey : e.ctrlKey;
+      if (modKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        e.stopPropagation();
+        e.currentTarget.select();
+        return;
+      }
+
       if (!auto.open || filtered.length === 0) return;
       if (e.key === 'ArrowDown') {
         e.preventDefault();

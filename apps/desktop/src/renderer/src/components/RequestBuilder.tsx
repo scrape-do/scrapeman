@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAppStore } from '../store.js';
 import { MethodPicker } from './MethodPicker.js';
 import { HeadersEditor } from './HeadersEditor.js';
@@ -38,6 +38,14 @@ export function RequestBuilder(): JSX.Element {
   const [tab, setTab] = useState<Tab>('params');
   const [importOpen, setImportOpen] = useState(false);
   const [loadTestOpen, setLoadTestOpen] = useState(false);
+
+  const urlInputRef = useRef<HTMLInputElement | null>(null);
+  const focusUrlTick = useAppStore((s) => s.focusUrlTick);
+  useEffect(() => {
+    if (focusUrlTick === 0) return;
+    urlInputRef.current?.focus();
+    urlInputRef.current?.select();
+  }, [focusUrlTick]);
 
   if (!activeTab) {
     return (
@@ -134,6 +142,7 @@ export function RequestBuilder(): JSX.Element {
         <CellContextMenu value={builder.url} onChange={setUrl}>
           <div className="flex-1">
             <HighlightedInput
+              ref={urlInputRef}
               value={builder.url}
               onChange={(e) => setUrl(e.target.value)}
               onPaste={handleUrlPaste}

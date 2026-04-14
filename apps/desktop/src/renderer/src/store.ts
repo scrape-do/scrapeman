@@ -109,8 +109,13 @@ interface AppState {
   openSaveDialog: () => void;
   closeSaveDialog: () => void;
 
+  // Bumped by ⌘L; RequestBuilder watches and focuses+selects the URL bar.
+  focusUrlTick: number;
+  focusUrl: () => void;
+
   newTab: () => void;
   closeTab: (id: string) => void;
+  duplicateTab: (id: string) => void;
   setActiveTab: (id: string) => void;
   openRequest: (relPath: string) => Promise<void>;
   saveActive: () => Promise<void>;
@@ -438,6 +443,7 @@ export const useAppStore = create<AppState>((set, get) => {
     tabs: [],
     activeTabId: null,
     saveDialogOpen: false,
+    focusUrlTick: 0,
 
     loadRecents: async () => {
       const recents = await bridge.workspaceList();
@@ -472,6 +478,8 @@ export const useAppStore = create<AppState>((set, get) => {
       set({ root: tree.root });
     },
 
+    focusUrl: () => set({ focusUrlTick: get().focusUrlTick + 1 }),
+
     newTab: () => {
       const tab = emptyDraftTab();
       set({ tabs: [...get().tabs, tab], activeTabId: tab.id });
@@ -487,6 +495,42 @@ export const useAppStore = create<AppState>((set, get) => {
         nextActive = next[Math.min(idx, next.length - 1)]?.id ?? null;
       }
       set({ tabs: next, activeTabId: nextActive });
+    },
+
+    duplicateTab: (id: string) => {
+      const { tabs } = get();
+      const idx = tabs.findIndex((t) => t.id === id);
+      if (idx < 0) return;
+      const original = tabs[idx]!;
+      // Deep copy through JSON since builder is plain data + UUIDs.
+      const builderCopy: BuilderState = JSON.parse(
+        JSON.stringify(original.builder),
+      ) as BuilderState;
+      // Re-mint row IDs so subsequent edits don't accidentally cross-update.
+      builderCopy.headers = builderCopy.headers.map((row) => ({
+        ...row,
+        id: crypto.randomUUID(),
+      }));
+      builderCopy.params = builderCopy.params.map((row) => ({
+        ...row,
+        id: crypto.randomUUID(),
+      }));
+
+      const copy: Tab = {
+        id: `draft:${crypto.randomUUID()}`,
+        kind: 'draft',
+        relPath: null,
+        name: `${original.name} (copy)`,
+        method: original.method,
+        builder: builderCopy,
+        dirty: false,
+        execution: freshExecution(),
+        responseSearch: '',
+      };
+
+      // Insert immediately after the original.
+      const next = [...tabs.slice(0, idx + 1), copy, ...tabs.slice(idx + 1)];
+      set({ tabs: next, activeTabId: copy.id });
     },
 
     setActiveTab: (id: string) => {

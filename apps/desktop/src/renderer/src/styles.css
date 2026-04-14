@@ -94,6 +94,16 @@ html.dark {
     outline: none;
   }
 
+  /* HighlightedInput uses text-transparent on the underlying <input>;
+     without an explicit ::selection style the selection rectangle is
+     drawn with transparent text on top of a transparent highlight and
+     the user can't see anything is selected. */
+  input::selection,
+  textarea::selection {
+    background-color: rgb(var(--accent-soft));
+    color: theme(colors.accent.DEFAULT);
+  }
+
   /* Draggable title bar area on macOS */
   .app-drag {
     -webkit-app-region: drag;

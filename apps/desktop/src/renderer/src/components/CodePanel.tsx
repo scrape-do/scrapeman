@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FORMAT_VERSION, type CodegenTarget, type ScrapemanRequest } from '@scrapeman/shared-types';
 import { bridge } from '../bridge.js';
 import { useAppStore, type BuilderState } from '../store.js';
@@ -23,6 +23,7 @@ export function CodePanel(): JSX.Element {
   const [inlineVars, setInlineVars] = useState(true);
   const [code, setCode] = useState<string>('');
   const [copied, setCopied] = useState(false);
+  const preRef = useRef<HTMLPreElement>(null);
 
   useEffect(() => {
     if (!activeTab) {
@@ -87,7 +88,32 @@ export function CodePanel(): JSX.Element {
           {copied ? 'Copied!' : 'Copy'}
         </button>
       </div>
-      <pre className="flex-1 overflow-auto whitespace-pre-wrap break-words bg-bg-canvas p-4 font-mono text-xs text-ink-1">
+      <pre
+        ref={preRef}
+        tabIndex={0}
+        onKeyDown={(e) => {
+          // ⌘A scoped to the code block — by default <pre> is not
+          // focusable so the browser's ⌘A falls through to the body.
+          const isMacUA = navigator.userAgent.includes('Mac');
+          const modKey = isMacUA ? e.metaKey : e.ctrlKey;
+          if (
+            modKey &&
+            !e.shiftKey &&
+            !e.altKey &&
+            e.key.toLowerCase() === 'a' &&
+            preRef.current
+          ) {
+            e.preventDefault();
+            e.stopPropagation();
+            const range = document.createRange();
+            range.selectNodeContents(preRef.current);
+            const sel = window.getSelection();
+            sel?.removeAllRanges();
+            sel?.addRange(range);
+          }
+        }}
+        className="flex-1 overflow-auto whitespace-pre-wrap break-words bg-bg-canvas p-4 font-mono text-xs text-ink-1 focus:outline-none"
+      >
         {code}
       </pre>
     </div>

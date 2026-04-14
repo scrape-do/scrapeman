@@ -21,9 +21,11 @@ export function App(): JSX.Element {
   const recents = useAppStore((s) => s.recents);
   const newTab = useAppStore((s) => s.newTab);
   const closeTab = useAppStore((s) => s.closeTab);
+  const duplicateTab = useAppStore((s) => s.duplicateTab);
   const activeTabId = useAppStore((s) => s.activeTabId);
   const send = useAppStore((s) => s.send);
   const saveOrPrompt = useAppStore((s) => s.saveOrPrompt);
+  const focusUrl = useAppStore((s) => s.focusUrl);
 
   useEffect(() => {
     void loadRecents();
@@ -52,10 +54,16 @@ export function App(): JSX.Element {
         description: 'Close tab',
         handler: () => activeTabId && closeTab(activeTabId),
       },
+      {
+        combo: 'mod+d',
+        description: 'Duplicate tab',
+        handler: () => activeTabId && duplicateTab(activeTabId),
+      },
+      { combo: 'mod+l', description: 'Focus URL bar', handler: () => focusUrl() },
       { combo: 'mod+enter', description: 'Send request', handler: () => void send() },
       { combo: 'mod+s', description: 'Save request', handler: () => void saveOrPrompt() },
     ],
-    [newTab, closeTab, activeTabId, send, saveOrPrompt],
+    [newTab, closeTab, duplicateTab, activeTabId, send, saveOrPrompt, focusUrl],
   );
   useShortcuts(shortcuts);
 
