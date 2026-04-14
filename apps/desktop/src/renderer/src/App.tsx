@@ -65,6 +65,7 @@ export function App(): JSX.Element {
         ? []
         : [
             { combo: 'mod+t', description: 'New tab', handler: () => newTab() },
+            { combo: 'mod+n', description: 'New tab', handler: () => newTab() },
             {
               combo: 'mod+w',
               description: 'Close tab',
