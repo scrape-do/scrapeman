@@ -23,6 +23,12 @@
     "typescript": "^5.7.0"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["electron", "esbuild"]
+    "onlyBuiltDependencies": [
+      "electron",
+      "esbuild",
+      "@electron/winstaller",
+      "core-js",
+      "dmg-license"
+    ]
   }
 }

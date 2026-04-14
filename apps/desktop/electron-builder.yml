@@ -1,0 +1,67 @@
+appId: com.scrapeman.app
+productName: Scrapeman
+copyright: Copyright © 2026 scrape-do
+
+directories:
+  output: release
+  buildResources: build-resources
+
+files:
+  - out/**/*
+  - package.json
+
+asar: true
+
+# pnpm workspace packages (http-core, shared-types) need to be hoisted /
+# followed because they live as symlinks. electron-builder v24+ handles
+# this when npmRebuild is off and files contains the actual dist paths.
+npmRebuild: false
+nodeGypRebuild: false
+buildDependenciesFromSource: false
+
+mac:
+  target:
+    - target: dmg
+      arch:
+        - arm64
+        - x64
+  category: public.app-category.developer-tools
+  darkModeSupport: true
+  # Unsigned builds — users will need to right-click → Open the first time.
+  identity: null
+  gatekeeperAssess: false
+
+dmg:
+  writeUpdateInfo: false
+  sign: false
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  # Unsigned — SmartScreen will warn on first run.
+  signAndEditExecutable: false
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false
+
+linux:
+  target:
+    - target: AppImage
+      arch:
+        - x64
+    - target: deb
+      arch:
+        - x64
+  category: Development
+  synopsis: Postman-grade API client for every developer
+  description: |
+    Scrapeman is an API client for every developer who wants Postman's
+    paid features for free — local-first, git-friendly collections,
+    built-in load testing, unlimited history, and first-class proxy
+    support. Alternative to Postman, Bruno, and Insomnia.
+
+publish: null

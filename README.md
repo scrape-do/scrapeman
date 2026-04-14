@@ -7,7 +7,7 @@
 <h1 align="center">Scrapeman</h1>
 
 <p align="center">
-  <strong>Postman-grade API client for scrape-do workflows</strong><br/>
+  <strong>Postman-grade API client for every developer</strong><br/>
   Local-first · git-friendly collections · built-in load testing · unlimited history
 </p>
 
@@ -20,7 +20,7 @@
 
 ---
 
-**Scrapeman** is a desktop API client (Electron + React + TypeScript) purpose-built for the scrape-do engineering and customer workflow. It ships Postman's paid features for free, keeps everything on your machine, and treats your filesystem + git as the source of truth.
+**Scrapeman** is an API client for every developer who wants Postman's paid features for free. It keeps everything on your machine, treats your filesystem + git as the source of truth, and ships first-class proxy support for the scraping use case.
 
 ## Why not just use Postman / Bruno / Insomnia?
 
@@ -124,6 +124,29 @@
 - Dark mode with CSS variable tokens, system preference fallback
 - Cross-platform keyboard shortcuts: ⌘T new tab, ⌘W close, ⌘↵ send, ⌘S save (with draft save-as flow)
 - Postman-light design system, Inter + JetBrains Mono fonts
+
+## Install
+
+Pre-built installers are published on the [Releases page](https://github.com/scrape-do/scrapeman/releases) for every tagged version:
+
+- **macOS** — `.dmg` (Apple Silicon + Intel)
+- **Windows** — `.exe` NSIS installer (x64)
+- **Linux** — `.AppImage` and `.deb` (x64)
+
+> Builds are currently **unsigned**. On macOS you'll need to right-click → **Open** the first time (Gatekeeper). On Windows SmartScreen will warn. Code signing is planned for v1.0.
+
+To produce a release locally:
+
+```bash
+pnpm install
+pnpm run build:packages
+pnpm --filter=@scrapeman/desktop dist          # current platform
+pnpm --filter=@scrapeman/desktop dist:mac      # mac dmg (arm64 + x64)
+pnpm --filter=@scrapeman/desktop dist:win      # windows exe
+pnpm --filter=@scrapeman/desktop dist:linux    # AppImage + deb
+```
+
+Output lands in `apps/desktop/release/`.
 
 ## Stack
 

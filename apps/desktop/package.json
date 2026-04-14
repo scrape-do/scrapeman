@@ -2,7 +2,17 @@
   "name": "@scrapeman/desktop",
   "version": "0.0.0",
   "private": true,
-  "description": "Scrapeman desktop app (Electron)",
+  "description": "Scrapeman — Postman-grade API client for every developer",
+  "author": {
+    "name": "scrape-do",
+    "email": "hello@scrape.do",
+    "url": "https://scrape.do"
+  },
+  "homepage": "https://github.com/scrape-do/scrapeman",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/scrape-do/scrapeman.git"
+  },
   "main": "./out/main/index.js",
   "type": "module",
   "scripts": {
@@ -11,7 +21,11 @@
     "start": "electron-vite preview",
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
     "test": "echo 'desktop e2e tests not yet wired' && exit 0",
-    "lint": "echo 'no lint' && exit 0"
+    "lint": "echo 'no lint' && exit 0",
+    "dist": "electron-vite build && electron-builder",
+    "dist:mac": "electron-vite build && electron-builder --mac",
+    "dist:win": "electron-vite build && electron-builder --win",
+    "dist:linux": "electron-vite build && electron-builder --linux"
   },
   "dependencies": {
     "@fontsource/inter": "^5.1.0",
@@ -33,6 +47,7 @@
     "@vitejs/plugin-react": "^4.3.0",
     "autoprefixer": "^10.4.0",
     "electron": "^33.0.0",
+    "electron-builder": "^25.1.0",
     "electron-vite": "^2.3.0",
     "postcss": "^8.4.0",
     "tailwindcss": "^3.4.0",
