@@ -6,6 +6,12 @@ import {
   errors as undiciErrors,
   type Dispatcher,
 } from 'undici';
+import {
+  brotliDecompressSync,
+  gunzipSync,
+  inflateRawSync,
+  inflateSync,
+} from 'node:zlib';
 import type {
   BodyConfig,
   ExecutedResponse,
@@ -79,7 +85,7 @@ export class UndiciExecutor implements RequestExecutor {
       });
       const headersReceivedNs = process.hrtime.bigint();
 
-      const { bytes, truncated } = await readBodyCapped(
+      const { bytes: rawBytes, truncated } = await readBodyCapped(
         result.body,
         this.maxResponseBytes,
       );
@@ -89,6 +95,8 @@ export class UndiciExecutor implements RequestExecutor {
       const totalMs = Number(downloadCompleteNs - startedNs) / 1_000_000;
 
       const headerPairs = flattenHeaders(result.headers);
+      const encoding = pickHeader(headerPairs, 'content-encoding');
+      const bytes = decodeBody(rawBytes, encoding);
       const contentType = pickHeader(headerPairs, 'content-type');
 
       return {
@@ -249,6 +257,43 @@ function pickHeader(
     if (key.toLowerCase() === lower) return value;
   }
   return undefined;
+}
+
+function decodeBody(bytes: Uint8Array, encoding: string | undefined): Uint8Array {
+  if (!encoding || bytes.byteLength === 0) return bytes;
+  // Content-Encoding can chain multiple codings comma-separated; apply in
+  // reverse order per RFC 7231 §3.1.2.2.
+  const codings = encoding
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean)
+    .reverse();
+  let buf = Buffer.from(bytes);
+  for (const coding of codings) {
+    try {
+      if (coding === 'gzip' || coding === 'x-gzip') {
+        buf = gunzipSync(buf);
+      } else if (coding === 'br') {
+        buf = brotliDecompressSync(buf);
+      } else if (coding === 'deflate') {
+        // Some servers send raw deflate without zlib wrapper.
+        try {
+          buf = inflateSync(buf);
+        } catch {
+          buf = inflateRawSync(buf);
+        }
+      } else if (coding === 'identity') {
+        // no-op
+      } else {
+        // Unknown coding — leave as-is so caller still sees something.
+        return buf;
+      }
+    } catch {
+      // Decompression failed — return whatever we had before this step.
+      return buf;
+    }
+  }
+  return buf;
 }
 
 function mergeSignals(a: AbortSignal | undefined, b: AbortSignal): AbortSignal {
