@@ -184,6 +184,7 @@ interface AppState {
 
   // Git
   gitStatus: GitStatus | null;
+  gitLoaded: boolean;
   gitError: string | null;
   gitBusy: boolean;
   loadGitStatus: () => Promise<void>;
@@ -475,6 +476,7 @@ export const useAppStore = create<AppState>((set, get) => {
     tabs: [],
     activeTabId: null,
     gitStatus: null,
+    gitLoaded: false,
     gitError: null,
     gitBusy: false,
     saveDialogOpen: false,
@@ -503,6 +505,7 @@ export const useAppStore = create<AppState>((set, get) => {
         activeEnvironment: null,
         history: [],
         gitStatus: null,
+        gitLoaded: false,
         gitError: null,
       });
       await get().loadRecents();
@@ -1094,14 +1097,18 @@ export const useAppStore = create<AppState>((set, get) => {
     loadGitStatus: async () => {
       const workspace = get().workspace;
       if (!workspace) {
-        set({ gitStatus: null });
+        set({ gitStatus: null, gitLoaded: false, gitError: null });
         return;
       }
       try {
         const status = await bridge.gitStatus(workspace.path);
-        set({ gitStatus: status, gitError: null });
+        set({ gitStatus: status, gitError: null, gitLoaded: true });
       } catch (err) {
-        set({ gitError: err instanceof Error ? err.message : String(err) });
+        set({
+          gitStatus: null,
+          gitError: err instanceof Error ? err.message : String(err),
+          gitLoaded: true,
+        });
       }
     },
 
