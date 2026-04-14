@@ -120,6 +120,12 @@ interface AppState {
   focusUrlTick: number;
   focusUrl: () => void;
 
+  // Ticks bumped by the command palette to open dialogs owned by RequestBuilder.
+  importCurlTick: number;
+  openImportCurl: () => void;
+  loadTestTick: number;
+  openLoadTest: () => void;
+
   newTab: () => void;
   closeTab: (id: string) => void;
   duplicateTab: (id: string) => void;
@@ -442,6 +448,8 @@ export const useAppStore = create<AppState>((set, get) => {
     activeTabId: null,
     saveDialogOpen: false,
     focusUrlTick: 0,
+    importCurlTick: 0,
+    loadTestTick: 0,
 
     loadRecents: async () => {
       const recents = await bridge.workspaceList();
@@ -477,6 +485,8 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     focusUrl: () => set({ focusUrlTick: get().focusUrlTick + 1 }),
+    openImportCurl: () => set({ importCurlTick: get().importCurlTick + 1 }),
+    openLoadTest: () => set({ loadTestTick: get().loadTestTick + 1 }),
 
     newTab: () => {
       const tab = emptyDraftTab();
