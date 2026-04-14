@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { ExecutedResponse } from '@scrapeman/shared-types';
+import { bridge } from '../bridge.js';
 import { useAppStore } from '../store.js';
 import { JsonTree } from './JsonTree.js';
 
@@ -38,6 +39,10 @@ export function ResponseViewer(): JSX.Element {
   const execution = useAppStore((s) => {
     const active = s.tabs.find((t) => t.id === s.activeTabId);
     return active?.execution ?? null;
+  });
+  const requestUrl = useAppStore((s) => {
+    const active = s.tabs.find((t) => t.id === s.activeTabId);
+    return active?.builder.url ?? '';
   });
   const [tab, setTab] = useState<Tab>('body');
 
@@ -101,8 +106,18 @@ export function ResponseViewer(): JSX.Element {
         )}
         <Metric label="Size" value={formatBytes(response.sizeBytes)} />
         <Metric label="Protocol" value={response.httpVersion} />
+        <button
+          onClick={() => {
+            const name = deriveFilename(response, requestUrl);
+            void bridge.saveResponse(response.bodyBase64, name);
+          }}
+          className="ml-auto rounded px-2 py-1 text-[11px] font-medium text-ink-2 hover:bg-bg-hover hover:text-ink-1"
+          title="Save response body to file"
+        >
+          Save
+        </button>
         {response.bodyTruncated && (
-          <span className="ml-auto rounded bg-method-post/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-method-post">
+          <span className="rounded bg-method-post/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-method-post">
             truncated
           </span>
         )}
@@ -729,6 +744,79 @@ function TabButton({
       {children}
     </button>
   );
+}
+
+const MIME_EXT: Record<string, string> = {
+  'application/json': '.json',
+  'text/html': '.html',
+  'application/xml': '.xml',
+  'text/xml': '.xml',
+  'application/pdf': '.pdf',
+  'image/png': '.png',
+  'image/jpeg': '.jpg',
+  'image/gif': '.gif',
+  'image/webp': '.webp',
+  'text/plain': '.txt',
+  'application/octet-stream': '.bin',
+};
+
+function extForContentType(contentType: string | undefined): string {
+  if (!contentType) return '.bin';
+  const mime = contentType.split(';')[0]!.trim().toLowerCase();
+  if (MIME_EXT[mime]) return MIME_EXT[mime]!;
+  if (mime.includes('json')) return '.json';
+  if (mime.includes('html')) return '.html';
+  if (mime.includes('xml')) return '.xml';
+  if (mime === 'text/plain') return '.txt';
+  return '.bin';
+}
+
+function parseContentDispositionFilename(
+  headers: Array<[string, string]>,
+): string | null {
+  const header = headers.find(([n]) => n.toLowerCase() === 'content-disposition');
+  if (!header) return null;
+  const value = header[1];
+  // RFC 5987 filename*=UTF-8''encoded — prefer over filename=
+  const starMatch = /filename\*\s*=\s*([^;]+)/i.exec(value);
+  if (starMatch) {
+    const raw = starMatch[1]!.trim();
+    const parts = raw.split("''");
+    const encoded = parts.length === 2 ? parts[1]! : raw;
+    try {
+      return decodeURIComponent(encoded);
+    } catch {
+      /* fall through */
+    }
+  }
+  const match = /filename\s*=\s*("([^"]+)"|([^;]+))/i.exec(value);
+  if (match) {
+    return (match[2] ?? match[3] ?? '').trim() || null;
+  }
+  return null;
+}
+
+function deriveFilename(
+  response: ExecutedResponse,
+  requestUrl: string,
+): string {
+  const fromCd = parseContentDispositionFilename(response.headers);
+  if (fromCd) return fromCd;
+
+  let base = 'response';
+  try {
+    const u = new URL(requestUrl);
+    const last = u.pathname.split('/').filter(Boolean).pop();
+    if (last) base = last;
+  } catch {
+    const noQuery = requestUrl.split('?')[0] ?? '';
+    const last = noQuery.split('/').filter(Boolean).pop();
+    if (last) base = last;
+  }
+
+  const hasExt = /\.[A-Za-z0-9]{1,8}$/.test(base);
+  if (hasExt) return base;
+  return base + extForContentType(response.contentType);
 }
 
 function formatBytes(bytes: number): string {

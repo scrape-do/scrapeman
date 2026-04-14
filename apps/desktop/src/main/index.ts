@@ -1,7 +1,8 @@
-import { app, BrowserWindow, ipcMain, session, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, session, shell } from 'electron';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { writeFile } from 'node:fs/promises';
 import {
   UndiciExecutor,
   ExecutorError,
@@ -284,6 +285,31 @@ app.whenReady().then(() => {
   ipcMain.handle('request:cancel', (_e, requestId: string): void => {
     requestRuns.get(requestId)?.abort();
   });
+
+  ipcMain.handle(
+    'response:save',
+    async (
+      _e,
+      bodyBase64: string,
+      suggestedName: string,
+    ): Promise<{ ok: boolean; path?: string; canceled?: boolean }> => {
+      const focused = BrowserWindow.getFocusedWindow();
+      const result = focused
+        ? await dialog.showSaveDialog(focused, { defaultPath: suggestedName })
+        : await dialog.showSaveDialog({ defaultPath: suggestedName });
+      if (result.canceled || !result.filePath) {
+        return { ok: false, canceled: true };
+      }
+      try {
+        const buf = Buffer.from(bodyBase64, 'base64');
+        await writeFile(result.filePath, buf);
+        return { ok: true, path: result.filePath };
+      } catch (err) {
+        console.error('[scrapeman] response save failed:', err);
+        return { ok: false };
+      }
+    },
+  );
 
   ipcMain.handle(
     'history:list',
