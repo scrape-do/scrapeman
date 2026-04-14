@@ -35,7 +35,9 @@ import {
   gitStatus,
   gitDiff,
   gitStage,
+  gitStageAll,
   gitUnstage,
+  gitUnstageAll,
   gitDiscard,
   gitCommit,
   gitPush,
@@ -568,6 +570,20 @@ app.whenReady().then(() => {
       }
     },
   );
+  ipcMain.handle('git:stageAll', async (_e, workspacePath: string) => {
+    try {
+      await gitStageAll(workspacePath);
+    } catch (err) {
+      throw toGitError(err);
+    }
+  });
+  ipcMain.handle('git:unstageAll', async (_e, workspacePath: string) => {
+    try {
+      await gitUnstageAll(workspacePath);
+    } catch (err) {
+      throw toGitError(err);
+    }
+  });
   ipcMain.handle(
     'git:unstage',
     async (_e, workspacePath: string, relPath: string) => {

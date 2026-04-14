@@ -39,8 +39,6 @@ const GIT_STATUS_COLOR: Record<GitFileChangeStatus, string> = {
   renamed: 'text-method-options',
 };
 
-type SidebarView = 'files' | 'git';
-
 type DialogState =
   | { kind: 'none' }
   | { kind: 'newRequest'; parent: string }
@@ -58,9 +56,10 @@ export function Sidebar(): JSX.Element {
   const deleteNode = useAppStore((s) => s.deleteNode);
   const moveNode = useAppStore((s) => s.moveNode);
   const gitStatus = useAppStore((s) => s.gitStatus);
+  const view = useAppStore((s) => s.sidebarView);
+  const setView = useAppStore((s) => s.setSidebarView);
 
   const [dialog, setDialog] = useState<DialogState>({ kind: 'none' });
-  const [view, setView] = useState<SidebarView>('files');
   const [selectedFolder, setSelectedFolder] = useState<string>('');
 
   const gitStatusByPath = useMemo(() => {

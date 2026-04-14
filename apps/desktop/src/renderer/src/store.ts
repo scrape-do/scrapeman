@@ -190,7 +190,11 @@ interface AppState {
   gitBusy: boolean;
   loadGitStatus: () => Promise<void>;
   stageFile: (relPath: string) => Promise<void>;
+  stageAll: () => Promise<void>;
   unstageFile: (relPath: string) => Promise<void>;
+  unstageAll: () => Promise<void>;
+  sidebarView: 'files' | 'git';
+  setSidebarView: (view: 'files' | 'git') => void;
   discardFile: (relPath: string) => Promise<void>;
   commitChanges: (message: string) => Promise<void>;
   gitPush: () => Promise<void>;
@@ -480,6 +484,8 @@ export const useAppStore = create<AppState>((set, get) => {
     gitLoaded: false,
     gitError: null,
     gitBusy: false,
+    sidebarView: 'files',
+    setSidebarView: (view) => set({ sidebarView: view }),
     saveDialogOpen: false,
     focusUrlTick: 0,
     importCurlTick: 0,
@@ -1158,11 +1164,33 @@ export const useAppStore = create<AppState>((set, get) => {
       }
     },
 
+    stageAll: async () => {
+      const workspace = get().workspace;
+      if (!workspace) return;
+      try {
+        await bridge.gitStageAll(workspace.path);
+        await get().loadGitStatus();
+      } catch (err) {
+        set({ gitError: err instanceof Error ? err.message : String(err) });
+      }
+    },
+
     unstageFile: async (relPath: string) => {
       const workspace = get().workspace;
       if (!workspace) return;
       try {
         await bridge.gitUnstage(workspace.path, relPath);
+        await get().loadGitStatus();
+      } catch (err) {
+        set({ gitError: err instanceof Error ? err.message : String(err) });
+      }
+    },
+
+    unstageAll: async () => {
+      const workspace = get().workspace;
+      if (!workspace) return;
+      try {
+        await bridge.gitUnstageAll(workspace.path);
         await get().loadGitStatus();
       } catch (err) {
         set({ gitError: err instanceof Error ? err.message : String(err) });

@@ -9,6 +9,7 @@ import { EnvironmentMenu } from './components/EnvironmentMenu.js';
 import { CookiesPanel } from './components/CookiesPanel.js';
 import { SettingsDialog } from './components/SettingsDialog.js';
 import { SplitPane, type SplitOrientation } from './components/SplitPane.js';
+import { GitStatusBar } from './components/GitStatusBar.js';
 import { useAppStore } from './store.js';
 import { bridge } from './bridge.js';
 import { usePlatform } from './hooks/usePlatform.js';
@@ -196,7 +197,7 @@ export function App(): JSX.Element {
         onClose={() => setPaletteOpen(false)}
         commands={commands}
       />
-      <div className="flex-1 overflow-hidden">
+      <div className="min-h-0 flex-1 overflow-hidden">
         <SplitPane
           orientation="horizontal"
           initialSize={20}
@@ -223,6 +224,7 @@ export function App(): JSX.Element {
           }
         />
       </div>
+      <GitStatusBar />
     </div>
   );
 }

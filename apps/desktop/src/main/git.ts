@@ -136,6 +136,14 @@ export async function gitUnstage(
   }
 }
 
+export async function gitStageAll(workspacePath: string): Promise<void> {
+  await run(workspacePath, ['add', '-A']);
+}
+
+export async function gitUnstageAll(workspacePath: string): Promise<void> {
+  await run(workspacePath, ['reset']);
+}
+
 export async function gitDiscard(
   workspacePath: string,
   relPath: string,
