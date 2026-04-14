@@ -183,8 +183,12 @@ const api: ScrapemanBridge = {
     ) as Promise<string>,
   gitStage: (workspacePath: string, relPath: string) =>
     ipcRenderer.invoke('git:stage', workspacePath, relPath) as Promise<void>,
+  gitStageAll: (workspacePath: string) =>
+    ipcRenderer.invoke('git:stageAll', workspacePath) as Promise<void>,
   gitUnstage: (workspacePath: string, relPath: string) =>
     ipcRenderer.invoke('git:unstage', workspacePath, relPath) as Promise<void>,
+  gitUnstageAll: (workspacePath: string) =>
+    ipcRenderer.invoke('git:unstageAll', workspacePath) as Promise<void>,
   gitDiscard: (workspacePath: string, relPath: string) =>
     ipcRenderer.invoke('git:discard', workspacePath, relPath) as Promise<void>,
   gitCommit: (workspacePath: string, message: string) =>

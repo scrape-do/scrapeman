@@ -33,7 +33,9 @@ export function SourceControlPanel(): JSX.Element {
   const gitBusy = useAppStore((s) => s.gitBusy);
   const loadGitStatus = useAppStore((s) => s.loadGitStatus);
   const stageFile = useAppStore((s) => s.stageFile);
+  const stageAll = useAppStore((s) => s.stageAll);
   const unstageFile = useAppStore((s) => s.unstageFile);
+  const unstageAll = useAppStore((s) => s.unstageAll);
   const discardFile = useAppStore((s) => s.discardFile);
   const commitChanges = useAppStore((s) => s.commitChanges);
   const gitPush = useAppStore((s) => s.gitPush);
@@ -202,7 +204,19 @@ export function SourceControlPanel(): JSX.Element {
 
         <div className="min-h-0 flex-1 overflow-auto">
           {staged.length > 0 && (
-            <Section label={`Staged Changes (${staged.length})`}>
+            <Section
+              label={`Staged Changes (${staged.length})`}
+              actions={
+                <button
+                  title="Unstage all"
+                  disabled={staged.length === 0}
+                  onClick={() => void unstageAll()}
+                  className="icon-btn disabled:opacity-40"
+                >
+                  −
+                </button>
+              }
+            >
               {staged.map((c) => (
                 <FileRow
                   key={`s:${c.path}`}
@@ -231,7 +245,19 @@ export function SourceControlPanel(): JSX.Element {
           )}
 
           {unstaged.length > 0 && (
-            <Section label={`Changes (${unstaged.length})`}>
+            <Section
+              label={`Changes (${unstaged.length})`}
+              actions={
+                <button
+                  title="Stage all"
+                  disabled={unstaged.length === 0}
+                  onClick={() => void stageAll()}
+                  className="icon-btn disabled:opacity-40"
+                >
+                  +
+                </button>
+              }
+            >
               {unstaged.map((c) => (
                 <FileRow
                   key={`u:${c.path}`}
@@ -310,15 +336,18 @@ export function SourceControlPanel(): JSX.Element {
 
 function Section({
   label,
+  actions,
   children,
 }: {
   label: string;
+  actions?: React.ReactNode;
   children: React.ReactNode;
 }): JSX.Element {
   return (
     <div>
-      <div className="sticky top-0 z-10 border-b border-line bg-bg-subtle px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-ink-3">
-        {label}
+      <div className="sticky top-0 z-10 flex items-center border-b border-line bg-bg-subtle px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-ink-3">
+        <span className="flex-1 truncate">{label}</span>
+        {actions && <span className="flex items-center gap-1">{actions}</span>}
       </div>
       <div>{children}</div>
     </div>

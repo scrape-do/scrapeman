@@ -431,7 +431,9 @@ export interface ScrapemanBridge {
     options: { staged: boolean },
   ) => Promise<string>;
   gitStage: (workspacePath: string, relPath: string) => Promise<void>;
+  gitStageAll: (workspacePath: string) => Promise<void>;
   gitUnstage: (workspacePath: string, relPath: string) => Promise<void>;
+  gitUnstageAll: (workspacePath: string) => Promise<void>;
   gitDiscard: (workspacePath: string, relPath: string) => Promise<void>;
   gitCommit: (workspacePath: string, message: string) => Promise<void>;
   gitPush: (workspacePath: string) => Promise<GitOpResult>;
