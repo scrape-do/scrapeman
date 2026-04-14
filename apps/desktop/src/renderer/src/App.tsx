@@ -185,9 +185,9 @@ export function App(): JSX.Element {
           <button
             onClick={() => setSettingsOpen(true)}
             title="Settings"
-            className="app-no-drag flex h-8 w-8 items-center justify-center rounded-md border border-line bg-bg-canvas text-base text-ink-2 hover:bg-bg-hover hover:text-ink-1"
+            className="app-no-drag flex h-8 w-8 items-center justify-center rounded-md border border-line bg-bg-canvas text-ink-2 hover:bg-bg-hover hover:text-ink-1"
           >
-            ⚙
+            <span className="text-xl leading-none">⚙</span>
           </button>
         </div>
       </header>

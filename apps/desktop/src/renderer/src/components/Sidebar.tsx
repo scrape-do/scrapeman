@@ -416,7 +416,7 @@ function TreeNode({
                     : 'hover:bg-bg-hover'
               }`}
             >
-              <span className="w-4 text-center text-sm leading-none text-ink-3">
+              <span className="w-6 text-center text-xl leading-none text-ink-3">
                 {expanded ? '▾' : '▸'}
               </span>
               <span className="truncate font-medium">{node.name}</span>
