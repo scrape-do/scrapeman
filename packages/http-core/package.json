@@ -1,0 +1,38 @@
+{
+  "name": "@scrapeman/http-core",
+  "version": "0.0.0",
+  "description": "HTTP engine for scrapeman: RequestExecutor interface and adapters",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "src", "README.md"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch --preserveWatchOutput",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "echo 'no lint' && exit 0"
+  },
+  "dependencies": {
+    "@scrapeman/shared-types": "workspace:*",
+    "aws4": "^1.13.0",
+    "chokidar": "^4.0.0",
+    "tough-cookie": "^5.0.0",
+    "undici": "^7.0.0",
+    "yaml": "^2.6.0"
+  },
+  "devDependencies": {
+    "@types/aws4": "^1.11.0",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

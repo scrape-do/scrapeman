@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Roadmap + current status
+    url: https://github.com/scrape-do/scrapeman/blob/main/planning/session-state.md
+    about: Start here for current status, planned milestones, and gotchas.
+  - name: Postman feature parity checklist
+    url: https://github.com/scrape-do/scrapeman/blob/main/planning/postman-parity.md
+    about: What's done, in-progress, planned, and explicitly out of scope.

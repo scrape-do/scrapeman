@@ -1,0 +1,975 @@
+doc: tasks
+owner: team-lead
+status: draft
+updated: 2026-04-14
+schema:
+  id: unique stable identifier
+  title: short imperative
+  milestone: M0..M10
+  owner: developer-core | developer-ui | team-lead | product-manager
+  estimate_hours: rough, 1..40
+  depends_on: list of task ids
+  tags: [core, ui, infra, research, polish, test]
+  acceptance: bullet list of done-when conditions
+
+tasks:
+
+  # ================= M0: Planning & scaffolding =================
+
+  - id: T001
+    title: Scaffold Electron + Vite + React + TS project
+    milestone: M0
+    owner: developer-ui
+    estimate_hours: 6
+    depends_on: []
+    tags: [infra, ui]
+    acceptance:
+      - npm run dev opens a blank window
+      - contextBridge preload in place, no nodeIntegration
+      - ESLint + Prettier + tsconfig strict
+
+  - id: T002
+    title: Set up GitHub Actions CI for mac/win/linux builds
+    milestone: M0
+    owner: team-lead
+    estimate_hours: 5
+    depends_on: [T001]
+    tags: [infra]
+    acceptance:
+      - Push to main builds all 3 platforms
+      - Artifacts uploaded on tag
+
+  - id: T003
+    title: Define internal package layout (monorepo vs single)
+    milestone: M0
+    owner: team-lead
+    estimate_hours: 3
+    depends_on: []
+    tags: [infra, research]
+    acceptance:
+      - Decision recorded in architecture.md
+      - packages/http-core, packages/shared-types, apps/desktop layout if monorepo
+
+  - id: T004
+    title: Agree on file format spec (draft file-format.md)
+    milestone: M0
+    owner: team-lead
+    estimate_hours: 4
+    depends_on: []
+    tags: [research]
+    acceptance:
+      - Example files for GET, POST-json, POST-multipart, OAuth2
+      - Key ordering rules documented
+      - Reviewed by PM and both devs
+
+  # ================= M1: Vertical slice =================
+
+  - id: T010
+    title: Wrap postman-runtime behind RequestExecutor interface
+    milestone: M1
+    owner: developer-core
+    estimate_hours: 10
+    depends_on: [T003]
+    tags: [core]
+    acceptance:
+      - execute(request) -> Promise<Response> signature stable
+      - Supports all standard methods + custom method strings
+      - Unit tests against httpbin (local docker)
+
+  - id: T011
+    title: Define shared Request/Response TypeScript types
+    milestone: M1
+    owner: developer-core
+    estimate_hours: 4
+    depends_on: [T003]
+    tags: [core]
+    acceptance:
+      - Types live in packages/shared-types
+      - Cover body variants, auth variants, proxy config
+      - Exported to both main and renderer
+
+  - id: T012
+    title: IPC channel for send-request (main side handler)
+    milestone: M1
+    owner: developer-core
+    estimate_hours: 5
+    depends_on: [T010, T011]
+    tags: [core, infra]
+    acceptance:
+      - Typed request/response over contextBridge
+      - Error surface includes network vs timeout vs protocol
+      - Cancellable via AbortController
+
+  - id: T013
+    title: Minimal request builder UI (URL bar + method dropdown + send button)
+    milestone: M1
+    owner: developer-ui
+    estimate_hours: 8
+    depends_on: [T001, T011]
+    tags: [ui]
+    acceptance:
+      - Method dropdown includes custom input
+      - URL bar with variable-safe paste
+      - Send button fires IPC and shows loading state
+
+  - id: T014
+    title: Minimal response viewer (status, headers table, body raw+json)
+    milestone: M1
+    owner: developer-ui
+    estimate_hours: 10
+    depends_on: [T012, T013]
+    tags: [ui]
+    acceptance:
+      - Status + duration + size badges
+      - Headers table sortable
+      - Body auto-detects JSON vs text vs HTML
+      - Large body (10MB) does not block UI thread
+
+  - id: T015
+    title: E2E test — send GET to httpbin, assert status 200
+    milestone: M1
+    owner: team-lead
+    estimate_hours: 4
+    depends_on: [T014]
+    tags: [test]
+    acceptance:
+      - Playwright launches Electron, types URL, clicks send
+      - Asserts response status in UI
+
+  # ================= M2: Collections & file format =================
+
+  - id: T020
+    title: Implement file format parser + serializer
+    milestone: M2
+    owner: developer-core
+    estimate_hours: 10
+    depends_on: [T004, T011]
+    tags: [core]
+    acceptance:
+      - parse(text) -> Request, serialize(Request) -> text
+      - Round-trip lossless for 20 fixture files
+      - Stable key order (snapshot tests)
+
+  - id: T021
+    title: Collection FS layer (read tree, write file, delete, rename)
+    milestone: M2
+    owner: developer-core
+    estimate_hours: 8
+    depends_on: [T020]
+    tags: [core]
+    acceptance:
+      - Async API with typed errors
+      - Atomic writes (tmp file + rename)
+      - Handles nested folders
+
+  - id: T022
+    title: chokidar file watcher with debounced reload
+    milestone: M2
+    owner: developer-core
+    estimate_hours: 5
+    depends_on: [T021]
+    tags: [core]
+    acceptance:
+      - External edits reflected in UI within 500ms
+      - No reload loop when scrapeman writes
+
+  - id: T023
+    title: Sidebar tree component (folders, requests, icons)
+    milestone: M2
+    owner: developer-ui
+    estimate_hours: 12
+    depends_on: [T021]
+    tags: [ui]
+    acceptance:
+      - Keyboard navigation (arrows, enter)
+      - Context menu (rename, delete, duplicate, new)
+      - Drag-drop reorder and move across folders
+
+  - id: T024
+    title: New request / new folder flow + unsaved indicator
+    milestone: M2
+    owner: developer-ui
+    estimate_hours: 6
+    depends_on: [T023]
+    tags: [ui]
+    acceptance:
+      - Cmd+N new request, Cmd+Shift+N new folder
+      - Dot indicator for unsaved edits
+      - Prompt on close with unsaved
+
+  - id: T025
+    title: Open workspace (folder picker + recent workspaces)
+    milestone: M2
+    owner: developer-ui
+    estimate_hours: 5
+    depends_on: [T021]
+    tags: [ui]
+    acceptance:
+      - Native folder picker
+      - Recent list in menu
+      - Remembers last on startup
+
+  # ================= M3: Environments & variables =================
+
+  - id: T030
+    title: Variable resolver with scope precedence
+    milestone: M3
+    owner: developer-core
+    estimate_hours: 8
+    depends_on: [T011]
+    tags: [core]
+    acceptance:
+      - Scopes global > collection > environment > request
+      - {{var}} in strings, nested resolution with cycle detection
+      - Unit tests covering precedence
+
+  - id: T031
+    title: Environment file format + FS layer
+    milestone: M3
+    owner: developer-core
+    estimate_hours: 5
+    depends_on: [T020]
+    tags: [core]
+    acceptance:
+      - Env files live in .scrapeman/environments/ inside workspace
+      - Secret flag per variable
+
+  - id: T032
+    title: keytar integration for secret storage
+    milestone: M3
+    owner: developer-core
+    estimate_hours: 6
+    depends_on: [T031]
+    tags: [core]
+    acceptance:
+      - Secrets stored under scrapeman.<workspace>.<env>.<key>
+      - Fallback to AES-encrypted file when keytar unavailable
+      - Tested on mac keychain
+
+  - id: T033
+    title: Environment switcher UI + variable table editor
+    milestone: M3
+    owner: developer-ui
+    estimate_hours: 10
+    depends_on: [T030, T031]
+    tags: [ui]
+    acceptance:
+      - Top-bar dropdown to switch active env
+      - Table editor for variables with secret toggle
+      - Masked display for secrets, reveal on click
+
+  - id: T034
+    title: Autocomplete {{var}} in URL/headers/body fields
+    milestone: M3
+    owner: developer-ui
+    estimate_hours: 6
+    depends_on: [T033]
+    tags: [ui, polish]
+    acceptance:
+      - Typing {{ shows popup with in-scope vars
+      - Arrow keys + enter to insert
+
+  # ================= M4: Auth helpers =================
+
+  - id: T040
+    title: Auth type enum + UI switcher
+    milestone: M4
+    owner: developer-ui
+    estimate_hours: 4
+    depends_on: [T013]
+    tags: [ui]
+    acceptance:
+      - Dropdown with None/Basic/Bearer/ApiKey/OAuth2/AwsSigV4
+      - Per-type form renders
+
+  - id: T041
+    title: Basic + Bearer + API Key forms and backend wiring
+    milestone: M4
+    owner: developer-core
+    estimate_hours: 6
+    depends_on: [T040, T010]
+    tags: [core]
+    acceptance:
+      - Values substituted at send time
+      - API Key supports header or query placement
+      - Integration test against httpbin/basic-auth
+
+  - id: T042
+    title: OAuth2 client credentials flow
+    milestone: M4
+    owner: developer-core
+    estimate_hours: 8
+    depends_on: [T041]
+    tags: [core]
+    acceptance:
+      - Token endpoint call, token cache, auto-refresh
+      - Works against a real provider (e.g., Auth0 test tenant)
+
+  - id: T043
+    title: OAuth2 authorization code flow with local callback server
+    milestone: M4
+    owner: developer-core
+    estimate_hours: 12
+    depends_on: [T042]
+    tags: [core]
+    acceptance:
+      - Opens system browser, catches callback on localhost
+      - PKCE supported
+      - Token cache shared with client-credentials
+
+  - id: T044
+    title: AWS SigV4 signer
+    milestone: M4
+    owner: developer-core
+    estimate_hours: 8
+    depends_on: [T041]
+    tags: [core]
+    acceptance:
+      - Uses aws4 or equivalent
+      - Correctly signs S3 GET, with and without session token
+      - Integration test against real S3 bucket
+
+  - id: T045
+    title: Auth UI polish — token preview, expiry indicator, force refresh
+    milestone: M4
+    owner: developer-ui
+    estimate_hours: 6
+    depends_on: [T043, T044]
+    tags: [ui, polish]
+    acceptance:
+      - Shows masked token + expires-in countdown
+      - Refresh button forces new token
+
+  # ================= M5: Proxy + scrape-do mode =================
+
+  - id: T050
+    title: Proxy config types + resolver (HTTP/HTTPS/SOCKS5)
+    milestone: M5
+    owner: developer-core
+    estimate_hours: 6
+    depends_on: [T010]
+    tags: [core]
+    acceptance:
+      - Uses undici ProxyAgent or socks-proxy-agent per scheme
+      - Tested against local mitmproxy
+
+  - id: T051
+    title: Per-request and per-env proxy UI
+    milestone: M5
+    owner: developer-ui
+    estimate_hours: 6
+    depends_on: [T050]
+    tags: [ui]
+    acceptance:
+      - Request-level override toggle
+      - Bypass list editor
+
+  - id: T052
+    title: scrape-do native mode — toggle + parameter panel
+    milestone: M5
+    owner: developer-ui
+    estimate_hours: 10
+    depends_on: [T050, T033]
+    tags: [ui, polish]
+    acceptance:
+      - Toggle on request settings
+      - Panel with render, super, geoCode, waitUntil, playWithBrowser, customHeaders
+      - Token pulled from env secret
+
+  - id: T053
+    title: scrape-do URL composer at send time
+    milestone: M5
+    owner: developer-core
+    estimate_hours: 5
+    depends_on: [T052]
+    tags: [core]
+    acceptance:
+      - Target URL + params assembled into scrape-do query string
+      - Unit tests covering all parameter combinations
+      - Original URL preserved for editing
+
+  - id: T054
+    title: Dogfood pass — run 20 real scrape-do scenarios
+    milestone: M5
+    owner: product-manager
+    estimate_hours: 6
+    depends_on: [T053]
+    tags: [test]
+    acceptance:
+      - 20 scenarios documented + executed
+      - Bugs filed, P0 fixed before M6
+
+  # ================= M6: Cookies, HTTP/2, advanced options =================
+
+  - id: T060
+    title: Persistent cookie jar per environment (tough-cookie)
+    milestone: M6
+    owner: developer-core
+    estimate_hours: 6
+    depends_on: [T031]
+    tags: [core]
+    acceptance:
+      - JSON store under .scrapeman/cookies/<env>.json
+      - Survives app restart
+      - Scoped by domain/path per RFC 6265
+
+  - id: T061
+    title: Cookie inspector + editor UI
+    milestone: M6
+    owner: developer-ui
+    estimate_hours: 6
+    depends_on: [T060]
+    tags: [ui]
+    acceptance:
+      - List by domain
+      - Edit/delete individual cookies
+      - Clear-all per domain
+
+  - id: T062
+    title: HTTP/2 adapter (Node http2 module)
+    milestone: M6
+    owner: developer-core
+    estimate_hours: 8
+    depends_on: [T010]
+    tags: [core]
+    acceptance:
+      - Sends via http2 when enabled
+      - ALPN negotiation in Auto mode
+      - Pseudo-headers handled correctly
+
+  - id: T063
+    title: Per-request advanced options panel (TLS, redirect, timeout, http version)
+    milestone: M6
+    owner: developer-ui
+    estimate_hours: 8
+    depends_on: [T062]
+    tags: [ui]
+    acceptance:
+      - Follow redirects toggle + max count
+      - Ignore SSL errors toggle
+      - HTTP version dropdown (Auto/1.x/2)
+      - Timeout inputs (connect/read/total)
+
+  # ================= M7: Code generation =================
+
+  - id: T070
+    title: Integrate postman-code-generators
+    milestone: M7
+    owner: developer-core
+    estimate_hours: 5
+    depends_on: [T011]
+    tags: [core]
+    acceptance:
+      - Adapter maps internal Request -> postman SDK request
+      - Targets: curl, go-native, python-requests, python-http.client, js-fetch, js-axios
+
+  - id: T071
+    title: Code panel UI with language switcher + copy
+    milestone: M7
+    owner: developer-ui
+    estimate_hours: 5
+    depends_on: [T070]
+    tags: [ui]
+    acceptance:
+      - Monaco or CodeMirror read-only
+      - Language dropdown
+      - Copy-to-clipboard with toast
+
+  - id: T072
+    title: Codegen includes auth + proxy + scrape-do mode correctly
+    milestone: M7
+    owner: developer-core
+    estimate_hours: 6
+    depends_on: [T070, T053]
+    tags: [core, test]
+    acceptance:
+      - Generated code runs and produces same response as in-app send
+      - Tests cover all auth types + scrape-do mode
+
+  # ================= M8: UX polish =================
+
+  - id: T080
+    title: Tabs with unsaved indicator, middle-click close, reorder
+    milestone: M8
+    owner: developer-ui
+    estimate_hours: 8
+    depends_on: [T024]
+    tags: [ui, polish]
+    acceptance:
+      - Cmd+T, Cmd+W, Cmd+Shift+T restore
+      - Drag to reorder
+
+  - id: T081
+    title: Local history store (SQLite, unlimited, app-data-dir only)
+    milestone: M8
+    owner: developer-core
+    estimate_hours: 10
+    depends_on: [T014]
+    tags: [core]
+    acceptance:
+      - SQLite DB under app data dir, NEVER under workspace folder
+      - Schema: method, url, headers, body, response_status, response_headers, response_body (truncated at configurable cap), timings, duration, sent_at, workspace_id
+      - Full-text index on url + response body for search
+      - Retention config (max entries, max age, max disk size) with background prune
+      - Clear-all and per-entry delete APIs
+      - Unit tests: insert, query, prune, search
+
+  - id: T081b
+    title: History panel UI — instant search, filters, restore, export
+    milestone: M8
+    owner: developer-ui
+    estimate_hours: 10
+    depends_on: [T081]
+    tags: [ui]
+    acceptance:
+      - Instant (<50ms) incremental search as user types
+      - Filter by method, status range, date range, workspace
+      - Click to restore into new tab; double-click to overwrite current
+      - Right-click: delete, export as HAR, copy as curl
+      - Virtual scroll handles 100k entries without jank
+      - Empty state + retention settings link
+
+  - id: T082
+    title: JSON tree viewer with path copy + search
+    milestone: M8
+    owner: developer-ui
+    estimate_hours: 8
+    depends_on: [T014]
+    tags: [ui, polish]
+    acceptance:
+      - Collapsible nodes, lazy render for 100k keys
+      - Right-click copy JSONPath or dot-path
+      - Search highlights matches
+
+  - id: T083
+    title: Timings breakdown (DNS/connect/TLS/TTFB/download)
+    milestone: M8
+    owner: developer-core
+    estimate_hours: 5
+    depends_on: [T010]
+    tags: [core]
+    acceptance:
+      - Metrics collected from runtime hooks
+      - Surfaced in response panel as bar chart
+
+  - id: T084
+    title: Light/dark theme + settings pane
+    milestone: M8
+    owner: developer-ui
+    estimate_hours: 6
+    depends_on: [T001]
+    tags: [ui, polish]
+    acceptance:
+      - Tailwind theme tokens
+      - System/light/dark tri-state
+      - Persisted in user settings
+
+  - id: T085
+    title: Global keyboard shortcuts (send, save, quick-open, new tab)
+    milestone: M8
+    owner: developer-ui
+    estimate_hours: 4
+    depends_on: [T080]
+    tags: [ui, polish]
+    acceptance:
+      - Cmd+Enter send, Cmd+S save, Cmd+P quick-open, Cmd+K command palette
+      - Cheatsheet modal (Cmd+/)
+
+  - id: T086
+    title: Large-response handling (stream to temp file, lazy preview)
+    milestone: M8
+    owner: developer-core
+    estimate_hours: 8
+    depends_on: [T014]
+    tags: [core]
+    acceptance:
+      - >5MB streamed to disk
+      - Preview loads first 1MB, offers "load full"
+      - No UI jank at 100MB
+
+  # ================= M9: Import/export =================
+
+  - id: T090
+    title: Postman Collection v2.1 importer
+    milestone: M9
+    owner: developer-core
+    estimate_hours: 10
+    depends_on: [T020]
+    tags: [core]
+    acceptance:
+      - Round-trip Postman sample collections
+      - Preserves auth, variables, folder structure
+      - Unsupported features flagged with warnings
+
+  - id: T091
+    title: curl command importer (paste dialog + URL bar paste detection)
+    milestone: M9
+    owner: developer-core
+    estimate_hours: 6
+    depends_on: [T020]
+    tags: [core]
+    acceptance:
+      - Parses -X, -H, -d, --data-*, -u, --cookie, -F, --proxy
+      - Integration test with 20 real curl commands
+
+  - id: T092
+    title: HAR importer + exporter
+    milestone: M9
+    owner: developer-core
+    estimate_hours: 6
+    depends_on: [T020]
+    tags: [core]
+    acceptance:
+      - Reads Chrome DevTools HAR exports
+      - Exports current history as HAR
+
+  - id: T093
+    title: Postman v2.1 exporter
+    milestone: M9
+    owner: developer-core
+    estimate_hours: 5
+    depends_on: [T090]
+    tags: [core]
+    acceptance:
+      - Re-imports cleanly into Postman
+      - Covers auth + variables
+
+  # ================= M10: Packaging & release =================
+
+  - id: T100
+    title: electron-builder config for mac/win/linux
+    milestone: M10
+    owner: team-lead
+    estimate_hours: 6
+    depends_on: [T002]
+    tags: [infra]
+    acceptance:
+      - dmg, nsis, AppImage + deb outputs
+      - App icon + metadata
+
+  - id: T101
+    title: Code signing + notarization (mac + win)
+    milestone: M10
+    owner: team-lead
+    estimate_hours: 8
+    depends_on: [T100]
+    tags: [infra]
+    acceptance:
+      - Mac notarized + stapled
+      - Win signed with EV or OV cert
+      - CI runs signing
+
+  - id: T102
+    title: Auto-update (electron-updater) on beta channel
+    milestone: M10
+    owner: team-lead
+    estimate_hours: 6
+    depends_on: [T101]
+    tags: [infra]
+    acceptance:
+      - Update feed hosted (S3 or GitHub Releases)
+      - In-app update prompt
+
+  - id: T103
+    title: Onboarding + empty states + welcome screen
+    milestone: M10
+    owner: developer-ui
+    estimate_hours: 6
+    depends_on: [T025]
+    tags: [ui, polish]
+    acceptance:
+      - First-run picks or creates workspace
+      - Empty sidebar shows create-first-request CTA
+      - Sample collection available
+
+  - id: T104
+    title: Internal rollout + feedback loop
+    milestone: M10
+    owner: product-manager
+    estimate_hours: 6
+    depends_on: [T102, T103]
+    tags: [test]
+    acceptance:
+      - Installed by ≥5 engineers
+      - Feedback doc open
+      - P0 issues triaged within 48h
+
+  # ================= M3.7: History MVP (pulled from M8) =================
+
+  - id: T370
+    title: Local history SQLite store (better-sqlite3)
+    milestone: M3.7
+    owner: developer-core
+    estimate_hours: 8
+    depends_on: [T011]
+    tags: [core]
+    acceptance:
+      - SQLite DB under app data dir (never the workspace folder)
+      - Schema: id, sent_at, workspace_id, env_name, method, url, headers_json, body_blob, response_status, response_headers_json, response_body_blob, response_truncated, timings_json, duration_ms, protocol
+      - insert/list-by-date/delete/clear APIs
+      - FTS5 virtual table on url + response_body (basic; advanced filters in M8)
+      - Retention policy: prune when over max rows or max disk
+      - Unit tests with a tmp DB covering insert, list ordering, FTS search, prune
+
+  - id: T371
+    title: IPC for history (insert on every send, query from renderer)
+    milestone: M3.7
+    owner: developer-core
+    estimate_hours: 3
+    depends_on: [T370]
+    tags: [core]
+    acceptance:
+      - request:execute IPC writes a history row after every send
+      - history:list, history:delete, history:clear IPC handlers
+      - Typed ScrapemanBridge methods
+
+  - id: T372
+    title: Sidebar History section with last-100 list
+    milestone: M3.7
+    owner: developer-ui
+    estimate_hours: 6
+    depends_on: [T371]
+    tags: [ui]
+    acceptance:
+      - Collapsible "History" section under Collections in sidebar
+      - Each row: method badge, url (truncate), status pill, relative time
+      - Click → restore in new tab with full builder state hydrated
+      - "Save to collection" promotes row to .req.yaml
+      - Clear-all with confirm dialog
+
+  # ================= M3.8: Per-request Settings tab =================
+
+  - id: T380
+    title: Settings tab component (five sections)
+    milestone: M3.8
+    owner: developer-ui
+    estimate_hours: 8
+    depends_on: [T013]
+    tags: [ui]
+    acceptance:
+      - Settings tab shows in request builder after Body tab
+      - Sections: Proxy / Timeout / Redirect / TLS / Protocol / scrape-do
+      - Each section is a form wired to store patch actions
+      - Values round-trip through file format (T020 serialize/parse)
+      - Dirty flag set when any setting changes
+
+  - id: T381
+    title: Curl parser captures -x / --proxy
+    milestone: M3.8
+    owner: developer-core
+    estimate_hours: 2
+    depends_on: [T091]
+    tags: [core]
+    acceptance:
+      - curl -x http://proxy:8080 → settings.proxy.url populated, enabled=true
+      - curl --proxy socks5://localhost:9050 → scheme preserved
+      - Proxy auth via -U user:pass captured
+      - Updated curl.test.ts snapshots
+
+  - id: T382
+    title: Retire M6 T063 (subsumed by M3.8)
+    milestone: M3.8
+    owner: team-lead
+    estimate_hours: 1
+    depends_on: [T380]
+    tags: [infra]
+    acceptance:
+      - tasks.yaml T063 marked superseded with pointer to T380
+      - M6 scope updated accordingly
+
+  # ================= M3.9: Right-click context menus =================
+
+  - id: T390
+    title: Cell context menu (encode/decode/copy/paste)
+    milestone: M3.9
+    owner: developer-ui
+    estimate_hours: 4
+    depends_on: [T030]
+    tags: [ui, polish]
+    acceptance:
+      - Radix ContextMenu wired to URL bar, param value, header value
+      - Actions: URL encode, URL decode, Base64 encode, Base64 decode, copy, paste, clear
+      - Encode/decode operates on selection when present, else whole cell
+      - Keyboard shortcut ⇧F10 opens the menu
+
+  # ================= M3.10: Code export MVP =================
+
+  - id: T3A0
+    title: Hand-written code generators (curl, fetch, python-requests, go-net-http)
+    milestone: M3.10
+    owner: developer-core
+    estimate_hours: 6
+    depends_on: [T011]
+    tags: [core]
+    acceptance:
+      - Pure functions in http-core/src/codegen/
+      - Each takes ScrapemanRequest + options → string
+      - Options: { inlineVariables: boolean, variables: Record<string,string> }
+      - Handles method, url, params, headers, body (json/text/form), bearer/basic auth
+      - Snapshot tests for a fixture set
+
+  - id: T3A1
+    title: Code panel UI with language switcher (M3.10 MVP)
+    milestone: M3.10
+    owner: developer-ui
+    estimate_hours: 4
+    depends_on: [T3A0]
+    tags: [ui]
+    acceptance:
+      - Code panel as a request-builder tab or side drawer
+      - Language dropdown: curl / fetch / python / go
+      - Copy-to-clipboard with toast
+      - Toggle "inline variables" (on by default)
+      - CodeMirror read-only preview with syntax highlight
+
+  # ================= M9 expansion: multi-format importers =================
+
+  - id: T094
+    title: Bruno (.bru) folder tree importer
+    milestone: M9
+    owner: developer-core
+    estimate_hours: 8
+    depends_on: [T020]
+    tags: [core]
+    acceptance:
+      - Read a directory of .bru files + sub-folders
+      - Parse Bruno's INI-like format into ScrapemanRequest
+      - Preserve folder hierarchy as scrapeman folders
+      - Preserve auth, params, headers, body, vars
+      - Integration test: import bruno-collection repo, N requests imported
+
+  - id: T095
+    title: Insomnia v4 JSON importer
+    milestone: M9
+    owner: developer-core
+    estimate_hours: 8
+    depends_on: [T020]
+    tags: [core]
+    acceptance:
+      - Read Insomnia v4 export (`_type: export, __export_format: 4`)
+      - Walk resources[] by _type (request, request_group, environment, cookie_jar)
+      - Map _id + parentId to folder tree
+      - Map auth types (basic/bearer/oauth2/apikey/awsv4)
+      - Import a real Insomnia export end-to-end in test
+
+  - id: T096
+    title: "Import from…" menu in sidebar header
+    milestone: M9
+    owner: developer-ui
+    estimate_hours: 5
+    depends_on: [T090, T094, T095]
+    tags: [ui]
+    acceptance:
+      - Dropdown menu with entries: Postman v2.1, Bruno, Insomnia, HAR, curl, file, auto-detect
+      - Auto-detect by file extension + content sniff
+      - Shows progress for large imports
+      - Reports import summary (N requests, N folders, N env)
+      - Error handling with user-visible messages
+
+  # ================= M11: Load runner =================
+
+  - id: T1100
+    title: Load runner engine (concurrency loop + metrics)
+    milestone: M11
+    owner: developer-core
+    estimate_hours: 14
+    depends_on: [T010]
+    tags: [core]
+    acceptance:
+      - runLoad(request, { totalRequests, concurrency, rampUpMs, perIterDelayMs, signal, onProgress }) in http-core
+      - In-flight limiter (honors concurrency)
+      - Per-iteration fresh variable resolution (so {{random}}/{{timestamp}} change per request)
+      - onProgress callback with: sent, succeeded, failed, inflight, currentRps, latencies-so-far
+      - Stop via AbortSignal preserves partial results
+      - Unit test: 500 iterations with concurrency 50 against local server — asserts count, no duplicates of {{random}}, sorted latencies
+      - Performance target: 1000 req @ conc 10 to local server completes in <5s in CI
+
+  - id: T1101
+    title: Latency percentile + histogram accumulator
+    milestone: M11
+    owner: developer-core
+    estimate_hours: 5
+    depends_on: [T1100]
+    tags: [core]
+    acceptance:
+      - Online p50/p95/p99 accumulator (either sorted array or t-digest)
+      - Status code histogram bucket
+      - Error kind breakdown
+      - Exposed via onProgress and final result
+      - Unit tests verify percentiles against known inputs
+
+  - id: T1102
+    title: Load runner IPC + streaming progress
+    milestone: M11
+    owner: developer-core
+    estimate_hours: 4
+    depends_on: [T1100]
+    tags: [core]
+    acceptance:
+      - load:start / load:stop / load:subscribe IPC
+      - Main process runs the loop, streams onProgress events to renderer via window.webContents.send
+      - Cancellation cleanly aborts in-flight requests
+      - Typed ScrapemanBridge methods
+
+  - id: T1103
+    title: Load runner config dialog
+    milestone: M11
+    owner: developer-ui
+    estimate_hours: 6
+    depends_on: [T1102]
+    tags: [ui]
+    acceptance:
+      - "Run with load…" on tab context menu + sidebar request context menu
+      - Dialog: total, concurrency, ramp-up, per-iter delay, record-to-history toggle
+      - Defaults: total 100, concurrency 10, no ramp, no delay, record off
+      - Validation: concurrency ≤ total
+      - Remembers last-used config per tab
+
+  - id: T1104
+    title: Live metrics panel + chart
+    milestone: M11
+    owner: developer-ui
+    estimate_hours: 12
+    depends_on: [T1103]
+    tags: [ui]
+    acceptance:
+      - Metrics grid: sent / remaining / rps / min / p50 / p95 / p99 / max / errors
+      - Status code histogram (bar chart)
+      - Error kind breakdown (network / timeout / tls / 4xx / 5xx)
+      - Latency-over-time line chart (last 1000 data points, canvas or lightweight svg)
+      - No UI jank at 200 req/sec streaming updates
+      - Stop button + run-complete summary
+
+  - id: T1105
+    title: Export load run results (CSV / JSON / HAR)
+    milestone: M11
+    owner: developer-core
+    estimate_hours: 4
+    depends_on: [T1100]
+    tags: [core]
+    acceptance:
+      - Export buttons after run completion
+      - CSV: one row per iteration with status, duration, started_at, error
+      - JSON: full run summary + per-iteration data
+      - HAR: entries[] with request + response
+      - Integration test round-trip
+
+totals:
+  task_count: 83
+  total_estimate_hours: 538
+  working_days_at_6h_focus: 90
+  calendar_weeks_2_devs: 10
+  notes: |
+    Estimates assume 6 productive hours/day per dev. Team lead estimate overlaps with
+    review/pairing time not counted separately. PM hours are lightweight coordination.
+
+    Adds 19 new tasks (+111h) for:
+      - M3.7 History MVP (T370-T372, 17h)
+      - M3.8 Settings tab (T380-T382, 11h)
+      - M3.9 Right-click menus (T390, 4h)
+      - M3.10 Code export MVP (T3A0-T3A1, 10h)
+      - M9 multi-format importers (T094-T096, 21h)
+      - M11 Load runner (T1100-T1105, 45h)
+
+    Calendar: ~10 weeks with 2 devs to M10 internal release.
+    M11 load runner is +1.5 weeks post-M10, or parallelized with M10 polish.

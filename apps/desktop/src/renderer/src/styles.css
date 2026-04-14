@@ -1,0 +1,162 @@
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/inter/600.css';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/500.css';
+
+/* Theme tokens — must live OUTSIDE @layer base so Tailwind JIT doesn't
+   bundle them into a layer that gets overridden by utility classes. */
+:root {
+  --bg-canvas: 255 255 255;
+  --bg-subtle: 250 250 250;
+  --bg-muted: 244 244 245;
+  --bg-sunken: 238 238 239;
+  --bg-hover: 240 240 241;
+  --bg-active: 232 232 234;
+  --line: 230 230 232;
+  --line-strong: 212 212 214;
+  --line-subtle: 239 239 241;
+  --ink-1: 26 26 28;
+  --ink-2: 63 63 66;
+  --ink-3: 107 107 110;
+  --ink-4: 154 154 158;
+  --ink-5: 189 189 193;
+  --accent-soft: 255 241 235;
+  --scrollbar-thumb: 212 212 214;
+  --scrollbar-thumb-hover: 181 181 184;
+  color-scheme: light;
+}
+
+html.dark {
+  --bg-canvas: 11 13 16;
+  --bg-subtle: 17 19 23;
+  --bg-muted: 24 26 31;
+  --bg-sunken: 30 33 38;
+  --bg-hover: 28 31 36;
+  --bg-active: 38 41 47;
+  --line: 38 41 47;
+  --line-strong: 56 60 68;
+  --line-subtle: 30 33 38;
+  --ink-1: 240 240 245;
+  --ink-2: 200 202 208;
+  --ink-3: 150 152 158;
+  --ink-4: 110 113 119;
+  --ink-5: 75 78 84;
+  --accent-soft: 51 24 15;
+  --scrollbar-thumb: 56 60 68;
+  --scrollbar-thumb-hover: 75 78 84;
+  color-scheme: dark;
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    font-family:
+      'Inter',
+      -apple-system,
+      BlinkMacSystemFont,
+      'Segoe UI',
+      sans-serif;
+    font-feature-settings: 'cv11', 'ss01', 'ss03';
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: rgb(var(--bg-canvas));
+    color: rgb(var(--ink-1));
+    font-size: 13px;
+    line-height: 18px;
+    overflow: hidden;
+  }
+
+  button {
+    font: inherit;
+    color: inherit;
+  }
+
+  input,
+  textarea,
+  select {
+    font: inherit;
+    color: inherit;
+  }
+
+  *:focus {
+    outline: none;
+  }
+
+  /* Draggable title bar area on macOS */
+  .app-drag {
+    -webkit-app-region: drag;
+  }
+  .app-no-drag {
+    -webkit-app-region: no-drag;
+  }
+}
+
+@layer components {
+  .field {
+    @apply h-8 rounded-md border border-line bg-bg-canvas px-2.5 text-sm text-ink-1 placeholder:text-ink-4 focus:border-accent focus:shadow-focus;
+  }
+
+  .btn-primary {
+    @apply inline-flex h-8 items-center justify-center rounded-md bg-accent px-3.5 text-xs font-semibold text-white transition-colors hover:bg-accent-hover active:bg-accent-active disabled:cursor-not-allowed disabled:bg-ink-5 disabled:text-white;
+  }
+
+  .btn-secondary {
+    @apply inline-flex h-8 items-center justify-center rounded-md border border-line bg-bg-canvas px-3 text-xs font-medium text-ink-2 transition-colors hover:bg-bg-hover hover:text-ink-1 active:bg-bg-active disabled:cursor-not-allowed disabled:text-ink-5;
+  }
+
+  .btn-ghost {
+    @apply inline-flex h-7 items-center justify-center rounded px-2 text-xs font-medium text-ink-3 transition-colors hover:bg-bg-hover hover:text-ink-1 active:bg-bg-active;
+  }
+
+  .icon-btn {
+    @apply inline-flex h-7 w-7 items-center justify-center rounded text-ink-3 transition-colors hover:bg-bg-hover hover:text-ink-1 active:bg-bg-active;
+  }
+
+  .tab {
+    @apply relative inline-flex h-9 items-center px-3 text-xs font-medium text-ink-3 transition-colors hover:text-ink-1;
+  }
+  .tab-active {
+    @apply text-ink-1;
+  }
+  .tab-active::after {
+    content: '';
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    bottom: -1px;
+    height: 2px;
+    border-radius: 1px;
+    background-color: theme(colors.accent.DEFAULT);
+  }
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--scrollbar-thumb));
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--scrollbar-thumb-hover));
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}

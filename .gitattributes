@@ -1,0 +1,37 @@
+# Normalize line endings to LF for text files
+* text=auto eol=lf
+
+# Platform-specific scripts keep their native line endings
+*.sh text eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.icns binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.pdf binary
+*.zip binary
+*.dmg binary
+*.exe binary
+
+# Lockfiles — keep LF and deterministic
+pnpm-lock.yaml text eol=lf -diff
+
+# Generated / large — collapse in diffs
+pnpm-lock.yaml linguist-generated=true
+dist/** linguist-generated=true
+out/** linguist-generated=true
+
+# Language detection for GitHub Linguist
+*.yaml linguist-language=YAML
+*.req.yaml linguist-language=YAML
+planning/** linguist-documentation

@@ -1,0 +1,26 @@
+{
+  "name": "@scrapeman/shared-types",
+  "version": "0.0.0",
+  "description": "Shared TypeScript types for scrapeman packages",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "src", "README.md"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch --preserveWatchOutput",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "echo 'no tests in shared-types' && exit 0",
+    "lint": "echo 'no lint' && exit 0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}

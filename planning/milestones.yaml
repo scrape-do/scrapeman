@@ -1,0 +1,221 @@
+doc: milestones
+owner: product-manager
+status: draft
+updated: 2026-04-14
+
+milestones:
+  - id: M0
+    name: Planning & scaffolding
+    duration_days: 3
+    goal: Repo scaffolded, stack decisions locked, empty Electron window boots.
+    exit_criteria:
+      - Electron+React+Vite template runs locally
+      - CI builds for mac/win/linux
+      - planning/ docs reviewed by all agents
+
+  - id: M1
+    name: Vertical slice — send a request
+    duration_days: 7
+    goal: User can type URL, pick GET/POST, send, see response. No persistence.
+    exit_criteria:
+      - Request executor wraps postman-runtime
+      - Response viewer shows status, headers, JSON body
+      - Custom HTTP methods accepted
+      - End-to-end test passes on httpbin
+
+  - id: M2
+    name: Collections & file format
+    duration_days: 6
+    goal: Save/load requests from disk in git-friendly format, sidebar tree.
+    exit_criteria:
+      - File format spec finalized (file-format.md)
+      - Read/write round-trip lossless
+      - Sidebar tree with drag-drop, rename, delete
+      - chokidar file-watcher reloads on external edit
+
+  - id: M3
+    name: Environments & variables
+    duration_days: 5
+    goal: Variable substitution across scopes, secrets via keytar.
+    exit_criteria:
+      - Global/collection/environment/request scope precedence working
+      - Secret variables masked in UI
+      - {{var}} resolves in URL, headers, body, auth fields
+
+  - id: M3.7
+    name: History MVP (capture every send)
+    duration_days: 3
+    goal: |
+      Every sent request captured to local SQLite, basic history panel in sidebar,
+      restore-to-tab flow. Advanced viewer (virtual scroll, filters, FTS search)
+      stays in M8 as polish.
+    rationale: |
+      Debugging scraping flows depends on being able to replay "what I sent 10
+      minutes ago". Pulled forward from M8 so engineers get value on day one of
+      M3 onward.
+    exit_criteria:
+      - SQLite DB under app data dir (never workspace folder)
+      - Every send insert: method, url, headers, body, response, timings, env-at-send
+      - Sidebar "History" section with last 100 entries by recency
+      - Click to restore into new tab
+      - Clear-history button
+      - Unit tests for history store (insert, list, delete, prune)
+
+  - id: M3.8
+    name: Per-request Settings tab
+    duration_days: 3
+    goal: |
+      New Settings tab in request builder next to Params/Headers/Body/Auth.
+      Per-request overrides for proxy, timeout, redirect, TLS, HTTP version,
+      and scrape-do native mode. Replaces the deferred M6 T063 panel.
+    rationale: |
+      Users need to toggle proxy and timeout without leaving the request.
+      Curl import already surfaces -x/--proxy; make that editable.
+    exit_criteria:
+      - Settings tab renders with five sections (Proxy / Timeout / Redirect / TLS / Protocol / scrape-do)
+      - Proxy config (HTTP/HTTPS/SOCKS5 + auth + bypass) editable
+      - Settings persisted in .req.yaml round-trip lossless
+      - Curl parser captures -x and --proxy and hydrates the Settings tab
+      - M6 T063 subsumed
+
+  - id: M3.9
+    name: Right-click context menus on editable cells
+    duration_days: 1
+    goal: |
+      URL bar, param value cells, and header value cells gain a Radix
+      ContextMenu with URL encode / decode, Base64 encode / decode, copy,
+      paste, clear.
+    exit_criteria:
+      - Right-click on URL bar shows encode/decode/copy/paste
+      - Right-click on param value / header value shows same
+      - Encode/decode operates on the selected text when there is one, else whole cell
+      - Keyboard accessible (context menu via ⇧F10)
+
+  - id: M3.10
+    name: Code export MVP
+    duration_days: 2
+    goal: |
+      Early code generation pass with four hand-written generators: curl,
+      JS fetch, Python requests, Go net/http. Full M7 (postman-code-generators)
+      adds 20+ more targets later.
+    rationale: |
+      Code export is high-value and cheap to scaffold. Users copy-pasting their
+      request into their codebase unblocks scrape-do customers immediately.
+    exit_criteria:
+      - Generators for curl / fetch / python-requests / go-net-http
+      - Each respects method, url, params, headers, body, bearer/basic auth
+      - Toggle "inline variables" vs "keep {{var}} templates"
+      - Copy to clipboard, language switcher
+      - Read-only CodeMirror preview
+
+  - id: M4
+    name: Auth helpers
+    duration_days: 8
+    goal: Basic/Bearer/API Key/OAuth2/AWS SigV4 all working with real endpoints.
+    exit_criteria:
+      - OAuth2 auth code + client credentials tested against real provider
+      - AWS SigV4 tested against S3
+      - Token cache with refresh
+      - UI for each auth type polished
+
+  - id: M5
+    name: Proxy + scrape-do mode
+    duration_days: 6
+    goal: HTTP/HTTPS/SOCKS5 proxy working; scrape-do native mode polished.
+    exit_criteria:
+      - All three proxy types verified
+      - scrape-do toggle with parameter UI (render/super/geoCode/waitUntil)
+      - Token stored as secret
+      - Dogfood against real scrape-do API
+
+  - id: M6
+    name: Cookie jar + HTTP/2 + advanced request options
+    duration_days: 5
+    goal: Persistent cookies, HTTP/2 toggle, TLS/redirect/timeout controls.
+    exit_criteria:
+      - Cookie jar survives restart
+      - Cookie inspector/editor works
+      - HTTP/2 adapter sends successfully to h2 endpoint
+      - Per-request option panel complete
+
+  - id: M7
+    name: Code generation
+    duration_days: 3
+    goal: curl, Go, Python, fetch, axios targets working.
+    exit_criteria:
+      - All targets generate correct code including auth + proxy
+      - Copy-to-clipboard + language switcher
+
+  - id: M8
+    name: UX polish & response viewer v2
+    duration_days: 7
+    goal: Tabs, history, shortcuts, themes, JSON tree, timings, large-response handling.
+    exit_criteria:
+      - Tabs with unsaved indicator
+      - History panel searchable
+      - JSON tree with path copy
+      - Timings breakdown
+      - 10MB response renders without jank
+
+  - id: M9
+    name: Import/export (Postman, Bruno, Insomnia, HAR)
+    duration_days: 6
+    goal: |
+      First-class import from Postman v2.1, Bruno, Insomnia v4, HAR, and curl.
+      Export to Postman v2.1, HAR, curl. One-click "Import from…" menu with
+      format auto-detection.
+    exit_criteria:
+      - Postman Collection v2.1 round-trip: import a real public Postman collection, every request runs
+      - Bruno folder tree import: read .bru files, preserve folder hierarchy and auth
+      - Insomnia v4 JSON import: requests, environments, auth, folders
+      - HAR import: one request per HAR entry with bodies
+      - curl file import (.sh or paste)
+      - Export Postman v2.1 round-trips through Postman unchanged
+      - "Import from…" menu in sidebar header with native file picker
+
+  - id: M10
+    name: Packaging & release
+    duration_days: 5
+    goal: Signed installers, auto-update, internal release to scrape-do team.
+    exit_criteria:
+      - mac/win/linux installers signed + notarized
+      - Auto-update channel (beta) wired
+      - Installed by ≥5 scrape-do engineers
+      - Feedback loop open (GitHub issues or internal doc)
+
+  - id: M11
+    name: Load runner (single-request stress test)
+    duration_days: 8
+    goal: |
+      Run any request N times with configurable concurrency, watch live
+      throughput + latency + error metrics, stop mid-run, export results.
+      This is the "10 thread × 1000 request" flow that proves a config scales.
+    rationale: |
+      Scrape-do's value prop is handling load. Users need an in-app way to
+      validate that a working config survives the load pattern they expect.
+      Distinct from the v1.5 collection runner, which runs many different
+      requests in sequence.
+    exit_criteria:
+      - "Run with load…" button on saved requests + active tab context menu
+      - Config dialog: total requests, concurrency, ramp-up, per-iter delay, record-to-history toggle
+      - Live-updating metrics panel: sent/remaining/rps, latency p50/p95/p99, status histogram, error kind breakdown
+      - Live latency-over-time chart (last 1000 data points, no jank)
+      - Stop button halts in-flight with partial results preserved
+      - Export run results as CSV, JSON, HAR
+      - Re-runs `{{random}}` / `{{timestamp}}` per iteration (verified by test)
+      - Isolated executor: load runs do not block interactive Send
+      - Load test against a local server finishes 1000 req @ concurrency 10 in <5s in CI
+      - Integration test: 500 iterations with 50 concurrency, asserts sorted latencies and zero errors
+
+totals:
+  working_days: 77
+  calendar_weeks_single_dev_fulltime: 15
+  calendar_weeks_two_devs_fulltime: 9
+  notes: |
+    Two devs cannot simply halve timeline — M0, M1, M10 are mostly serial.
+    Realistic with team-lead + 2 devs + PM: 9-10 weeks to internal release
+    including the M3.7-M3.10 interstitial work and the M9 multi-format
+    importers, but excluding M11 load runner (post-launch feature).
+
+    Breakdown: M0-M3 (24d) + M3.7-M3.10 (9d) + M4-M10 (44d) = 77d.
+    M11 load runner is +8d post-launch or parallelized with M9/M10 polish.
