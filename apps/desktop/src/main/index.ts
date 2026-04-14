@@ -37,6 +37,7 @@ const oauth2Client = new OAuth2Client();
 let historyStore: HistoryStore | null = null;
 let cookieJar: WorkspaceCookieJar | null = null;
 const loadRuns = new Map<string, AbortController>();
+const requestRuns = new Map<string, AbortController>();
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -126,9 +127,12 @@ app.whenReady().then(() => {
       _event,
       request: ScrapemanRequest,
       workspacePath: string | null,
+      requestId: string,
     ): Promise<ExecuteResult> => {
       const startedAt = Date.now();
       let activeEnvironment: string | null = null;
+      const controller = new AbortController();
+      requestRuns.set(requestId, controller);
       try {
         let resolved = request;
         if (workspacePath) {
@@ -188,7 +192,9 @@ app.whenReady().then(() => {
           }
         }
 
-        const response = await executor.execute(resolved);
+        const response = await executor.execute(resolved, {
+          signal: controller.signal,
+        });
 
         // Capture Set-Cookie response headers into the jar for next time.
         if (workspacePath && cookieJar) {
@@ -269,9 +275,15 @@ app.whenReady().then(() => {
         }
 
         return { ok: false, error: { kind, message } };
+      } finally {
+        requestRuns.delete(requestId);
       }
     },
   );
+
+  ipcMain.handle('request:cancel', (_e, requestId: string): void => {
+    requestRuns.get(requestId)?.abort();
+  });
 
   ipcMain.handle(
     'history:list',

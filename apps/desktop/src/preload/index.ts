@@ -18,12 +18,19 @@ import type {
 
 const api: ScrapemanBridge = {
   ping: () => ipcRenderer.invoke('app:ping') as Promise<'pong'>,
-  executeRequest: (request: ScrapemanRequest, workspacePath?: string) =>
+  executeRequest: (
+    request: ScrapemanRequest,
+    workspacePath: string | undefined,
+    requestId: string,
+  ) =>
     ipcRenderer.invoke(
       'request:execute',
       request,
       workspacePath ?? null,
+      requestId,
     ) as Promise<ExecuteResult>,
+  cancelRequest: (requestId: string) =>
+    ipcRenderer.invoke('request:cancel', requestId) as Promise<void>,
   importCurl: (input: string) =>
     ipcRenderer.invoke('curl:import', input) as Promise<ImportCurlResult>,
   generateCode: (input: CodegenInput) =>

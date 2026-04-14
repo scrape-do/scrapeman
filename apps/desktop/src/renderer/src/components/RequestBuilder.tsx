@@ -28,6 +28,7 @@ export function RequestBuilder(): JSX.Element {
   const updateParam = useAppStore((s) => s.updateParam);
   const removeParam = useAppStore((s) => s.removeParam);
   const send = useAppStore((s) => s.send);
+  const cancelSend = useAppStore((s) => s.cancelSend);
   const saveOrPrompt = useAppStore((s) => s.saveOrPrompt);
   const saveActiveAs = useAppStore((s) => s.saveActiveAs);
   const saveDialogOpen = useAppStore((s) => s.saveDialogOpen);
@@ -151,13 +152,23 @@ export function RequestBuilder(): JSX.Element {
             />
           </div>
         </CellContextMenu>
-        <button
-          onClick={() => void send()}
-          disabled={sending || !builder.url.trim()}
-          className="btn-primary min-w-[86px]"
-        >
-          {sending ? 'Sending…' : 'Send'}
-        </button>
+        {sending ? (
+          <button
+            onClick={cancelSend}
+            className="btn-secondary min-w-[86px]"
+            title="Cancel request"
+          >
+            Cancel
+          </button>
+        ) : (
+          <button
+            onClick={() => void send()}
+            disabled={!builder.url.trim()}
+            className="btn-primary min-w-[86px]"
+          >
+            Send
+          </button>
+        )}
       </div>
 
       <div className="flex h-9 items-center border-b border-line px-4">

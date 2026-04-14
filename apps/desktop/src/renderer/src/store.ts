@@ -19,6 +19,10 @@ import type {
 } from '@scrapeman/shared-types';
 import { bridge } from './bridge.js';
 
+// Per-tab in-flight request id, used by cancelSend() to abort the
+// running request via the main-process IPC channel.
+const inflightRequestIds = new Map<string, string>();
+
 export interface HeaderRow {
   id: string;
   key: string;
@@ -141,6 +145,7 @@ interface AppState {
   setAuth: (auth: AuthConfig) => void;
 
   send: () => Promise<void>;
+  cancelSend: () => void;
   setResponseSearch: (search: string) => void;
   setResponseMode: (mode: ResponseBodyMode) => void;
   importCurlIntoActive: (input: string) => Promise<string | null>;
@@ -736,10 +741,14 @@ export const useAppStore = create<AppState>((set, get) => {
 
       const request = buildRequest(tab.builder, { name: tab.name });
       const workspace = get().workspace;
+      const requestId = crypto.randomUUID();
+      inflightRequestIds.set(tab.id, requestId);
       const result = await bridge.executeRequest(
         request,
         workspace?.path ?? undefined,
+        requestId,
       );
+      inflightRequestIds.delete(tab.id);
       const finishedAt = Date.now();
 
       mutateActive((t) => ({
@@ -762,6 +771,14 @@ export const useAppStore = create<AppState>((set, get) => {
       }));
       // Refresh history sidebar after every send so the new entry shows up.
       void get().loadHistory();
+    },
+
+    cancelSend: () => {
+      const { activeTabId } = get();
+      if (!activeTabId) return;
+      const requestId = inflightRequestIds.get(activeTabId);
+      if (!requestId) return;
+      void bridge.cancelRequest(requestId);
     },
 
     setResponseSearch: (search: string) => {

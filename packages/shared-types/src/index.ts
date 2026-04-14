@@ -311,8 +311,10 @@ export interface ScrapemanBridge {
   ping: () => Promise<'pong'>;
   executeRequest: (
     request: ScrapemanRequest,
-    workspacePath?: string,
+    workspacePath: string | undefined,
+    requestId: string,
   ) => Promise<ExecuteResult>;
+  cancelRequest: (requestId: string) => Promise<void>;
   importCurl: (input: string) => Promise<ImportCurlResult>;
   generateCode: (input: CodegenInput) => Promise<string>;
 
