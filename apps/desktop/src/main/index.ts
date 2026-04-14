@@ -31,6 +31,17 @@ import type {
   ScrapemanRequest,
 } from '@scrapeman/shared-types';
 import { WorkspaceManager } from './workspace-manager.js';
+import {
+  gitStatus,
+  gitDiff,
+  gitStage,
+  gitUnstage,
+  gitDiscard,
+  gitCommit,
+  gitPush,
+  gitPull,
+  GitError,
+} from './git.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const executor = new UndiciExecutor({
@@ -517,6 +528,81 @@ app.whenReady().then(() => {
     'workspace:move',
     (_e, path: string, relPath: string, newParent: string) =>
       workspaceManager.move(path, relPath, newParent),
+  );
+
+  const toGitError = (err: unknown): Error => {
+    if (err instanceof GitError) return err;
+    if (err instanceof Error) return err;
+    return new Error(String(err));
+  };
+
+  ipcMain.handle('git:status', async (_e, workspacePath: string) => {
+    try {
+      return await gitStatus(workspacePath);
+    } catch (err) {
+      throw toGitError(err);
+    }
+  });
+  ipcMain.handle(
+    'git:diff',
+    async (
+      _e,
+      workspacePath: string,
+      relPath: string,
+      options: { staged: boolean },
+    ) => {
+      try {
+        return await gitDiff(workspacePath, relPath, options);
+      } catch (err) {
+        throw toGitError(err);
+      }
+    },
+  );
+  ipcMain.handle(
+    'git:stage',
+    async (_e, workspacePath: string, relPath: string) => {
+      try {
+        await gitStage(workspacePath, relPath);
+      } catch (err) {
+        throw toGitError(err);
+      }
+    },
+  );
+  ipcMain.handle(
+    'git:unstage',
+    async (_e, workspacePath: string, relPath: string) => {
+      try {
+        await gitUnstage(workspacePath, relPath);
+      } catch (err) {
+        throw toGitError(err);
+      }
+    },
+  );
+  ipcMain.handle(
+    'git:discard',
+    async (_e, workspacePath: string, relPath: string) => {
+      try {
+        await gitDiscard(workspacePath, relPath);
+      } catch (err) {
+        throw toGitError(err);
+      }
+    },
+  );
+  ipcMain.handle(
+    'git:commit',
+    async (_e, workspacePath: string, message: string) => {
+      try {
+        await gitCommit(workspacePath, message);
+      } catch (err) {
+        throw toGitError(err);
+      }
+    },
+  );
+  ipcMain.handle('git:push', (_e, workspacePath: string) =>
+    gitPush(workspacePath),
+  );
+  ipcMain.handle('git:pull', (_e, workspacePath: string) =>
+    gitPull(workspacePath),
   );
 
   ipcMain.handle('env:list', (_e, workspacePath: string) =>

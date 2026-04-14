@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import type { CollectionNode } from '@scrapeman/shared-types';
+import { useMemo, useState } from 'react';
+import type { CollectionNode, GitFileChangeStatus } from '@scrapeman/shared-types';
 import { useAppStore } from '../store.js';
 import {
   ContextMenu,
@@ -10,6 +10,7 @@ import {
 } from '../ui/ContextMenu.js';
 import { ConfirmDialog, PromptDialog } from '../ui/Dialog.js';
 import { HistoryPanel } from './HistoryPanel.js';
+import { SourceControlPanel } from './SourceControlPanel.js';
 import { SplitPane } from './SplitPane.js';
 
 const METHOD_COLOR: Record<string, string> = {
@@ -21,6 +22,24 @@ const METHOD_COLOR: Record<string, string> = {
   HEAD: 'text-method-head',
   OPTIONS: 'text-method-options',
 };
+
+const GIT_STATUS_BADGE: Record<GitFileChangeStatus, string> = {
+  modified: 'M',
+  added: 'A',
+  deleted: 'D',
+  untracked: 'U',
+  renamed: 'R',
+};
+
+const GIT_STATUS_COLOR: Record<GitFileChangeStatus, string> = {
+  modified: 'text-method-put',
+  added: 'text-method-post',
+  deleted: 'text-method-delete',
+  untracked: 'text-method-patch',
+  renamed: 'text-method-options',
+};
+
+type SidebarView = 'files' | 'git';
 
 type DialogState =
   | { kind: 'none' }
@@ -37,8 +56,23 @@ export function Sidebar(): JSX.Element {
   const createFolder = useAppStore((s) => s.createFolder);
   const renameNode = useAppStore((s) => s.renameNode);
   const deleteNode = useAppStore((s) => s.deleteNode);
+  const gitStatus = useAppStore((s) => s.gitStatus);
 
   const [dialog, setDialog] = useState<DialogState>({ kind: 'none' });
+  const [view, setView] = useState<SidebarView>('files');
+
+  const gitStatusByPath = useMemo(() => {
+    const map = new Map<string, GitFileChangeStatus>();
+    if (!gitStatus) return map;
+    // Prefer the worktree status (unstaged) for badges, but fall back to
+    // staged if the file is only staged — matches VS Code behaviour.
+    for (const change of gitStatus.changes) {
+      if (!map.has(change.path) || !change.staged) {
+        map.set(change.path, change.status);
+      }
+    }
+    return map;
+  }, [gitStatus]);
 
   if (!workspace || !root) {
     return (
@@ -64,75 +98,51 @@ export function Sidebar(): JSX.Element {
 
   const closeDialog = (): void => setDialog({ kind: 'none' });
 
+  const dirtyCount = gitStatus?.changes.length ?? 0;
+
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-10 items-center gap-1 border-b border-line px-2">
-        <div className="flex-1 truncate px-1.5 text-xs font-semibold text-ink-1">
-          {workspace.name}
+      <div className="flex h-8 items-stretch border-b border-line">
+        <button
+          onClick={() => setView('files')}
+          className={`flex-1 border-b-2 text-[11px] font-semibold uppercase tracking-wide ${
+            view === 'files'
+              ? 'border-accent text-ink-1'
+              : 'border-transparent text-ink-3 hover:text-ink-1'
+          }`}
+        >
+          Files
+        </button>
+        <button
+          onClick={() => setView('git')}
+          className={`relative flex-1 border-b-2 text-[11px] font-semibold uppercase tracking-wide ${
+            view === 'git'
+              ? 'border-accent text-ink-1'
+              : 'border-transparent text-ink-3 hover:text-ink-1'
+          }`}
+          title="Source Control"
+        >
+          ⎇ Git
+          {dirtyCount > 0 && (
+            <span className="ml-1 text-[10px] text-accent">●{dirtyCount}</span>
+          )}
+        </button>
+      </div>
+      {view === 'git' ? (
+        <div className="min-h-0 flex-1">
+          <SourceControlPanel />
         </div>
-        <button
-          title="New request"
-          onClick={() => setDialog({ kind: 'newRequest', parent: '' })}
-          className="icon-btn"
-        >
-          +
-        </button>
-        <button
-          title="New folder"
-          onClick={() => setDialog({ kind: 'newFolder', parent: '' })}
-          className="icon-btn"
-        >
-          ⌸
-        </button>
-        <button
-          title="Switch workspace"
-          onClick={() => void pickAndOpenWorkspace()}
-          className="icon-btn"
-        >
-          ⇄
-        </button>
-      </div>
-      <div className="flex-1 overflow-hidden">
-        <SplitPane
-          orientation="vertical"
-          initialSize={65}
-          minSize={20}
-          maxSize={85}
-          storageKey="sidebar/history"
-          first={
-            <div className="h-full overflow-auto py-1">
-              {root.children.length === 0 ? (
-                <div className="flex flex-col items-center justify-center gap-2 px-6 py-12 text-center">
-                  <div className="text-xs text-ink-3">This workspace is empty.</div>
-                  <button
-                    onClick={() => setDialog({ kind: 'newRequest', parent: '' })}
-                    className="btn-ghost text-accent hover:text-accent-hover"
-                  >
-                    Create your first request
-                  </button>
-                </div>
-              ) : (
-                root.children.map((child) => (
-                  <TreeNode
-                    key={child.id}
-                    node={child}
-                    depth={0}
-                    onNewRequest={(parent) => setDialog({ kind: 'newRequest', parent })}
-                    onNewFolder={(parent) => setDialog({ kind: 'newFolder', parent })}
-                    onRename={(relPath, currentName) =>
-                      setDialog({ kind: 'rename', relPath, currentName })
-                    }
-                    onDelete={(relPath, name) =>
-                      setDialog({ kind: 'delete', relPath, name })
-                    }
-                  />
-                ))
-              )}
-            </div>
-          }
-          second={<HistoryPanel />}
+      ) : (
+        <FilesView
+          workspaceName={workspace.name}
+          onNewRequest={() => setDialog({ kind: 'newRequest', parent: '' })}
+          onNewFolder={() => setDialog({ kind: 'newFolder', parent: '' })}
+          onPick={() => void pickAndOpenWorkspace()}
+          root={root}
+          gitStatusByPath={gitStatusByPath}
+          setDialog={setDialog}
         />
-      </div>
+      )}
 
       <PromptDialog
         open={dialog.kind === 'newRequest'}
@@ -184,9 +194,91 @@ export function Sidebar(): JSX.Element {
   );
 }
 
+interface FilesViewProps {
+  workspaceName: string;
+  onNewRequest: () => void;
+  onNewFolder: () => void;
+  onPick: () => void;
+  root: NonNullable<ReturnType<typeof useAppStore.getState>['root']>;
+  gitStatusByPath: Map<string, GitFileChangeStatus>;
+  setDialog: (dialog: DialogState) => void;
+}
+
+function FilesView({
+  workspaceName,
+  onNewRequest,
+  onNewFolder,
+  onPick,
+  root,
+  gitStatusByPath,
+  setDialog,
+}: FilesViewProps): JSX.Element {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex h-10 items-center gap-1 border-b border-line px-2">
+        <div className="flex-1 truncate px-1.5 text-xs font-semibold text-ink-1">
+          {workspaceName}
+        </div>
+        <button title="New request" onClick={onNewRequest} className="icon-btn">
+          +
+        </button>
+        <button title="New folder" onClick={onNewFolder} className="icon-btn">
+          ⌸
+        </button>
+        <button title="Switch workspace" onClick={onPick} className="icon-btn">
+          ⇄
+        </button>
+      </div>
+      <div className="flex-1 overflow-hidden">
+        <SplitPane
+          orientation="vertical"
+          initialSize={65}
+          minSize={20}
+          maxSize={85}
+          storageKey="sidebar/history"
+          first={
+            <div className="h-full overflow-auto py-1">
+              {root.children.length === 0 ? (
+                <div className="flex flex-col items-center justify-center gap-2 px-6 py-12 text-center">
+                  <div className="text-xs text-ink-3">This workspace is empty.</div>
+                  <button
+                    onClick={() => setDialog({ kind: 'newRequest', parent: '' })}
+                    className="btn-ghost text-accent hover:text-accent-hover"
+                  >
+                    Create your first request
+                  </button>
+                </div>
+              ) : (
+                root.children.map((child) => (
+                  <TreeNode
+                    key={child.id}
+                    node={child}
+                    depth={0}
+                    gitStatusByPath={gitStatusByPath}
+                    onNewRequest={(parent) => setDialog({ kind: 'newRequest', parent })}
+                    onNewFolder={(parent) => setDialog({ kind: 'newFolder', parent })}
+                    onRename={(relPath, currentName) =>
+                      setDialog({ kind: 'rename', relPath, currentName })
+                    }
+                    onDelete={(relPath, name) =>
+                      setDialog({ kind: 'delete', relPath, name })
+                    }
+                  />
+                ))
+              )}
+            </div>
+          }
+          second={<HistoryPanel />}
+        />
+      </div>
+    </div>
+  );
+}
+
 interface TreeNodeProps {
   node: CollectionNode;
   depth: number;
+  gitStatusByPath: Map<string, GitFileChangeStatus>;
   onNewRequest: (parent: string) => void;
   onNewFolder: (parent: string) => void;
   onRename: (relPath: string, currentName: string) => void;
@@ -196,6 +288,7 @@ interface TreeNodeProps {
 function TreeNode({
   node,
   depth,
+  gitStatusByPath,
   onNewRequest,
   onNewFolder,
   onRename,
@@ -255,6 +348,7 @@ function TreeNode({
               key={child.id}
               node={child}
               depth={depth + 1}
+              gitStatusByPath={gitStatusByPath}
               onNewRequest={onNewRequest}
               onNewFolder={onNewFolder}
               onRename={onRename}
@@ -288,6 +382,21 @@ function TreeNode({
             {node.method.slice(0, 6)}
           </span>
           <span className="flex-1 truncate">{node.name}</span>
+          {(() => {
+            const gitStatus =
+              node.kind === 'request'
+                ? gitStatusByPath.get(node.relPath)
+                : undefined;
+            if (!gitStatus) return null;
+            return (
+              <span
+                title={`Git: ${gitStatus}`}
+                className={`w-3 text-center font-mono text-[10px] font-semibold ${GIT_STATUS_COLOR[gitStatus]}`}
+              >
+                {GIT_STATUS_BADGE[gitStatus]}
+              </span>
+            );
+          })()}
           {dirty && (
             <span
               title="Unsaved changes"
