@@ -1,8 +1,10 @@
-import { Cookie, CookieJar, MemoryCookieStore } from 'tough-cookie';
-import { promises as fsp } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { CookieJar } from 'tough-cookie';
+import { existsSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
 import { createHash } from 'node:crypto';
+import type { Cookie } from 'tough-cookie';
 import type { CookieEntry } from '@scrapeman/shared-types';
+import { FileCookieStore } from './file-store.js';
 
 export interface WorkspaceCookieJarOptions {
   rootDir: string;
@@ -10,12 +12,14 @@ export interface WorkspaceCookieJarOptions {
 
 /**
  * Persistent cookie jar scoped to a workspace + active environment. Each
- * (workspace, env) pair gets its own tough-cookie jar and JSON file under
- * the app data dir so cookies never bleed across folders or environments.
+ * (workspace, env) pair gets its own tough-cookie jar backed by a
+ * FileCookieStore, which flushes to a JSON file synchronously on every
+ * mutation. This is the fix for usebruno/bruno#6903: no async write queue
+ * means no dropped cookies when the app exits right after a response.
  */
 export class WorkspaceCookieJar {
   private readonly rootDir: string;
-  private readonly jars = new Map<string, CookieJar>();
+  private readonly jars = new Map<string, { jar: CookieJar; file: string }>();
 
   constructor(options: WorkspaceCookieJarOptions) {
     this.rootDir = options.rootDir;
@@ -28,16 +32,16 @@ export class WorkspaceCookieJar {
     setCookieHeaders: string[],
   ): Promise<void> {
     if (setCookieHeaders.length === 0) return;
-    const jar = await this.getJar(workspacePath, envName);
+    const { jar } = this.getOrCreate(workspacePath, envName);
     for (const raw of setCookieHeaders) {
       try {
-        await jar.setCookie(raw, requestUrl);
+        // Sync path: FileCookieStore flushes to disk before this returns.
+        jar.setCookieSync(raw, requestUrl);
       } catch {
-        // Malformed cookies are silently dropped; tough-cookie throws on
-        // invalid Set-Cookie headers we cannot recover from.
+        // Malformed Set-Cookie headers are silently dropped — tough-cookie
+        // throws on values it cannot parse and we have nothing to recover.
       }
     }
-    await this.persist(workspacePath, envName);
   }
 
   async getCookieHeader(
@@ -45,19 +49,18 @@ export class WorkspaceCookieJar {
     envName: string | null,
     requestUrl: string,
   ): Promise<string | null> {
-    const jar = await this.getJar(workspacePath, envName);
-    const header = await jar.getCookieString(requestUrl);
+    const { jar } = this.getOrCreate(workspacePath, envName);
+    const header = jar.getCookieStringSync(requestUrl);
     return header.length > 0 ? header : null;
   }
 
-  async list(workspacePath: string, envName: string | null): Promise<CookieEntry[]> {
-    const jar = await this.getJar(workspacePath, envName);
-    // tough-cookie limits getCookies by URL — to truly list all cookies we
-    // serialize the store and read its raw entries instead.
-    const raw = (await jar.serialize()) as unknown as {
-      cookies: SerializedCookie[];
-    };
-    return raw.cookies.map(toEntry);
+  async list(
+    workspacePath: string,
+    envName: string | null,
+  ): Promise<CookieEntry[]> {
+    const { jar } = this.getOrCreate(workspacePath, envName);
+    const store = (jar as unknown as { store: FileCookieStore }).store;
+    return store.getAllCookiesSync().map(toEntry);
   }
 
   async delete(
@@ -67,14 +70,9 @@ export class WorkspaceCookieJar {
     path: string,
     name: string,
   ): Promise<void> {
-    const jar = await this.getJar(workspacePath, envName);
-    await new Promise<void>((resolve, reject) => {
-      const store = (jar as unknown as { store: MemoryCookieStore }).store;
-      store.removeCookie(domain, path, name, (err) =>
-        err ? reject(err) : resolve(),
-      );
-    });
-    await this.persist(workspacePath, envName);
+    const { jar } = this.getOrCreate(workspacePath, envName);
+    const store = (jar as unknown as { store: FileCookieStore }).store;
+    store.removeCookieSync(domain, path, name);
   }
 
   async clearDomain(
@@ -82,60 +80,49 @@ export class WorkspaceCookieJar {
     envName: string | null,
     domain: string,
   ): Promise<void> {
-    const jar = await this.getJar(workspacePath, envName);
-    const raw = (await jar.serialize()) as unknown as {
-      cookies: SerializedCookie[];
-    } & Record<string, unknown>;
-    const survivors = raw.cookies.filter((c) => c.domain !== domain);
-    const fresh = await CookieJar.deserialize({
-      ...raw,
-      cookies: survivors,
-    } as unknown as Parameters<typeof CookieJar.deserialize>[0]);
-    this.jars.set(this.key(workspacePath, envName), fresh);
-    await this.persist(workspacePath, envName);
+    const { jar } = this.getOrCreate(workspacePath, envName);
+    const store = (jar as unknown as { store: FileCookieStore }).store;
+    // Collect matching cookies first, then remove one by one. We avoid
+    // removeCookies(domain, null) because tough-cookie's contract treats
+    // null path as "match any" but some stores interpret it differently —
+    // an explicit loop is unambiguous.
+    for (const c of store.getAllCookiesSync()) {
+      if (c.domain === domain) {
+        store.removeCookieSync(c.domain ?? '', c.path ?? '/', c.key);
+      }
+    }
   }
 
   async clearAll(
     workspacePath: string,
     envName: string | null,
   ): Promise<void> {
-    this.jars.set(
-      this.key(workspacePath, envName),
-      new CookieJar(new MemoryCookieStore()),
-    );
-    await this.persist(workspacePath, envName);
-  }
-
-  private async getJar(
-    workspacePath: string,
-    envName: string | null,
-  ): Promise<CookieJar> {
-    const k = this.key(workspacePath, envName);
-    let jar = this.jars.get(k);
-    if (jar) return jar;
-
-    const file = this.fileFor(workspacePath, envName);
-    try {
-      const text = await fsp.readFile(file, 'utf8');
-      const data = JSON.parse(text);
-      jar = await CookieJar.deserialize(data);
-    } catch {
-      jar = new CookieJar(new MemoryCookieStore());
+    const entry = this.getOrCreate(workspacePath, envName);
+    const store = (entry.jar as unknown as { store: FileCookieStore }).store;
+    store.removeAllCookiesSync();
+    // Also nuke the file so a fresh FileCookieStore instance (e.g. after a
+    // restart) cannot resurrect cookies from a stale on-disk snapshot.
+    if (existsSync(entry.file)) {
+      rmSync(entry.file, { force: true });
     }
-    this.jars.set(k, jar);
-    return jar;
+    // Drop the in-memory reference so the next access rebuilds from scratch.
+    this.jars.delete(this.key(workspacePath, envName));
   }
 
-  private async persist(
+  private getOrCreate(
     workspacePath: string,
     envName: string | null,
-  ): Promise<void> {
-    const jar = this.jars.get(this.key(workspacePath, envName));
-    if (!jar) return;
+  ): { jar: CookieJar; file: string } {
+    const k = this.key(workspacePath, envName);
+    const existing = this.jars.get(k);
+    if (existing) return existing;
+
     const file = this.fileFor(workspacePath, envName);
-    await fsp.mkdir(dirname(file), { recursive: true });
-    const data = await jar.serialize();
-    await fsp.writeFile(file, JSON.stringify(data), 'utf8');
+    const store = new FileCookieStore(file);
+    const jar = new CookieJar(store);
+    const entry = { jar, file };
+    this.jars.set(k, entry);
+    return entry;
   }
 
   private key(workspacePath: string, envName: string | null): string {
@@ -143,40 +130,35 @@ export class WorkspaceCookieJar {
   }
 
   private fileFor(workspacePath: string, envName: string | null): string {
-    const hash = createHash('sha1').update(workspacePath).digest('hex').slice(0, 16);
+    const hash = createHash('sha1')
+      .update(workspacePath)
+      .digest('hex')
+      .slice(0, 16);
     const env = envName ?? '__none__';
     return join(this.rootDir, 'cookies', `${hash}.${env}.json`);
   }
 }
 
-interface SerializedCookie {
-  key: string;
-  value: string;
-  domain: string;
-  path: string;
-  expires?: string | 'Infinity';
-  httpOnly?: boolean;
-  secure?: boolean;
-  sameSite?: string;
-}
-
-function toEntry(cookie: SerializedCookie): CookieEntry {
+function toEntry(cookie: Cookie): CookieEntry {
+  const expires = cookie.expires;
+  let expiresStr: string | null = null;
+  if (expires instanceof Date) {
+    expiresStr = expires.toISOString();
+  }
+  const sameSite =
+    cookie.sameSite === 'strict' ||
+    cookie.sameSite === 'lax' ||
+    cookie.sameSite === 'none'
+      ? cookie.sameSite
+      : null;
   return {
-    domain: cookie.domain,
-    path: cookie.path,
+    domain: cookie.domain ?? '',
+    path: cookie.path ?? '/',
     name: cookie.key,
     value: cookie.value,
-    expires:
-      typeof cookie.expires === 'string' && cookie.expires !== 'Infinity'
-        ? cookie.expires
-        : null,
+    expires: expiresStr,
     httpOnly: cookie.httpOnly === true,
     secure: cookie.secure === true,
-    sameSite:
-      cookie.sameSite === 'strict' ||
-      cookie.sameSite === 'lax' ||
-      cookie.sameSite === 'none'
-        ? cookie.sameSite
-        : null,
+    sameSite,
   };
 }

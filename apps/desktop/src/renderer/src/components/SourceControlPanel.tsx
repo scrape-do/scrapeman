@@ -4,6 +4,7 @@ import { useAppStore } from '../store.js';
 import { bridge } from '../bridge.js';
 import { ConfirmDialog } from '../ui/Dialog.js';
 import { Tooltip } from '../ui/Tooltip.js';
+import { DiffViewer } from './DiffViewer.js';
 
 const STATUS_BADGE: Record<GitFileChange['status'], string> = {
   modified: 'M',
@@ -135,6 +136,18 @@ export function SourceControlPanel(): JSX.Element {
     );
   }
 
+  // Full-panel diff view — replaces the file list when a file is selected.
+  // DiffViewer provides its own header with the file path and close button.
+  if (selected) {
+    return (
+      <DiffViewer
+        filePath={(selected.staged ? 'Staged — ' : '') + selected.relPath}
+        diff={diff}
+        onClose={() => setSelected(null)}
+      />
+    );
+  }
+
   const canCommit = staged.length > 0 && message.trim().length > 0;
 
   return (
@@ -160,7 +173,11 @@ export function SourceControlPanel(): JSX.Element {
             onClick={() => void gitPull()}
             className="icon-btn disabled:opacity-50"
           >
-            ↓{gitStatus.behind > 0 ? gitStatus.behind : ''}
+            {gitBusy ? (
+              <span className="inline-block animate-spin">↻</span>
+            ) : (
+              <>↓{gitStatus.behind > 0 ? gitStatus.behind : ''}</>
+            )}
           </button>
         </Tooltip>
         <Tooltip
@@ -175,7 +192,11 @@ export function SourceControlPanel(): JSX.Element {
             onClick={() => void gitPush()}
             className="icon-btn disabled:opacity-50"
           >
-            ↑{gitStatus.ahead > 0 ? gitStatus.ahead : ''}
+            {gitBusy ? (
+              <span className="inline-block animate-spin">↻</span>
+            ) : (
+              <>↑{gitStatus.ahead > 0 ? gitStatus.ahead : ''}</>
+            )}
           </button>
         </Tooltip>
         <Tooltip label="Refresh git status">
@@ -237,9 +258,7 @@ export function SourceControlPanel(): JSX.Element {
                 <FileRow
                   key={`s:${c.path}`}
                   change={c}
-                  active={
-                    selected?.relPath === c.path && selected.staged === true
-                  }
+                  active={false}
                   onClick={() =>
                     setSelected({ relPath: c.path, staged: true })
                   }
@@ -278,9 +297,7 @@ export function SourceControlPanel(): JSX.Element {
                 <FileRow
                   key={`u:${c.path}`}
                   change={c}
-                  active={
-                    selected?.relPath === c.path && selected.staged === false
-                  }
+                  active={false}
                   onClick={() =>
                     setSelected({ relPath: c.path, staged: false })
                   }
@@ -320,15 +337,6 @@ export function SourceControlPanel(): JSX.Element {
           )}
         </div>
 
-        {selected && (
-          <div className="max-h-[40%] min-h-[120px] overflow-auto border-t border-line bg-bg-canvas">
-            <div className="sticky top-0 border-b border-line bg-bg-subtle px-3 py-1.5 text-[11px] font-semibold text-ink-2">
-              {selected.staged ? 'Staged — ' : ''}
-              {selected.relPath}
-            </div>
-            <DiffView diff={diff} />
-          </div>
-        )}
       </div>
 
       <ConfirmDialog
@@ -401,32 +409,3 @@ function FileRow({
   );
 }
 
-function DiffView({ diff }: { diff: string }): JSX.Element {
-  if (!diff.trim()) {
-    return (
-      <div className="px-3 py-3 text-[11px] text-ink-3">No diff available.</div>
-    );
-  }
-  const lines = diff.split('\n');
-  return (
-    <pre className="px-3 py-2 font-mono text-[11px] leading-[1.45]">
-      {lines.map((line, i) => {
-        let cls = 'text-ink-2';
-        if (line.startsWith('+++') || line.startsWith('---')) {
-          cls = 'text-ink-3';
-        } else if (line.startsWith('+')) {
-          cls = 'text-method-post';
-        } else if (line.startsWith('-')) {
-          cls = 'text-method-delete';
-        } else if (line.startsWith('@@')) {
-          cls = 'text-method-options';
-        }
-        return (
-          <div key={i} className={cls}>
-            {line || '\u00a0'}
-          </div>
-        );
-      })}
-    </pre>
-  );
-}

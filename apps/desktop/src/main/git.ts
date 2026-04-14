@@ -8,7 +8,11 @@ import { promises as fsp } from 'node:fs';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { parsePorcelainStatus } from '@scrapeman/http-core';
-import type { GitFileChange, GitStatus } from '@scrapeman/shared-types';
+import type {
+  GitCommit,
+  GitFileChange,
+  GitStatus,
+} from '@scrapeman/shared-types';
 
 const execFileAsync = promisify(execFile);
 
@@ -58,6 +62,61 @@ async function isInsideWorkTree(cwd: string): Promise<boolean> {
     return stdout.trim() === 'true';
   } catch {
     return false;
+  }
+}
+
+export async function gitIsRepo(workspacePath: string): Promise<boolean> {
+  return isInsideWorkTree(workspacePath);
+}
+
+// Null byte separates fields, record separator (0x1e) separates commits.
+// This keeps the parser safe against commit subjects that contain newlines.
+const LOG_FORMAT = '%H%x00%h%x00%s%x00%an%x00%ae%x00%at%x1e';
+
+export async function gitLog(
+  workspacePath: string,
+  limit = 50,
+): Promise<GitCommit[]> {
+  const isRepo = await isInsideWorkTree(workspacePath);
+  if (!isRepo) return [];
+  const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 50;
+  try {
+    const { stdout } = await run(workspacePath, [
+      'log',
+      `--max-count=${safeLimit}`,
+      `--pretty=format:${LOG_FORMAT}`,
+    ]);
+    const commits: GitCommit[] = [];
+    for (const raw of stdout.split('\x1e')) {
+      const record = raw.replace(/^\n/, '');
+      if (!record) continue;
+      const parts = record.split('\x00');
+      if (parts.length < 6) continue;
+      const [hash, shortHash, subject, authorName, authorEmail, ts] = parts as [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+      ];
+      commits.push({
+        hash,
+        shortHash,
+        subject,
+        authorName,
+        authorEmail,
+        date: Number(ts) || 0,
+      });
+    }
+    return commits;
+  } catch (err) {
+    // A freshly initialised repo with zero commits fails `git log` with
+    // "does not have any commits yet" — treat that as an empty history.
+    if (err instanceof GitError && /does not have any commits/i.test(err.stderr)) {
+      return [];
+    }
+    throw err;
   }
 }
 

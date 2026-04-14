@@ -5,7 +5,7 @@ import type {
 
 export * from './executor.js';
 export * from './errors.js';
-export { UndiciExecutor } from './adapters/undici-executor.js';
+export { UndiciExecutor, BODY_UI_LIMIT } from './adapters/undici-executor.js';
 export type { UndiciExecutorOptions } from './adapters/undici-executor.js';
 export * from './format/index.js';
 export * from './workspace/index.js';
@@ -18,6 +18,7 @@ export * from './scrapeDo/index.js';
 export * from './cookies/index.js';
 export * from './load/index.js';
 export * from './auto-headers.js';
+export * from './sse-reader.js';
 export * from './git/index.js';
 
 export type { ScrapemanRequest, ExecutedResponse };

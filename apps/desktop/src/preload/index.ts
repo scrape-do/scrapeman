@@ -1,9 +1,11 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
+  AutoHeadersPreview,
   CodegenInput,
   CookieEntry,
   Environment,
   ExecuteResult,
+  GitCommit,
   GitOpResult,
   GitStatus,
   HistoryEntry,
@@ -39,10 +41,23 @@ const api: ScrapemanBridge = {
       bodyBase64,
       suggestedName,
     ) as Promise<{ ok: boolean; path?: string; canceled?: boolean }>,
+  responseFullBody: (requestId: string) =>
+    ipcRenderer.invoke(
+      'response:fullBody',
+      requestId,
+    ) as Promise<{ bodyBase64: string; sizeBytes: number } | null>,
+  responseSaveToFile: (requestId: string, filePath: string) =>
+    ipcRenderer.invoke(
+      'response:saveToFile',
+      requestId,
+      filePath,
+    ) as Promise<{ bytesWritten: number }>,
   importCurl: (input: string) =>
     ipcRenderer.invoke('curl:import', input) as Promise<ImportCurlResult>,
   generateCode: (input: CodegenInput) =>
     ipcRenderer.invoke('codegen:generate', input) as Promise<string>,
+  previewHeaders: (request: ScrapemanRequest) =>
+    ipcRenderer.invoke('headers:preview', request) as Promise<AutoHeadersPreview>,
 
   loadStart: (input: LoadRunStartInput) =>
     ipcRenderer.invoke('load:start', input) as Promise<string>,
@@ -168,6 +183,10 @@ const api: ScrapemanBridge = {
     return () => ipcRenderer.off('workspace:event', listener);
   },
 
+  gitIsRepo: (workspacePath: string) =>
+    ipcRenderer.invoke('git:isRepo', workspacePath) as Promise<boolean>,
+  gitLog: (workspacePath: string, limit?: number) =>
+    ipcRenderer.invoke('git:log', workspacePath, limit) as Promise<GitCommit[]>,
   gitStatus: (workspacePath: string) =>
     ipcRenderer.invoke('git:status', workspacePath) as Promise<GitStatus>,
   gitDiff: (

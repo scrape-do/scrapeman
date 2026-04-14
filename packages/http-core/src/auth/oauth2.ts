@@ -27,9 +27,13 @@ interface CacheKey {
  * OAuth2 client credentials flow. Fetches a bearer token from the token
  * endpoint and caches it per (tokenUrl, clientId, scope, audience). Returns
  * the same token until 30 seconds before expiry.
+ *
+ * Concurrent calls for the same cache key share a single in-flight Promise
+ * so the token endpoint is hit exactly once even under load.
  */
 export class OAuth2Client {
   private readonly cache = new Map<string, TokenResponse>();
+  private readonly inFlight = new Map<string, Promise<TokenResponse>>();
 
   async getToken(config: OAuth2ClientCredentialsConfig): Promise<TokenResponse> {
     const key = this.cacheKey(config);
@@ -38,13 +42,29 @@ export class OAuth2Client {
     if (cached && cached.expiresAt - 30_000 > now) {
       return cached;
     }
-    const fresh = await this.fetchToken(config);
-    this.cache.set(key, fresh);
-    return fresh;
+    // If a fetch is already in flight for this key, join it instead of
+    // firing a second network call.
+    const pending = this.inFlight.get(key);
+    if (pending) return pending;
+
+    const fetchPromise = this.fetchToken(config)
+      .then((fresh) => {
+        this.cache.set(key, fresh);
+        return fresh;
+      })
+      .finally(() => {
+        this.inFlight.delete(key);
+      });
+    this.inFlight.set(key, fetchPromise);
+    return fetchPromise;
   }
 
   clearCache(): void {
     this.cache.clear();
+  }
+
+  invalidate(config: OAuth2ClientCredentialsConfig): void {
+    this.cache.delete(this.cacheKey(config));
   }
 
   private async fetchToken(
@@ -83,14 +103,18 @@ export class OAuth2Client {
           'OAuth2 token response missing access_token',
         );
       }
-      const expiresIn =
-        typeof parsed['expires_in'] === 'number' ? parsed['expires_in'] : 3600;
+      // When expires_in is absent, treat the token as non-expiring rather
+      // than falling back to an arbitrary 1h lifetime (Bruno issue #7565).
+      const expiresAt =
+        typeof parsed['expires_in'] === 'number'
+          ? Date.now() + parsed['expires_in'] * 1000
+          : Number.MAX_SAFE_INTEGER;
       const tokenType =
         typeof parsed['token_type'] === 'string' ? parsed['token_type'] : 'Bearer';
       return {
         accessToken,
         tokenType,
-        expiresAt: Date.now() + expiresIn * 1000,
+        expiresAt,
         ...(typeof parsed['scope'] === 'string' ? { scope: parsed['scope'] } : {}),
       };
     } catch (err) {

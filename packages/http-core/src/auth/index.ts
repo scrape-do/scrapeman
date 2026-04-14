@@ -1,4 +1,5 @@
 export { applyAuth, needsTokenAcquisition } from './apply.js';
+export type { ApplyAuthOptions } from './apply.js';
 export { OAuth2Client } from './oauth2.js';
 export type {
   OAuth2ClientCredentialsConfig,

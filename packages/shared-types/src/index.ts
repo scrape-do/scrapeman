@@ -116,6 +116,22 @@ export interface ScrapemanRequest {
   disabledAutoHeaders?: string[];
 }
 
+/**
+ * A single row in the auto-headers preview shown by the UI's Headers panel.
+ * T3B0 emits only `auto` and `user` sources; `overrides` field is deferred
+ * to T3B1 when the renderer gains the edit affordance.
+ */
+export interface AutoHeaderPreviewRow {
+  key: string;
+  value: string;
+  source: 'auto' | 'user';
+  disabled: boolean;
+}
+
+export interface AutoHeadersPreview {
+  rows: AutoHeaderPreviewRow[];
+}
+
 export interface ResponseTimings {
   dnsMs?: number;
   connectMs?: number;
@@ -125,18 +141,45 @@ export interface ResponseTimings {
   totalMs: number;
 }
 
+export interface SseEvent {
+  id?: string;
+  event?: string;
+  data: string;
+  parsedData?: unknown;
+  retry?: number;
+}
+
 export interface ExecutedResponse {
   status: number;
   statusText: string;
   httpVersion: 'http/1.1' | 'http/2' | string;
   headers: Array<[string, string]>;
   // Body as base64-encoded bytes — IPC-safe, preserves binary content.
+  // Capped at the UI body limit (see T3W1 / BODY_UI_LIMIT in the executor).
+  // When the full body exceeds the limit this is the first N bytes only and
+  // `bodyTruncated` is true; the full body stays in the main-process cache
+  // and must be retrieved via the `response:fullBody` channel.
   bodyBase64: string;
   bodyTruncated: boolean;
+  // Decoded size of the FULL body as received from the server (not the size
+  // of the UI-truncated slice). This is the correct value for the "Size"
+  // metric in the UI.
   sizeBytes: number;
   contentType?: string;
   timings: ResponseTimings;
   sentAt: string;
+  // Correlation id assigned by the caller (renderer). Used as the key for
+  // `response:fullBody` / `response:saveToFile` to retrieve the untruncated
+  // body that lives only in the main process.
+  requestId?: string;
+  // Full decoded response body. ONLY populated inside the main process — it
+  // is stripped before the response crosses the IPC boundary because a raw
+  // Uint8Array over IPC is expensive and size-unsafe. Script sandboxes that
+  // run in-process can read it directly.
+  fullBodyBytes?: Uint8Array;
+  // Populated only when the response was `text/event-stream`. The stream
+  // is consumed exactly once; this array is shared between UI and scripts.
+  sseEvents?: SseEvent[];
 }
 
 export type ExecutorErrorKind =
@@ -327,6 +370,16 @@ export interface GitOpResult {
   message?: string;
 }
 
+export interface GitCommit {
+  hash: string;
+  shortHash: string;
+  subject: string;
+  authorName: string;
+  authorEmail: string;
+  // Unix timestamp in seconds (author date).
+  date: number;
+}
+
 export interface CodegenInput {
   target: CodegenTarget;
   request: ScrapemanRequest;
@@ -347,8 +400,21 @@ export interface ScrapemanBridge {
     bodyBase64: string,
     suggestedName: string,
   ) => Promise<{ ok: boolean; path?: string; canceled?: boolean }>;
+  // Fetch the full (untruncated) response body for a previously executed
+  // request. Only the last N bodies are retained in the main-process cache,
+  // so this can return null if the entry was evicted. See T3W1.
+  responseFullBody: (
+    requestId: string,
+  ) => Promise<{ bodyBase64: string; sizeBytes: number } | null>;
+  // Write the full response body to disk without round-tripping bytes
+  // through the renderer. Useful for large binary downloads.
+  responseSaveToFile: (
+    requestId: string,
+    filePath: string,
+  ) => Promise<{ bytesWritten: number }>;
   importCurl: (input: string) => Promise<ImportCurlResult>;
   generateCode: (input: CodegenInput) => Promise<string>;
+  previewHeaders: (request: ScrapemanRequest) => Promise<AutoHeadersPreview>;
 
   loadStart: (input: LoadRunStartInput) => Promise<string>;
   loadStop: (runId: string) => Promise<void>;
@@ -424,6 +490,8 @@ export interface ScrapemanBridge {
   onWorkspaceEvent: (handler: (event: WorkspaceEvent) => void) => () => void;
 
   // Git
+  gitIsRepo: (workspacePath: string) => Promise<boolean>;
+  gitLog: (workspacePath: string, limit?: number) => Promise<GitCommit[]>;
   gitStatus: (workspacePath: string) => Promise<GitStatus>;
   gitDiff: (
     workspacePath: string,

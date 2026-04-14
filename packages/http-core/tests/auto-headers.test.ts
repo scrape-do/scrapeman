@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildAutoHeaders,
+  buildHeaders,
   contentTypeForBody,
   mergeHeaders,
+  previewHeaders,
 } from '../src/auto-headers.js';
 import { FORMAT_VERSION, type ScrapemanRequest } from '@scrapeman/shared-types';
 
@@ -135,3 +137,99 @@ describe('mergeHeaders', () => {
     ).toBeUndefined();
   });
 });
+
+describe('buildHeaders', () => {
+  it('is equivalent to mergeHeaders for plain Set disabled', () => {
+    const auto = buildAutoHeaders(req(), ENV);
+    const a = buildHeaders({
+      auto,
+      user: { 'X-Custom': '1' },
+      disabled: new Set(['user-agent']),
+    });
+    const b = mergeHeaders(auto, { 'X-Custom': '1' }, new Set(['user-agent']));
+    expect(a).toEqual(b);
+  });
+
+  it('accepts an iterable (array) for disabled', () => {
+    const auto = buildAutoHeaders(req(), ENV);
+    const merged = buildHeaders({
+      auto,
+      user: undefined,
+      disabled: ['User-Agent', 'accept'],
+    });
+    expect(merged['User-Agent']).toBeUndefined();
+    expect(merged['Accept']).toBeUndefined();
+    expect(merged['Cache-Control']).toBe('no-cache');
+  });
+
+  it('accepts undefined disabled as empty', () => {
+    const auto = buildAutoHeaders(req(), ENV);
+    const merged = buildHeaders({ auto, user: undefined, disabled: undefined });
+    expect(merged['User-Agent']).toBe('Scrapeman/1.2.3 (darwin arm64)');
+  });
+});
+
+describe('previewHeaders', () => {
+  it('marks every auto header with source=auto and disabled=false by default', () => {
+    const p = previewHeaders(req(), ENV);
+    const autos = p.rows.filter((r) => r.source === 'auto');
+    expect(autos.length).toBeGreaterThan(0);
+    for (const row of autos) {
+      expect(row.disabled).toBe(false);
+    }
+  });
+
+  it('flags disabled auto headers (case-insensitive) without dropping them', () => {
+    const p = previewHeaders(
+      req({ disabledAutoHeaders: ['user-agent'] }),
+      ENV,
+    );
+    const ua = p.rows.find((r) => r.key === 'User-Agent');
+    expect(ua?.disabled).toBe(true);
+    expect(ua?.source).toBe('auto');
+  });
+
+  it('hides the auto row when user sets the same header (user wins)', () => {
+    const p = previewHeaders(
+      req({ headers: { 'user-agent': 'curl/8' } }),
+      ENV,
+    );
+    const autoUa = p.rows.find(
+      (r) => r.source === 'auto' && r.key.toLowerCase() === 'user-agent',
+    );
+    expect(autoUa).toBeUndefined();
+    const userUa = p.rows.find(
+      (r) => r.source === 'user' && r.key.toLowerCase() === 'user-agent',
+    );
+    expect(userUa?.value).toBe('curl/8');
+  });
+
+  it('emits user headers after auto headers in declaration order', () => {
+    const p = previewHeaders(
+      req({ headers: { 'X-A': '1', 'X-B': '2' } }),
+      ENV,
+    );
+    const userRows = p.rows.filter((r) => r.source === 'user');
+    expect(userRows.map((r) => r.key)).toEqual(['X-A', 'X-B']);
+  });
+
+  it('xml / html / javascript / binary all surface Content-Type auto rows', () => {
+    const types = [
+      ['xml', 'application/xml'],
+      ['html', 'text/html'],
+      ['javascript', 'application/javascript'],
+      ['binary', 'application/octet-stream'],
+    ] as const;
+    for (const [t, expected] of types) {
+      const body =
+        t === 'binary'
+          ? ({ type: 'binary', file: '/tmp/x' } as const)
+          : ({ type: t, content: '' } as const);
+      const p = previewHeaders(req({ body }), ENV);
+      const ct = p.rows.find((r) => r.key === 'Content-Type');
+      expect(ct?.value).toBe(expected);
+      expect(ct?.source).toBe('auto');
+    }
+  });
+});
+

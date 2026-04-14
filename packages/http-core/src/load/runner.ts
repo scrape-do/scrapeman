@@ -123,7 +123,7 @@ export async function runLoad(
       variables: input.variables,
     }).request;
     prepared = composeScrapeDoRequest(prepared);
-    prepared = applyAuth(prepared);
+    prepared = await applyAuth(prepared);
 
     const t0 = performance.now();
     try {
@@ -133,7 +133,12 @@ export async function runLoad(
       const bucket = String(response.status);
       statusHistogram[bucket] = (statusHistogram[bucket] ?? 0) + 1;
 
-      const body = Buffer.from(response.bodyBase64, 'base64').toString('utf8');
+      // T3W1: use the full body (not the UI-capped bodyBase64) for
+      // validation so `expectBodyContains` matches against everything the
+      // server returned.
+      const body = response.fullBodyBytes
+        ? Buffer.from(response.fullBodyBytes).toString('utf8')
+        : Buffer.from(response.bodyBase64, 'base64').toString('utf8');
       const valid = validate(response.status, body);
       if (valid) succeeded++;
       else validationFailures++;

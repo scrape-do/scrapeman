@@ -7,6 +7,7 @@ import { writeFile } from 'node:fs/promises';
 import {
   UndiciExecutor,
   ExecutorError,
+  previewHeaders as buildHeadersPreview,
   parseCurlCommand,
   CurlParseError,
   resolveRequest,
@@ -14,12 +15,12 @@ import {
   HistoryStore,
   generateCode,
   OAuth2Client,
-  signAwsSigV4,
   composeScrapeDoRequest,
   WorkspaceCookieJar,
   runLoad,
 } from '@scrapeman/http-core';
 import type {
+  AutoHeadersPreview,
   CodegenInput,
   CookieEntry,
   Environment,
@@ -32,6 +33,8 @@ import type {
 } from '@scrapeman/shared-types';
 import { WorkspaceManager } from './workspace-manager.js';
 import {
+  gitIsRepo,
+  gitLog,
   gitStatus,
   gitDiff,
   gitStage,
@@ -58,6 +61,23 @@ let historyStore: HistoryStore | null = null;
 let cookieJar: WorkspaceCookieJar | null = null;
 const loadRuns = new Map<string, AbortController>();
 const requestRuns = new Map<string, AbortController>();
+
+// T3W1: full decoded response bodies, keyed by the caller-provided requestId.
+// We keep only the last FULL_BODY_CACHE_SIZE entries to bound memory; older
+// entries are evicted FIFO as new requests come in. Map preserves insertion
+// order so iteration gives us that for free.
+const FULL_BODY_CACHE_SIZE = 10;
+const fullBodyCache = new Map<string, Uint8Array>();
+function rememberFullBody(requestId: string, bytes: Uint8Array): void {
+  // Re-insert to move to the end of the iteration order.
+  fullBodyCache.delete(requestId);
+  fullBodyCache.set(requestId, bytes);
+  while (fullBodyCache.size > FULL_BODY_CACHE_SIZE) {
+    const oldest = fullBodyCache.keys().next().value;
+    if (oldest === undefined) break;
+    fullBodyCache.delete(oldest);
+  }
+}
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -169,30 +189,10 @@ app.whenReady().then(() => {
         // the original host, and the proxy (if any) routes the scrape-do call.
         resolved = composeScrapeDoRequest(resolved);
 
-        if (resolved.auth?.type === 'awsSigV4') {
-          resolved = signAwsSigV4(resolved, {
-            accessKeyId: resolved.auth.accessKeyId,
-            secretAccessKey: resolved.auth.secretAccessKey,
-            ...(resolved.auth.sessionToken
-              ? { sessionToken: resolved.auth.sessionToken }
-              : {}),
-            region: resolved.auth.region,
-            service: resolved.auth.service,
-          });
-        } else if (resolved.auth?.type === 'oauth2' && resolved.auth.flow === 'clientCredentials') {
-          const token = await oauth2Client.getToken({
-            tokenUrl: resolved.auth.tokenUrl,
-            clientId: resolved.auth.clientId,
-            clientSecret: resolved.auth.clientSecret,
-            ...(resolved.auth.scope ? { scope: resolved.auth.scope } : {}),
-            ...(resolved.auth.audience ? { audience: resolved.auth.audience } : {}),
-          });
-          resolved = {
-            ...resolved,
-            auth: { type: 'bearer', token: token.accessToken },
-          };
-        }
-        resolved = applyAuth(resolved);
+        // applyAuth handles basic/bearer/apiKey + SigV4 signing + OAuth2
+        // client_credentials token fetch in one pass. We pass the shared
+        // oauth2Client so its token cache survives across IPC calls.
+        resolved = await applyAuth(resolved, { oauth2Client });
 
         // Inject Cookie header from the persistent jar (if any) before send.
         if (workspacePath && cookieJar) {
@@ -263,7 +263,18 @@ app.whenReady().then(() => {
           }
         }
 
-        return { ok: true, response };
+        // T3W1: the executor hands us the full decoded body via
+        // `fullBodyBytes`. Keep it in the main-process cache so scripts and
+        // `response:saveToFile` can reach it, and STRIP it from the object
+        // that crosses the IPC seam — Uint8Array over IPC is slow and size-
+        // unsafe, and the renderer already has `bodyBase64` (capped at
+        // BODY_UI_LIMIT) for display.
+        if (response.fullBodyBytes) {
+          rememberFullBody(requestId, response.fullBodyBytes);
+        }
+        const { fullBodyBytes: _full, ...ipcResponse } = response;
+        void _full;
+        return { ok: true, response: { ...ipcResponse, requestId } };
       } catch (err) {
         const kind =
           err instanceof ExecutorError ? err.kind : ('unknown' as const);
@@ -306,6 +317,15 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle(
+    'headers:preview',
+    (_e, request: ScrapemanRequest): AutoHeadersPreview =>
+      buildHeadersPreview(request, {
+        version: app.getVersion(),
+        platform: `${process.platform} ${process.arch}`,
+      }),
+  );
+
+  ipcMain.handle(
     'response:save',
     async (
       _e,
@@ -327,6 +347,37 @@ app.whenReady().then(() => {
         console.error('[scrapeman] response save failed:', err);
         return { ok: false };
       }
+    },
+  );
+
+  ipcMain.handle(
+    'response:fullBody',
+    (
+      _e,
+      requestId: string,
+    ): { bodyBase64: string; sizeBytes: number } | null => {
+      const bytes = fullBodyCache.get(requestId);
+      if (!bytes) return null;
+      return {
+        bodyBase64: Buffer.from(bytes).toString('base64'),
+        sizeBytes: bytes.byteLength,
+      };
+    },
+  );
+
+  ipcMain.handle(
+    'response:saveToFile',
+    async (
+      _e,
+      requestId: string,
+      filePath: string,
+    ): Promise<{ bytesWritten: number }> => {
+      const bytes = fullBodyCache.get(requestId);
+      if (!bytes) {
+        throw new Error(`no cached body for requestId=${requestId}`);
+      }
+      await writeFile(filePath, bytes);
+      return { bytesWritten: bytes.byteLength };
     },
   );
 
@@ -538,6 +589,23 @@ app.whenReady().then(() => {
     return new Error(String(err));
   };
 
+  ipcMain.handle('git:isRepo', async (_e, workspacePath: string) => {
+    try {
+      return await gitIsRepo(workspacePath);
+    } catch (err) {
+      throw toGitError(err);
+    }
+  });
+  ipcMain.handle(
+    'git:log',
+    async (_e, workspacePath: string, limit?: number) => {
+      try {
+        return await gitLog(workspacePath, limit);
+      } catch (err) {
+        throw toGitError(err);
+      }
+    },
+  );
   ipcMain.handle('git:status', async (_e, workspacePath: string) => {
     try {
       return await gitStatus(workspacePath);

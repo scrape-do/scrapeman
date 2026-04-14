@@ -20,24 +20,35 @@ import type {
 import type { RequestExecutor } from '../executor.js';
 import { ExecutorError } from '../errors.js';
 import { buildAutoHeaders, mergeHeaders } from '../auto-headers.js';
+import { readSseStream, type SseEvent } from '../sse-reader.js';
 
 const DEFAULT_MAX_REDIRECTS = 10;
 const DEFAULT_TOTAL_TIMEOUT_MS = 120_000;
 // Local-only client — generous cap so even large JSON dumps land in full.
 // Caller can override with a stricter limit if needed.
 const DEFAULT_MAX_RESPONSE_BYTES = 200 * 1024 * 1024; // 200 MB
+// T3W1: hard limit for bytes handed to the renderer as `bodyBase64`. Bodies
+// larger than this are cut here (the UI only ever sees the first slice) but
+// the full decoded bytes are retained in `fullBodyBytes` so main-process
+// consumers (script sandbox, save-to-file) still have everything.
+export const BODY_UI_LIMIT = 2 * 1024 * 1024; // 2 MB
 
 export interface UndiciExecutorOptions {
   maxResponseBytes?: number;
+  // Override the UI body cut-off. Primarily used by tests; production code
+  // should leave this at the default.
+  uiBodyLimit?: number;
   autoHeaderEnv?: { version: string; platform: string };
 }
 
 export class UndiciExecutor implements RequestExecutor {
   private readonly maxResponseBytes: number;
+  private readonly uiBodyLimit: number;
   private readonly autoHeaderEnv: { version: string; platform: string };
 
   constructor(options: UndiciExecutorOptions = {}) {
     this.maxResponseBytes = options.maxResponseBytes ?? DEFAULT_MAX_RESPONSE_BYTES;
+    this.uiBodyLimit = options.uiBodyLimit ?? BODY_UI_LIMIT;
     this.autoHeaderEnv = options.autoHeaderEnv ?? {
       version: '0.0.0',
       platform: `${process.platform} ${process.arch}`,
@@ -77,6 +88,9 @@ export class UndiciExecutor implements RequestExecutor {
         }),
       );
 
+      // NOTE: undici.request has no `decompress: true` switch — we advertise
+      // `Accept-Encoding` via buildAutoHeaders and then decode manually in
+      // decodeBody() (see commit 1a024fb).
       const result = await undiciRequest(url, {
         method: request.method as never,
         headers,
@@ -86,28 +100,57 @@ export class UndiciExecutor implements RequestExecutor {
       });
       const headersReceivedNs = process.hrtime.bigint();
 
-      const { bytes: rawBytes, truncated } = await readBodyCapped(
-        result.body,
-        this.maxResponseBytes,
-      );
+      const headerPairs = flattenHeaders(result.headers);
+      const contentType = pickHeader(headerPairs, 'content-type');
+      const isSse =
+        contentType !== undefined &&
+        contentType.toLowerCase().trimStart().startsWith('text/event-stream');
+
+      let bytes: Uint8Array;
+      let truncated = false;
+      let sseEvents: SseEvent[] | undefined;
+
+      if (isSse) {
+        // SSE path: consume the body exactly once through the SSE reader.
+        // The resulting event array is shared between UI and script sandbox.
+        const sse = await readSseStream(result.body);
+        sseEvents = sse.events;
+        // Reconstruct a text body from rawLines so downstream consumers
+        // (history, UI preview) still see the stream content.
+        const text = sse.rawLines.join('\n');
+        bytes = new TextEncoder().encode(text);
+      } else {
+        const read = await readBodyCapped(result.body, this.maxResponseBytes);
+        truncated = read.truncated;
+        const encoding = pickHeader(headerPairs, 'content-encoding');
+        bytes = decodeBody(read.bytes, encoding);
+      }
+
       const downloadCompleteNs = process.hrtime.bigint();
       const ttfbMs = Number(headersReceivedNs - startedNs) / 1_000_000;
       const downloadMs = Number(downloadCompleteNs - headersReceivedNs) / 1_000_000;
       const totalMs = Number(downloadCompleteNs - startedNs) / 1_000_000;
 
-      const headerPairs = flattenHeaders(result.headers);
-      const encoding = pickHeader(headerPairs, 'content-encoding');
-      const bytes = decodeBody(rawBytes, encoding);
-      const contentType = pickHeader(headerPairs, 'content-type');
+      // T3W1: apply the UI body cap *after* decode so the renderer sees
+      // decoded bytes (HTML/JSON) and not a random gzip slice. The full
+      // decoded buffer is attached as `fullBodyBytes` so main-process
+      // consumers (script sandbox, save-to-file) can still read it all.
+      let uiBytes = bytes;
+      let uiTruncated = truncated;
+      if (bytes.byteLength > this.uiBodyLimit) {
+        uiBytes = bytes.subarray(0, this.uiBodyLimit);
+        uiTruncated = true;
+      }
 
       return {
         status: result.statusCode,
         statusText: '',
         httpVersion: requestedHttpVersion === 'http2' ? 'h2' : 'http/1.1',
         headers: headerPairs,
-        bodyBase64: Buffer.from(bytes).toString('base64'),
-        bodyTruncated: truncated,
+        bodyBase64: Buffer.from(uiBytes).toString('base64'),
+        bodyTruncated: uiTruncated,
         sizeBytes: bytes.byteLength,
+        fullBodyBytes: bytes,
         ...(contentType !== undefined ? { contentType } : {}),
         timings: {
           ttfbMs: round2(ttfbMs),
@@ -115,6 +158,7 @@ export class UndiciExecutor implements RequestExecutor {
           totalMs: round2(totalMs),
         },
         sentAt,
+        ...(sseEvents !== undefined ? { sseEvents } : {}),
       };
     } catch (err) {
       if (timedOut) {

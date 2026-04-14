@@ -11,22 +11,22 @@ function req(overrides: Partial<ScrapemanRequest> & Pick<ScrapemanRequest, 'meth
 }
 
 describe('applyAuth', () => {
-  it('is a no-op when no auth', () => {
+  it('is a no-op when no auth', async () => {
     const r = req({ method: 'GET', url: 'https://example.com' });
-    expect(applyAuth(r)).toEqual(r);
+    expect(await applyAuth(r)).toEqual(r);
   });
 
-  it('is a no-op when auth type is none', () => {
+  it('is a no-op when auth type is none', async () => {
     const r = req({
       method: 'GET',
       url: 'https://example.com',
       auth: { type: 'none' },
     });
-    expect(applyAuth(r)).toEqual(r);
+    expect(await applyAuth(r)).toEqual(r);
   });
 
-  it('injects Basic Authorization header', () => {
-    const out = applyAuth(
+  it('injects Basic Authorization header', async () => {
+    const out = await applyAuth(
       req({
         method: 'GET',
         url: 'https://example.com',
@@ -37,8 +37,8 @@ describe('applyAuth', () => {
     expect(out.headers?.Authorization).toBe(expected);
   });
 
-  it('injects Bearer Authorization header', () => {
-    const out = applyAuth(
+  it('injects Bearer Authorization header', async () => {
+    const out = await applyAuth(
       req({
         method: 'GET',
         url: 'https://example.com',
@@ -48,8 +48,8 @@ describe('applyAuth', () => {
     expect(out.headers?.Authorization).toBe('Bearer abc.def.ghi');
   });
 
-  it('API key in header places value in custom header', () => {
-    const out = applyAuth(
+  it('API key in header places value in custom header', async () => {
+    const out = await applyAuth(
       req({
         method: 'GET',
         url: 'https://example.com',
@@ -60,8 +60,8 @@ describe('applyAuth', () => {
     expect(out.params?.['X-Api-Key']).toBeUndefined();
   });
 
-  it('API key in query places value in params', () => {
-    const out = applyAuth(
+  it('API key in query places value in params', async () => {
+    const out = await applyAuth(
       req({
         method: 'GET',
         url: 'https://example.com',
@@ -72,8 +72,8 @@ describe('applyAuth', () => {
     expect(out.headers?.['api_key']).toBeUndefined();
   });
 
-  it('preserves existing headers and adds Authorization alongside', () => {
-    const out = applyAuth(
+  it('preserves existing headers and adds Authorization alongside', async () => {
+    const out = await applyAuth(
       req({
         method: 'GET',
         url: 'https://example.com',
@@ -87,7 +87,7 @@ describe('applyAuth', () => {
     });
   });
 
-  it('does not mutate the input request', () => {
+  it('does not mutate the input request', async () => {
     const input = req({
       method: 'GET',
       url: 'https://example.com',
@@ -95,37 +95,43 @@ describe('applyAuth', () => {
       auth: { type: 'bearer', token: 'xxx' },
     });
     const snapshot = JSON.stringify(input);
-    applyAuth(input);
+    await applyAuth(input);
     expect(JSON.stringify(input)).toBe(snapshot);
   });
 
-  it('leaves oauth2 and awsSigV4 untouched (handled upstream)', () => {
-    const r1 = req({
+  it('signs awsSigV4 requests inline (Authorization + X-Amz-Date headers)', async () => {
+    const out = await applyAuth(
+      req({
+        method: 'GET',
+        url: 'https://s3.amazonaws.com/my-bucket/file.txt',
+        auth: {
+          type: 'awsSigV4',
+          accessKeyId: 'AKIDEXAMPLE',
+          secretAccessKey: 'wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY',
+          region: 'us-east-1',
+          service: 's3',
+        },
+      }),
+    );
+    expect(out.headers?.['Authorization']).toMatch(/^AWS4-HMAC-SHA256 /);
+    expect(out.headers?.['X-Amz-Date']).toMatch(/^\d{8}T\d{6}Z$/);
+    expect(out.headers?.['X-Amz-Security-Token']).toBeUndefined();
+  });
+
+  it('leaves oauth2 authorizationCode flow untouched (handled upstream)', async () => {
+    const r = req({
       method: 'GET',
       url: 'https://example.com',
       auth: {
         type: 'oauth2',
-        flow: 'clientCredentials',
+        flow: 'authorizationCode',
         tokenUrl: 'https://auth.example.com/token',
+        authUrl: 'https://auth.example.com/authorize',
         clientId: 'c',
         clientSecret: 's',
       },
     });
-    const out1 = applyAuth(r1);
-    expect(out1.headers).toBeUndefined();
-
-    const r2 = req({
-      method: 'GET',
-      url: 'https://example.com',
-      auth: {
-        type: 'awsSigV4',
-        accessKeyId: 'k',
-        secretAccessKey: 's',
-        region: 'us-east-1',
-        service: 's3',
-      },
-    });
-    const out2 = applyAuth(r2);
-    expect(out2.headers).toBeUndefined();
+    const out = await applyAuth(r);
+    expect(out.headers).toBeUndefined();
   });
 });

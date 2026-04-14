@@ -57,6 +57,45 @@ beforeAll(async () => {
       res.end('boom');
       return;
     }
+    if (req.url === '/token-no-expiry') {
+      tokenCallCount++;
+      let body = '';
+      req.on('data', (chunk: Buffer) => {
+        body += chunk.toString('utf8');
+      });
+      req.on('end', () => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            access_token: `noexp-${tokenCallCount}`,
+            token_type: 'Bearer',
+          }),
+        );
+      });
+      return;
+    }
+    if (req.url === '/token-slow') {
+      tokenCallCount++;
+      let body = '';
+      req.on('data', (chunk: Buffer) => {
+        body += chunk.toString('utf8');
+      });
+      req.on('end', () => {
+        // Delay the response so concurrent callers have time to pile up
+        // against the same in-flight Promise.
+        setTimeout(() => {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(
+            JSON.stringify({
+              access_token: `slow-${tokenCallCount}`,
+              token_type: 'Bearer',
+              expires_in: 3600,
+            }),
+          );
+        }, 50);
+      });
+      return;
+    }
     res.writeHead(404);
     res.end();
   });
@@ -143,6 +182,57 @@ describe('OAuth2Client client_credentials', () => {
         clientSecret: 'shh',
       }),
     ).rejects.toThrow(/500/);
+  });
+
+  it('dedupes concurrent requests into a single in-flight fetch', async () => {
+    const client = new OAuth2Client();
+    const before = tokenCallCount;
+    const results = await Promise.all(
+      Array.from({ length: 5 }, () =>
+        client.getToken({
+          tokenUrl: `${baseUrl}/token-slow`,
+          clientId: 'client-a',
+          clientSecret: 'shh',
+        }),
+      ),
+    );
+    const after = tokenCallCount;
+    expect(after - before).toBe(1);
+    // All 5 callers get the exact same token object.
+    const tokens = new Set(results.map((r) => r.accessToken));
+    expect(tokens.size).toBe(1);
+  });
+
+  it('treats tokens without expires_in as non-expiring (MAX_SAFE_INTEGER)', async () => {
+    const client = new OAuth2Client();
+    const token = await client.getToken({
+      tokenUrl: `${baseUrl}/token-no-expiry`,
+      clientId: 'client-a',
+      clientSecret: 'shh',
+    });
+    expect(token.expiresAt).toBe(Number.MAX_SAFE_INTEGER);
+    // Subsequent call must hit the cache, not refetch.
+    const before = tokenCallCount;
+    const token2 = await client.getToken({
+      tokenUrl: `${baseUrl}/token-no-expiry`,
+      clientId: 'client-a',
+      clientSecret: 'shh',
+    });
+    expect(tokenCallCount).toBe(before);
+    expect(token2.accessToken).toBe(token.accessToken);
+  });
+
+  it('invalidate() drops a single cache entry', async () => {
+    const client = new OAuth2Client();
+    const cfg = {
+      tokenUrl: `${baseUrl}/token`,
+      clientId: 'client-a',
+      clientSecret: 'shh',
+    };
+    const a = await client.getToken(cfg);
+    client.invalidate(cfg);
+    const b = await client.getToken(cfg);
+    expect(a.accessToken).not.toBe(b.accessToken);
   });
 
   it('rejects wrong client secret', async () => {

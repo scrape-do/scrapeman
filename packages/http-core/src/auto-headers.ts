@@ -1,5 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import type { BodyConfig, ScrapemanRequest } from '@scrapeman/shared-types';
+import type {
+  AutoHeaderPreviewRow,
+  AutoHeadersPreview,
+  BodyConfig,
+  ScrapemanRequest,
+} from '@scrapeman/shared-types';
 
 export interface AutoHeader {
   key: string;
@@ -40,6 +45,65 @@ export function buildAutoHeaders(
   const ct = contentTypeForBody(request.body);
   if (ct) headers.push({ key: 'Content-Type', value: ct });
   return headers;
+}
+
+export interface BuildHeadersOptions {
+  auto: AutoHeader[];
+  user: Record<string, string> | undefined;
+  /** Case-insensitive set of auto-header keys the user disabled. */
+  disabled: Set<string> | Iterable<string> | undefined;
+}
+
+/**
+ * User-wins merge of auto + user headers, skipping disabled auto entries.
+ * Lives alongside `mergeHeaders` as the options-shaped entry point the
+ * renderer preview + executor should converge on.
+ */
+export function buildHeaders(
+  options: BuildHeadersOptions,
+): Record<string, string> {
+  const disabledSet =
+    options.disabled instanceof Set
+      ? options.disabled
+      : new Set(options.disabled ?? []);
+  return mergeHeaders(options.auto, options.user, disabledSet);
+}
+
+/**
+ * Produce a preview of the final headers the executor would send, annotated
+ * with source + disabled state for the Headers tab / auto-headers panel.
+ * The `overrides` semantics (auto row kept visible but struck-through when
+ * a user row of the same name exists) are deferred to T3B1.
+ */
+export function previewHeaders(
+  request: ScrapemanRequest,
+  env: AutoHeaderEnv,
+): AutoHeadersPreview {
+  const auto = buildAutoHeaders(request, env);
+  const disabledLower = new Set(
+    (request.disabledAutoHeaders ?? []).map((k) => k.toLowerCase()),
+  );
+  const user = request.headers ?? {};
+  const userLowerKeys = new Set<string>();
+  for (const key of Object.keys(user)) userLowerKeys.add(key.toLowerCase());
+
+  const rows: AutoHeaderPreviewRow[] = [];
+  for (const h of auto) {
+    const lower = h.key.toLowerCase();
+    // User wins — when the user sets the same name we hide the auto row so
+    // the preview matches what buildHeaders/mergeHeaders actually emit.
+    if (userLowerKeys.has(lower)) continue;
+    rows.push({
+      key: h.key,
+      value: h.value,
+      source: 'auto',
+      disabled: disabledLower.has(lower),
+    });
+  }
+  for (const [key, value] of Object.entries(user)) {
+    rows.push({ key, value, source: 'user', disabled: false });
+  }
+  return { rows };
 }
 
 export function mergeHeaders(
