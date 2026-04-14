@@ -25,6 +25,8 @@ export function App(): JSX.Element {
   const newTab = useAppStore((s) => s.newTab);
   const closeTab = useAppStore((s) => s.closeTab);
   const duplicateTab = useAppStore((s) => s.duplicateTab);
+  const activateTabByIndex = useAppStore((s) => s.activateTabByIndex);
+  const reopenClosedTab = useAppStore((s) => s.reopenClosedTab);
   const activeTabId = useAppStore((s) => s.activeTabId);
   const send = useAppStore((s) => s.send);
   const saveOrPrompt = useAppStore((s) => s.saveOrPrompt);
@@ -75,9 +77,30 @@ export function App(): JSX.Element {
             { combo: 'mod+l', description: 'Focus URL bar', handler: () => focusUrl() },
             { combo: 'mod+enter', description: 'Send request', handler: () => void send() },
             { combo: 'mod+s', description: 'Save request', handler: () => void saveOrPrompt() },
+            {
+              combo: 'mod+shift+t',
+              description: 'Reopen closed tab',
+              handler: () => reopenClosedTab(),
+            },
+            ...([1, 2, 3, 4, 5, 6, 7, 8, 9] as const).map((n) => ({
+              combo: `mod+${n}` as const,
+              description: `Switch to tab ${n}`,
+              handler: () => activateTabByIndex(n),
+            })),
           ]),
     ],
-    [newTab, closeTab, duplicateTab, activeTabId, send, saveOrPrompt, focusUrl, paletteOpen],
+    [
+      newTab,
+      closeTab,
+      duplicateTab,
+      activateTabByIndex,
+      reopenClosedTab,
+      activeTabId,
+      send,
+      saveOrPrompt,
+      focusUrl,
+      paletteOpen,
+    ],
   );
   useShortcuts(shortcuts);
 

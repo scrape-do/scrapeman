@@ -23,6 +23,11 @@ import { bridge } from './bridge.js';
 // running request via the main-process IPC channel.
 const inflightRequestIds = new Map<string, string>();
 
+// LIFO stack of recently closed tabs for ⌘⇧T reopen. Bounded so a
+// user who mass-closes tabs doesn't stash unbounded memory.
+const CLOSED_TAB_STACK_LIMIT = 10;
+const closedTabStack: Array<{ tab: Tab; index: number }> = [];
+
 export interface HeaderRow {
   id: string;
   key: string;
@@ -131,6 +136,9 @@ interface AppState {
   closeTab: (id: string) => void;
   duplicateTab: (id: string) => void;
   setActiveTab: (id: string) => void;
+  activateTabByIndex: (index: number) => void;
+  reopenClosedTab: () => void;
+  reorderTab: (fromId: string, toId: string) => void;
   openRequest: (relPath: string) => Promise<void>;
   saveActive: () => Promise<void>;
   saveActiveAs: (parentRelPath: string, name: string) => Promise<void>;
@@ -504,12 +512,49 @@ export const useAppStore = create<AppState>((set, get) => {
       const { tabs, activeTabId } = get();
       const idx = tabs.findIndex((t) => t.id === id);
       if (idx < 0) return;
+      closedTabStack.push({ tab: tabs[idx]!, index: idx });
+      if (closedTabStack.length > CLOSED_TAB_STACK_LIMIT) closedTabStack.shift();
       const next = tabs.filter((t) => t.id !== id);
       let nextActive = activeTabId;
       if (activeTabId === id) {
         nextActive = next[Math.min(idx, next.length - 1)]?.id ?? null;
       }
       set({ tabs: next, activeTabId: nextActive });
+    },
+
+    activateTabByIndex: (index: number) => {
+      const { tabs } = get();
+      if (tabs.length === 0) return;
+      // 1-based from the caller's perspective (⌘1 = first tab). ⌘9
+      // conventionally jumps to the last tab regardless of count.
+      const target = index === 9 ? tabs[tabs.length - 1]! : tabs[index - 1];
+      if (target) set({ activeTabId: target.id });
+    },
+
+    reopenClosedTab: () => {
+      const entry = closedTabStack.pop();
+      if (!entry) return;
+      const { tabs } = get();
+      // Drop stale snapshots of a tab that's already open again.
+      if (tabs.some((t) => t.id === entry.tab.id)) {
+        get().reopenClosedTab();
+        return;
+      }
+      const insertAt = Math.min(entry.index, tabs.length);
+      const next = [...tabs.slice(0, insertAt), entry.tab, ...tabs.slice(insertAt)];
+      set({ tabs: next, activeTabId: entry.tab.id });
+    },
+
+    reorderTab: (fromId: string, toId: string) => {
+      if (fromId === toId) return;
+      const { tabs } = get();
+      const fromIdx = tabs.findIndex((t) => t.id === fromId);
+      const toIdx = tabs.findIndex((t) => t.id === toId);
+      if (fromIdx < 0 || toIdx < 0) return;
+      const next = [...tabs];
+      const [moved] = next.splice(fromIdx, 1);
+      next.splice(toIdx, 0, moved!);
+      set({ tabs: next });
     },
 
     duplicateTab: (id: string) => {

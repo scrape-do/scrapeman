@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useAppStore, type Tab } from '../store.js';
 import { shortcutLabel } from '../hooks/useShortcuts.js';
 
@@ -17,6 +18,10 @@ export function TabBar(): JSX.Element {
   const newTab = useAppStore((s) => s.newTab);
   const closeTab = useAppStore((s) => s.closeTab);
   const setActiveTab = useAppStore((s) => s.setActiveTab);
+  const reorderTab = useAppStore((s) => s.reorderTab);
+
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
 
   return (
     <div className="flex h-10 items-center border-b border-line bg-bg-subtle">
@@ -26,8 +31,23 @@ export function TabBar(): JSX.Element {
             key={tab.id}
             tab={tab}
             active={tab.id === activeTabId}
+            dragging={dragId === tab.id}
+            dropTarget={dropTargetId === tab.id && dragId !== null && dragId !== tab.id}
             onSelect={() => setActiveTab(tab.id)}
             onClose={() => closeTab(tab.id)}
+            onDragStart={() => setDragId(tab.id)}
+            onDragEnter={() => {
+              if (dragId && dragId !== tab.id) setDropTargetId(tab.id);
+            }}
+            onDragEnd={() => {
+              setDragId(null);
+              setDropTargetId(null);
+            }}
+            onDrop={() => {
+              if (dragId && dragId !== tab.id) reorderTab(dragId, tab.id);
+              setDragId(null);
+              setDropTargetId(null);
+            }}
           />
         ))}
       </div>
@@ -45,19 +65,48 @@ export function TabBar(): JSX.Element {
 function TabItem({
   tab,
   active,
+  dragging,
+  dropTarget,
   onSelect,
   onClose,
+  onDragStart,
+  onDragEnter,
+  onDragEnd,
+  onDrop,
 }: {
   tab: Tab;
   active: boolean;
+  dragging: boolean;
+  dropTarget: boolean;
   onSelect: () => void;
   onClose: () => void;
+  onDragStart: () => void;
+  onDragEnter: () => void;
+  onDragEnd: () => void;
+  onDrop: () => void;
 }): JSX.Element {
   const color = METHOD_COLOR[tab.method] ?? 'text-method-custom';
   const sending = tab.execution.status === 'sending';
 
   return (
     <div
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = 'move';
+        // Firefox requires setData to actually start a drag.
+        e.dataTransfer.setData('text/plain', tab.id);
+        onDragStart();
+      }}
+      onDragOver={(e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+      }}
+      onDragEnter={onDragEnter}
+      onDragEnd={onDragEnd}
+      onDrop={(e) => {
+        e.preventDefault();
+        onDrop();
+      }}
       onClick={onSelect}
       onMouseDown={(e) => {
         if (e.button === 1) {
@@ -69,6 +118,8 @@ function TabItem({
         active
           ? 'bg-bg-canvas text-ink-1'
           : 'text-ink-3 hover:bg-bg-hover hover:text-ink-1'
+      } ${dragging ? 'opacity-40' : ''} ${
+        dropTarget ? 'before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-accent' : ''
       }`}
     >
       {active && (
