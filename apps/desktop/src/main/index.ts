@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, session, shell } from 'electron';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { promises as fsp } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import {
   UndiciExecutor,
@@ -298,6 +299,46 @@ app.whenReady().then(() => {
   ipcMain.handle('history:clear', (_e, workspacePath: string) =>
     historyStore?.clear(workspacePath),
   );
+  ipcMain.handle(
+    'history:stats',
+    async (
+      _e,
+      workspacePath: string,
+    ): Promise<{ count: number; diskBytes: number; path: string }> => {
+      if (!historyStore) return { count: 0, diskBytes: 0, path: '' };
+      const path = historyStore.getFilePath(workspacePath);
+      const entries = await historyStore.list(workspacePath, {});
+      let diskBytes = 0;
+      try {
+        const stat = await fsp.stat(path);
+        diskBytes = stat.size;
+      } catch {
+        /* file may not exist yet */
+      }
+      return { count: entries.length, diskBytes, path };
+    },
+  );
+  ipcMain.handle('history:clearAll', async (): Promise<void> => {
+    if (!historyStore) return;
+    const root = historyStore.getRootPath();
+    let files: string[] = [];
+    try {
+      files = await fsp.readdir(root);
+    } catch {
+      return;
+    }
+    await Promise.all(
+      files
+        .filter((f) => f.endsWith('.jsonl'))
+        .map((f) =>
+          fsp.writeFile(join(root, f), '', 'utf8').catch(() => undefined),
+        ),
+    );
+    historyStore.invalidateCache();
+  });
+  ipcMain.handle('app:openInShell', (_e, path: string): void => {
+    shell.showItemInFolder(path);
+  });
 
   ipcMain.handle(
     'cookies:list',

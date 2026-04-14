@@ -5,6 +5,7 @@ import { ResponseViewer } from './components/ResponseViewer.js';
 import { TabBar } from './components/TabBar.js';
 import { EnvironmentMenu } from './components/EnvironmentMenu.js';
 import { CookiesPanel } from './components/CookiesPanel.js';
+import { SettingsDialog } from './components/SettingsDialog.js';
 import { SplitPane, type SplitOrientation } from './components/SplitPane.js';
 import { useAppStore } from './store.js';
 import { bridge } from './bridge.js';
@@ -71,6 +72,7 @@ export function App(): JSX.Element {
   const isMac = platform === 'darwin';
 
   const [cookiesOpen, setCookiesOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const { theme, toggle: toggleTheme } = useTheme();
 
   const [splitOrientation, setSplitOrientation] = useState<SplitOrientation>(
@@ -132,9 +134,17 @@ export function App(): JSX.Element {
             </button>
           )}
           {workspace && <EnvironmentMenu />}
+          <button
+            onClick={() => setSettingsOpen(true)}
+            title="Settings"
+            className="app-no-drag flex h-7 w-7 items-center justify-center rounded-md border border-line bg-bg-canvas text-ink-3 hover:bg-bg-hover hover:text-ink-1"
+          >
+            ⚙
+          </button>
         </div>
       </header>
       <CookiesPanel open={cookiesOpen} onClose={() => setCookiesOpen(false)} />
+      <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <div className="flex-1 overflow-hidden">
         <SplitPane
           orientation="horizontal"
