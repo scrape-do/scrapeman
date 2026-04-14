@@ -28,6 +28,20 @@ export function HistoryPanel(): JSX.Element {
 
   const [expanded, setExpanded] = useState(true);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [query, setQuery] = useState('');
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return history;
+    return history.filter((e) => {
+      if (e.method.toLowerCase().includes(q)) return true;
+      if (e.url.toLowerCase().includes(q)) return true;
+      if (String(e.status).includes(q)) return true;
+      return false;
+    });
+  }, [history, query]);
+
+  const groups = useMemo(() => groupByDate(filtered), [filtered]);
 
   return (
     <div className="flex h-full flex-col border-t border-line">
@@ -52,21 +66,46 @@ export function HistoryPanel(): JSX.Element {
         )}
       </button>
       {expanded && (
-        <div className="flex-1 overflow-y-auto pb-1">
-          {history.length === 0 ? (
-            <div className="px-3 py-4 text-center text-[11px] text-ink-4">
-              No requests sent yet. Hit Send to start populating history.
-            </div>
-          ) : (
-            history.map((entry) => (
-              <HistoryRow
-                key={entry.id}
-                entry={entry}
-                onRestore={() => restore(entry)}
-                onDelete={() => void deleteEntry(entry.id)}
+        <div className="flex flex-1 flex-col overflow-hidden">
+          {history.length > 0 && (
+            <div className="sticky top-0 z-10 flex-shrink-0 border-b border-line bg-bg-canvas px-2 py-1.5">
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search history…"
+                className="h-6 w-full rounded border border-line bg-bg-sunken px-2 text-[11px] text-ink-1 placeholder:text-ink-4 focus:border-accent focus:outline-none"
               />
-            ))
+            </div>
           )}
+          <div className="flex-1 overflow-y-auto pb-1">
+            {history.length === 0 ? (
+              <div className="px-3 py-4 text-center text-[11px] text-ink-4">
+                No requests sent yet. Hit Send to start populating history.
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="px-3 py-4 text-center text-[11px] text-ink-4">
+                No matches for “{query}”.
+              </div>
+            ) : (
+              groups.map((group) => (
+                <div key={group.key}>
+                  <div className="sticky top-0 z-[5] flex items-center gap-1.5 bg-bg-canvas/95 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-ink-3 backdrop-blur">
+                    <span className="flex-1">{group.label}</span>
+                    <span className="text-ink-4">{group.entries.length}</span>
+                  </div>
+                  {group.entries.map((entry) => (
+                    <HistoryRow
+                      key={entry.id}
+                      entry={entry}
+                      onRestore={() => restore(entry)}
+                      onDelete={() => void deleteEntry(entry.id)}
+                    />
+                  ))}
+                </div>
+              ))
+            )}
+          </div>
         </div>
       )}
 
@@ -148,6 +187,52 @@ function formatUrlLabel(url: string): string {
   const schemeMatch = /^[a-z][a-z0-9+.-]*:\/\//i.exec(url);
   const start = schemeMatch ? schemeMatch[0].length : 0;
   return url.slice(start);
+}
+
+type HistoryGroup = { key: string; label: string; entries: HistoryEntry[] };
+
+function groupByDate(entries: HistoryEntry[]): HistoryGroup[] {
+  const sorted = [...entries].sort(
+    (a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime(),
+  );
+
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const yesterdayStart = todayStart - 86400000;
+  const currentYear = now.getFullYear();
+
+  const buckets = new Map<string, HistoryGroup>();
+  const order: string[] = [];
+  const push = (key: string, label: string, entry: HistoryEntry): void => {
+    let g = buckets.get(key);
+    if (!g) {
+      g = { key, label, entries: [] };
+      buckets.set(key, g);
+      order.push(key);
+    }
+    g.entries.push(entry);
+  };
+
+  for (const entry of sorted) {
+    const t = new Date(entry.sentAt).getTime();
+    if (t >= todayStart) {
+      push('today', 'Today', entry);
+    } else if (t >= yesterdayStart) {
+      push('yesterday', 'Yesterday', entry);
+    } else {
+      const d = new Date(entry.sentAt);
+      const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+      const weekday = d.toLocaleDateString(undefined, { weekday: 'short' });
+      const monthDay = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      const label =
+        d.getFullYear() === currentYear
+          ? `${weekday}, ${monthDay}`
+          : `${monthDay}, ${d.getFullYear()}`;
+      push(key, label, entry);
+    }
+  }
+
+  return order.map((k) => buckets.get(k)!);
 }
 
 function relativeTime(iso: string): string {
