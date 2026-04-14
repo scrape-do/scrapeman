@@ -416,9 +416,10 @@ function TreeNode({
                     : 'hover:bg-bg-hover'
               }`}
             >
-              <span className="w-3 text-center text-[9px] text-ink-4">
+              <span className="w-3 text-center text-[11px] leading-none text-ink-4">
                 {expanded ? '▾' : '▸'}
               </span>
+              <span className="text-sm leading-none">📁</span>
               <span className="truncate font-medium">{node.name}</span>
             </button>
           </ContextMenuTrigger>

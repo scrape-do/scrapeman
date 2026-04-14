@@ -1,7 +1,6 @@
-<h1 align="center">
-  <img src="https://github.com/scrape-do.png" alt="scrape-do" width="42" height="42" align="center" />
-  &nbsp;Scrapeman
-</h1>
+<p align="center">
+  <img src="assets/scrapeman-branding.png" alt="Scrapeman" width="420" />
+</p>
 
 <p align="center">
   <strong>Postman-grade API client for every developer</strong><br/>
