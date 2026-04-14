@@ -490,7 +490,7 @@ function TreeNode({
             <span className="absolute left-0 top-1 h-5 w-0.5 rounded-r-sm bg-accent" />
           )}
           <span
-            className={`w-11 font-mono text-[10px] font-semibold uppercase tracking-wide ${
+            className={`w-12 font-mono text-xs font-semibold uppercase tracking-tight ${
               METHOD_COLOR[node.method] ?? 'text-method-custom'
             }`}
           >

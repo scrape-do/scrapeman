@@ -29,6 +29,8 @@ export function HistoryPanel(): JSX.Element {
   const [expanded, setExpanded] = useState(true);
   const [confirmClear, setConfirmClear] = useState(false);
   const [query, setQuery] = useState('');
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const searchActive = query.trim().length > 0;
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -88,22 +90,38 @@ export function HistoryPanel(): JSX.Element {
                 No matches for “{query}”.
               </div>
             ) : (
-              groups.map((group) => (
-                <div key={group.key}>
-                  <div className="sticky top-0 z-[5] flex items-center gap-1.5 bg-bg-canvas/95 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-ink-3 backdrop-blur">
-                    <span className="flex-1">{group.label}</span>
-                    <span className="text-ink-4">{group.entries.length}</span>
+              groups.map((group) => {
+                const collapsed = !searchActive && collapsedGroups[group.label] === true;
+                return (
+                  <div key={group.key}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCollapsedGroups((prev) => ({
+                          ...prev,
+                          [group.label]: !(prev[group.label] ?? false),
+                        }))
+                      }
+                      className="sticky top-0 z-[5] flex w-full items-center gap-1.5 bg-bg-canvas/95 px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-wider text-ink-3 backdrop-blur hover:text-ink-1"
+                    >
+                      <span className="w-3 text-center text-[9px]">
+                        {collapsed ? '▸' : '▾'}
+                      </span>
+                      <span className="flex-1">{group.label}</span>
+                      <span className="text-ink-4">{group.entries.length}</span>
+                    </button>
+                    {!collapsed &&
+                      group.entries.map((entry) => (
+                        <HistoryRow
+                          key={entry.id}
+                          entry={entry}
+                          onRestore={() => restore(entry)}
+                          onDelete={() => void deleteEntry(entry.id)}
+                        />
+                      ))}
                   </div>
-                  {group.entries.map((entry) => (
-                    <HistoryRow
-                      key={entry.id}
-                      entry={entry}
-                      onRestore={() => restore(entry)}
-                      onDelete={() => void deleteEntry(entry.id)}
-                    />
-                  ))}
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
