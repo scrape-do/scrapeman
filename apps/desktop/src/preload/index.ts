@@ -31,6 +31,12 @@ const api: ScrapemanBridge = {
     ) as Promise<ExecuteResult>,
   cancelRequest: (requestId: string) =>
     ipcRenderer.invoke('request:cancel', requestId) as Promise<void>,
+  saveResponse: (bodyBase64: string, suggestedName: string) =>
+    ipcRenderer.invoke(
+      'response:save',
+      bodyBase64,
+      suggestedName,
+    ) as Promise<{ ok: boolean; path?: string; canceled?: boolean }>,
   importCurl: (input: string) =>
     ipcRenderer.invoke('curl:import', input) as Promise<ImportCurlResult>,
   generateCode: (input: CodegenInput) =>

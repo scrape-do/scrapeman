@@ -315,6 +315,10 @@ export interface ScrapemanBridge {
     requestId: string,
   ) => Promise<ExecuteResult>;
   cancelRequest: (requestId: string) => Promise<void>;
+  saveResponse: (
+    bodyBase64: string,
+    suggestedName: string,
+  ) => Promise<{ ok: boolean; path?: string; canceled?: boolean }>;
   importCurl: (input: string) => Promise<ImportCurlResult>;
   generateCode: (input: CodegenInput) => Promise<string>;
 
