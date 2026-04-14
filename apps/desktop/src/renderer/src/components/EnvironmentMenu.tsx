@@ -25,7 +25,7 @@ export function EnvironmentMenu(): JSX.Element {
         <DropdownMenu.Trigger asChild>
           <button
             type="button"
-            className="app-no-drag flex h-7 items-center gap-1.5 rounded-md border border-line bg-bg-canvas px-2.5 text-xs text-ink-2 hover:bg-bg-hover hover:text-ink-1"
+            className="app-no-drag flex h-8 items-center gap-1.5 rounded-md border border-line bg-bg-canvas px-3 text-xs font-medium text-ink-2 hover:bg-bg-hover hover:text-ink-1"
           >
             <span className={activeEnvironment ? 'h-1.5 w-1.5 rounded-full bg-accent' : 'h-1.5 w-1.5 rounded-full bg-ink-5'} />
             <span className="font-medium">

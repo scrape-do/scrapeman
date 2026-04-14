@@ -155,7 +155,7 @@ export function App(): JSX.Element {
           <button
             onClick={toggleTheme}
             title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
-            className="app-no-drag flex h-7 w-7 items-center justify-center rounded-md border border-line bg-bg-canvas text-ink-3 hover:bg-bg-hover hover:text-ink-1"
+            className="app-no-drag flex h-8 w-8 items-center justify-center rounded-md border border-line bg-bg-canvas text-base text-ink-2 hover:bg-bg-hover hover:text-ink-1"
           >
             {theme === 'dark' ? '☀' : '☾'}
           </button>
@@ -166,7 +166,7 @@ export function App(): JSX.Element {
               )
             }
             title={`Switch to ${splitOrientation === 'horizontal' ? 'top/bottom' : 'side-by-side'} layout`}
-            className="app-no-drag flex h-7 w-7 items-center justify-center rounded-md border border-line bg-bg-canvas text-ink-3 hover:bg-bg-hover hover:text-ink-1"
+            className="app-no-drag flex h-8 w-8 items-center justify-center rounded-md border border-line bg-bg-canvas text-base text-ink-2 hover:bg-bg-hover hover:text-ink-1"
           >
             {splitOrientation === 'horizontal' ? '⇅' : '⇆'}
           </button>
@@ -174,16 +174,16 @@ export function App(): JSX.Element {
             <button
               onClick={() => setCookiesOpen(true)}
               title="Cookies"
-              className="app-no-drag flex h-7 items-center gap-1.5 rounded-md border border-line bg-bg-canvas px-2.5 text-xs text-ink-2 hover:bg-bg-hover hover:text-ink-1"
+              className="app-no-drag flex h-8 items-center gap-1.5 rounded-md border border-line bg-bg-canvas px-3 text-xs font-medium text-ink-2 hover:bg-bg-hover hover:text-ink-1"
             >
-              🍪 Cookies
+              <span className="text-base leading-none">🍪</span> Cookies
             </button>
           )}
           {workspace && <EnvironmentMenu />}
           <button
             onClick={() => setSettingsOpen(true)}
             title="Settings"
-            className="app-no-drag flex h-7 w-7 items-center justify-center rounded-md border border-line bg-bg-canvas text-ink-3 hover:bg-bg-hover hover:text-ink-1"
+            className="app-no-drag flex h-8 w-8 items-center justify-center rounded-md border border-line bg-bg-canvas text-base text-ink-2 hover:bg-bg-hover hover:text-ink-1"
           >
             ⚙
           </button>
