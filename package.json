@@ -14,7 +14,9 @@
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "verify": "pnpm -r typecheck && pnpm -r test",
+    "hooks:install": "ln -sf ../../scripts/pre-push.sh .git/hooks/pre-push && chmod +x scripts/pre-push.sh"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
