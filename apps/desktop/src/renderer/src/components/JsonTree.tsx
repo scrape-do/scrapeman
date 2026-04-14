@@ -71,6 +71,7 @@ function Node({
             path={`${path}[${i}]`}
             depth={depth + 1}
             keyLabel={String(i)}
+            initialOpen={initialOpen}
           />
         ))}
       </CollapsibleNode>
@@ -97,6 +98,7 @@ function Node({
             path={`${path}.${jsonPathSegment(k)}`}
             depth={depth + 1}
             keyLabel={k}
+            initialOpen={initialOpen}
           />
         ))}
       </CollapsibleNode>
@@ -127,7 +129,7 @@ function CollapsibleNode({
   countLabel: string;
   children: ReactNode;
 }): JSX.Element {
-  const [open, setOpen] = useState(initialOpen && depth < 2);
+  const [open, setOpen] = useState(initialOpen);
 
   return (
     <div style={{ paddingLeft: depth === 0 ? 0 : 14 }}>

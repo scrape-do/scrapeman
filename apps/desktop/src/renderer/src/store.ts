@@ -72,6 +72,8 @@ export interface ExecutionState {
 
 export type TabKind = 'file' | 'draft';
 
+export type ResponseBodyMode = 'raw' | 'pretty' | 'tree' | 'preview';
+
 export interface Tab {
   id: string;
   kind: TabKind;
@@ -82,6 +84,7 @@ export interface Tab {
   dirty: boolean;
   execution: ExecutionState;
   responseSearch: string;
+  responseMode: ResponseBodyMode | null;
   sourceHistoryId?: string;
 }
 
@@ -139,6 +142,7 @@ interface AppState {
 
   send: () => Promise<void>;
   setResponseSearch: (search: string) => void;
+  setResponseMode: (mode: ResponseBodyMode) => void;
   importCurlIntoActive: (input: string) => Promise<string | null>;
 
   loadEnvironments: () => Promise<void>;
@@ -176,13 +180,21 @@ function freshSettings(): SettingsState {
   };
 }
 
+// Raw passthrough — we deliberately do NOT decode incoming param values
+// or re-encode outgoing ones. The previous round-trip
+// (decodeURIComponent → encodeURIComponent) double-encoded any value
+// the user pasted in already-encoded form (e.g. `%20` → `%2520`).
+//
+// Today the cells display whatever bytes are in the URL after `?`,
+// which means a pasted URL survives byte-for-byte through paste → edit
+// → send → history. Users who want a decoded view can right-click a
+// cell and pick "URL decode" (already wired in CellContextMenu).
 function paramsFromUrl(url: string): ParamRow[] {
   const qIndex = url.indexOf('?');
   if (qIndex < 0) return [];
   const queryString = url.slice(qIndex + 1);
   if (!queryString) return [];
   const out: ParamRow[] = [];
-  // Manual split to preserve unencoded variable templates like {{token}}.
   for (const pair of queryString.split('&')) {
     if (!pair) continue;
     const eq = pair.indexOf('=');
@@ -190,20 +202,12 @@ function paramsFromUrl(url: string): ParamRow[] {
     const value = eq >= 0 ? pair.slice(eq + 1) : '';
     out.push({
       id: crypto.randomUUID(),
-      key: safeDecode(key),
-      value: safeDecode(value),
+      key,
+      value,
       enabled: true,
     });
   }
   return out;
-}
-
-function safeDecode(value: string): string {
-  try {
-    return decodeURIComponent(value.replace(/\+/g, ' '));
-  } catch {
-    return value;
-  }
 }
 
 function urlFromParams(url: string, params: ParamRow[]): string {
@@ -211,21 +215,8 @@ function urlFromParams(url: string, params: ParamRow[]): string {
   const base = qIndex < 0 ? url : url.slice(0, qIndex);
   const enabled = params.filter((p) => p.enabled && p.key.trim().length > 0);
   if (enabled.length === 0) return base;
-  const encoded = enabled
-    .map(
-      (p) =>
-        `${encodeAllowingTemplates(p.key)}=${encodeAllowingTemplates(p.value)}`,
-    )
-    .join('&');
-  return `${base}?${encoded}`;
-}
-
-function encodeAllowingTemplates(value: string): string {
-  // Preserve {{var}} templates as literal so they survive into the resolver.
-  return value.replace(/(\{\{[\w.-]+\}\}|[^{}]+)/g, (segment) => {
-    if (segment.startsWith('{{')) return segment;
-    return encodeURIComponent(segment);
-  });
+  // Raw join — values are stored exactly as the user entered or pasted.
+  return `${base}?${enabled.map((p) => `${p.key}=${p.value}`).join('&')}`;
 }
 
 function utf8ToBase64(text: string): string {
@@ -399,6 +390,7 @@ function emptyDraftTab(): Tab {
     dirty: false,
     execution: freshExecution(),
     responseSearch: '',
+    responseMode: null,
   };
 }
 
@@ -413,6 +405,7 @@ function fileBackedTab(relPath: string, request: ScrapemanRequest): Tab {
     dirty: false,
     execution: freshExecution(),
     responseSearch: '',
+    responseMode: null,
   };
 }
 
@@ -526,6 +519,7 @@ export const useAppStore = create<AppState>((set, get) => {
         dirty: false,
         execution: freshExecution(),
         responseSearch: '',
+        responseMode: null,
       };
 
       // Insert immediately after the original.
@@ -774,6 +768,10 @@ export const useAppStore = create<AppState>((set, get) => {
       mutateActive((tab) => ({ ...tab, responseSearch: search }));
     },
 
+    setResponseMode: (mode) => {
+      mutateActive((tab) => ({ ...tab, responseMode: mode }));
+    },
+
     importCurlIntoActive: async (input: string) => {
       const result = await bridge.importCurl(input);
       if (!result.ok) return result.message;
@@ -970,6 +968,7 @@ export const useAppStore = create<AppState>((set, get) => {
         dirty: false,
         execution,
         responseSearch: '',
+        responseMode: null,
         sourceHistoryId: entry.id,
       };
 

@@ -133,10 +133,14 @@ function BodyPanel({ response }: { response: ExecutedResponse }): JSX.Element {
     const active = s.tabs.find((t) => t.id === s.activeTabId);
     return active?.responseSearch ?? '';
   });
+  const persistedMode = useAppStore((s) => {
+    const active = s.tabs.find((t) => t.id === s.activeTabId);
+    return active?.responseMode ?? null;
+  });
   const setSearch = useAppStore((s) => s.setResponseSearch);
+  const setPersistedMode = useAppStore((s) => s.setResponseMode);
   const [activeMatchIndex, setActiveMatchIndex] = useState(0);
-  // Decode bytes once. For text-y formats we also keep the decoded string;
-  // for image / pdf we only need the base64.
+
   const bytes = useMemo<Uint8Array>(() => {
     try {
       return Uint8Array.from(atob(response.bodyBase64), (c) => c.charCodeAt(0));
@@ -156,16 +160,19 @@ function BodyPanel({ response }: { response: ExecutedResponse }): JSX.Element {
   );
 
   const availableModes = useMemo(() => modesForKind(kind), [kind]);
-  const [mode, setMode] = useState<BodyMode>(availableModes[0] ?? 'raw');
 
-  // When the response (or kind) changes, snap mode back to the default for
-  // the new kind so we don't end up on an invalid mode (e.g. Tree on an image).
-  useEffect(() => {
-    if (!availableModes.includes(mode)) {
-      setMode(availableModes[0] ?? 'raw');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kind, response.bodyBase64]);
+  // Effective mode: persisted choice if it is still valid for the new
+  // content kind, otherwise the default for the kind. Persisting in tab
+  // state means new sends keep the user's last choice (Tree, Pretty,
+  // etc.) instead of snapping back to Raw on every response.
+  const mode: BodyMode =
+    persistedMode && availableModes.includes(persistedMode)
+      ? persistedMode
+      : (availableModes[0] ?? 'raw');
+
+  const setMode = (next: BodyMode): void => {
+    setPersistedMode(next);
+  };
 
   // Lazy JSON parse — only when Tree or Pretty for json kind.
   const parsed = useMemo<{ ok: boolean; value: unknown }>(() => {
