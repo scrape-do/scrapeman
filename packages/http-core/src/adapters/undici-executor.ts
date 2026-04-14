@@ -56,6 +56,7 @@ export class UndiciExecutor implements RequestExecutor {
     const totalTimeout = request.options?.timeout?.total ?? DEFAULT_TOTAL_TIMEOUT_MS;
     const followRedirects = request.options?.redirect?.follow ?? true;
     const maxRedirects = request.options?.redirect?.maxCount ?? DEFAULT_MAX_REDIRECTS;
+    const requestedHttpVersion = request.options?.httpVersion ?? 'auto';
 
     const timeoutController = new AbortController();
     let timedOut = false;
@@ -102,7 +103,7 @@ export class UndiciExecutor implements RequestExecutor {
       return {
         status: result.statusCode,
         statusText: '',
-        httpVersion: 'http/1.1',
+        httpVersion: requestedHttpVersion === 'http2' ? 'h2' : 'http/1.1',
         headers: headerPairs,
         bodyBase64: Buffer.from(bytes).toString('base64'),
         bodyTruncated: truncated,
