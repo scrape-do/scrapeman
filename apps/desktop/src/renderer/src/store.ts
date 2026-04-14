@@ -803,6 +803,14 @@ export const useAppStore = create<AppState>((set, get) => {
       if (!activeTabId) return;
       const requestId = inflightRequestIds.get(activeTabId);
       if (!requestId) return;
+      // Preload may be stale after a hot-reload that didn't rebuild the
+      // preload bundle — guard so clicking Cancel doesn't crash the UI.
+      if (typeof bridge.cancelRequest !== 'function') {
+        console.warn(
+          '[scrapeman] bridge.cancelRequest missing — restart the app to pick up the new preload.',
+        );
+        return;
+      }
       void bridge.cancelRequest(requestId);
     },
 
