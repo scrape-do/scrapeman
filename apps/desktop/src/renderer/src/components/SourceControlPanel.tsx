@@ -3,6 +3,7 @@ import type { GitFileChange } from '@scrapeman/shared-types';
 import { useAppStore } from '../store.js';
 import { bridge } from '../bridge.js';
 import { ConfirmDialog } from '../ui/Dialog.js';
+import { Tooltip } from '../ui/Tooltip.js';
 
 const STATUS_BADGE: Record<GitFileChange['status'], string> = {
   modified: 'M',
@@ -147,29 +148,44 @@ export function SourceControlPanel(): JSX.Element {
             </span>
           )}
         </div>
-        <button
-          title="Pull"
-          disabled={gitBusy}
-          onClick={() => void gitPull()}
-          className="icon-btn disabled:opacity-50"
+        <Tooltip
+          label={
+            gitStatus.behind > 0
+              ? `Pull ${gitStatus.behind} commit${gitStatus.behind === 1 ? '' : 's'} from upstream`
+              : 'Pull from upstream (git pull)'
+          }
         >
-          ↓{gitStatus.behind > 0 ? gitStatus.behind : ''}
-        </button>
-        <button
-          title="Push"
-          disabled={gitBusy}
-          onClick={() => void gitPush()}
-          className="icon-btn disabled:opacity-50"
+          <button
+            disabled={gitBusy}
+            onClick={() => void gitPull()}
+            className="icon-btn disabled:opacity-50"
+          >
+            ↓{gitStatus.behind > 0 ? gitStatus.behind : ''}
+          </button>
+        </Tooltip>
+        <Tooltip
+          label={
+            gitStatus.ahead > 0
+              ? `Push ${gitStatus.ahead} commit${gitStatus.ahead === 1 ? '' : 's'} to upstream`
+              : 'Push to upstream (git push)'
+          }
         >
-          ↑{gitStatus.ahead > 0 ? gitStatus.ahead : ''}
-        </button>
-        <button
-          title="Refresh"
-          onClick={() => void loadGitStatus()}
-          className="icon-btn"
-        >
-          ↻
-        </button>
+          <button
+            disabled={gitBusy}
+            onClick={() => void gitPush()}
+            className="icon-btn disabled:opacity-50"
+          >
+            ↑{gitStatus.ahead > 0 ? gitStatus.ahead : ''}
+          </button>
+        </Tooltip>
+        <Tooltip label="Refresh git status">
+          <button
+            onClick={() => void loadGitStatus()}
+            className="icon-btn"
+          >
+            ↻
+          </button>
+        </Tooltip>
       </div>
 
       {gitError && (

@@ -1223,26 +1223,33 @@ export const useAppStore = create<AppState>((set, get) => {
       const workspace = get().workspace;
       if (!workspace) return;
       set({ gitBusy: true, gitError: null });
+      let actionError: string | null = null;
       try {
         const res = await bridge.gitPush(workspace.path);
-        if (!res.ok) set({ gitError: res.message ?? 'git push failed' });
-        await get().loadGitStatus();
-      } finally {
-        set({ gitBusy: false });
+        if (!res.ok) actionError = res.message ?? 'git push failed';
+      } catch (err) {
+        actionError = err instanceof Error ? err.message : String(err);
       }
+      // Refresh first so ahead/behind counters update, then re-apply the
+      // action error — loadGitStatus clears gitError on success and would
+      // otherwise make the push failure flash and vanish.
+      await get().loadGitStatus();
+      set({ gitBusy: false, gitError: actionError });
     },
 
     gitPull: async () => {
       const workspace = get().workspace;
       if (!workspace) return;
       set({ gitBusy: true, gitError: null });
+      let actionError: string | null = null;
       try {
         const res = await bridge.gitPull(workspace.path);
-        if (!res.ok) set({ gitError: res.message ?? 'git pull failed' });
-        await get().loadGitStatus();
-      } finally {
-        set({ gitBusy: false });
+        if (!res.ok) actionError = res.message ?? 'git pull failed';
+      } catch (err) {
+        actionError = err instanceof Error ? err.message : String(err);
       }
+      await get().loadGitStatus();
+      set({ gitBusy: false, gitError: actionError });
     },
   };
 });
