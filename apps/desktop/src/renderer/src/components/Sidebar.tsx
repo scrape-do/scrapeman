@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { CollectionNode, GitFileChangeStatus } from '@scrapeman/shared-types';
 import { useAppStore } from '../store.js';
 import {
@@ -56,10 +56,12 @@ export function Sidebar(): JSX.Element {
   const createFolder = useAppStore((s) => s.createFolder);
   const renameNode = useAppStore((s) => s.renameNode);
   const deleteNode = useAppStore((s) => s.deleteNode);
+  const moveNode = useAppStore((s) => s.moveNode);
   const gitStatus = useAppStore((s) => s.gitStatus);
 
   const [dialog, setDialog] = useState<DialogState>({ kind: 'none' });
   const [view, setView] = useState<SidebarView>('files');
+  const [selectedFolder, setSelectedFolder] = useState<string>('');
 
   const gitStatusByPath = useMemo(() => {
     const map = new Map<string, GitFileChangeStatus>();
@@ -135,12 +137,21 @@ export function Sidebar(): JSX.Element {
       ) : (
         <FilesView
           workspaceName={workspace.name}
-          onNewRequest={() => setDialog({ kind: 'newRequest', parent: '' })}
-          onNewFolder={() => setDialog({ kind: 'newFolder', parent: '' })}
+          onNewRequest={() =>
+            setDialog({ kind: 'newRequest', parent: selectedFolder })
+          }
+          onNewFolder={() =>
+            setDialog({ kind: 'newFolder', parent: selectedFolder })
+          }
           onPick={() => void pickAndOpenWorkspace()}
           root={root}
           gitStatusByPath={gitStatusByPath}
           setDialog={setDialog}
+          selectedFolder={selectedFolder}
+          onSelectFolder={setSelectedFolder}
+          onMoveRequest={(relPath, parent) =>
+            void moveNode(relPath, parent)
+          }
         />
       )}
 
@@ -202,6 +213,9 @@ interface FilesViewProps {
   root: NonNullable<ReturnType<typeof useAppStore.getState>['root']>;
   gitStatusByPath: Map<string, GitFileChangeStatus>;
   setDialog: (dialog: DialogState) => void;
+  selectedFolder: string;
+  onSelectFolder: (relPath: string) => void;
+  onMoveRequest: (relPath: string, newParent: string) => void;
 }
 
 function FilesView({
@@ -212,7 +226,15 @@ function FilesView({
   root,
   gitStatusByPath,
   setDialog,
+  selectedFolder,
+  onSelectFolder,
+  onMoveRequest,
 }: FilesViewProps): JSX.Element {
+  const [expandTick, setExpandTick] = useState<{ path: string; tick: number } | null>(
+    null,
+  );
+  const expandFolder = (relPath: string): void =>
+    setExpandTick({ path: relPath, tick: Date.now() });
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex h-10 items-center gap-1 border-b border-line px-2">
@@ -237,7 +259,26 @@ function FilesView({
           maxSize={85}
           storageKey="sidebar/history"
           first={
-            <div className="h-full overflow-auto py-1">
+            <div
+              className="h-full overflow-auto py-1"
+              onClick={(e) => {
+                if (e.target === e.currentTarget) onSelectFolder('');
+              }}
+              onDragOver={(e) => {
+                if (e.dataTransfer.types.includes('application/x-scrapeman-req')) {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                }
+              }}
+              onDrop={(e) => {
+                const relPath = e.dataTransfer.getData(
+                  'application/x-scrapeman-req',
+                );
+                if (!relPath) return;
+                e.preventDefault();
+                onMoveRequest(relPath, '');
+              }}
+            >
               {root.children.length === 0 ? (
                 <div className="flex flex-col items-center justify-center gap-2 px-6 py-12 text-center">
                   <div className="text-xs text-ink-3">This workspace is empty.</div>
@@ -255,6 +296,11 @@ function FilesView({
                     node={child}
                     depth={0}
                     gitStatusByPath={gitStatusByPath}
+                    selectedFolder={selectedFolder}
+                    onSelectFolder={onSelectFolder}
+                    onMoveRequest={onMoveRequest}
+                    expandSignal={expandTick}
+                    onRequestExpand={expandFolder}
                     onNewRequest={(parent) => setDialog({ kind: 'newRequest', parent })}
                     onNewFolder={(parent) => setDialog({ kind: 'newFolder', parent })}
                     onRename={(relPath, currentName) =>
@@ -279,6 +325,11 @@ interface TreeNodeProps {
   node: CollectionNode;
   depth: number;
   gitStatusByPath: Map<string, GitFileChangeStatus>;
+  selectedFolder: string;
+  onSelectFolder: (relPath: string) => void;
+  onMoveRequest: (relPath: string, newParent: string) => void;
+  expandSignal: { path: string; tick: number } | null;
+  onRequestExpand: (relPath: string) => void;
   onNewRequest: (parent: string) => void;
   onNewFolder: (parent: string) => void;
   onRename: (relPath: string, currentName: string) => void;
@@ -289,12 +340,29 @@ function TreeNode({
   node,
   depth,
   gitStatusByPath,
+  selectedFolder,
+  onSelectFolder,
+  onMoveRequest,
+  expandSignal,
+  onRequestExpand,
   onNewRequest,
   onNewFolder,
   onRename,
   onDelete,
 }: TreeNodeProps): JSX.Element {
   const [expanded, setExpanded] = useState(depth < 1);
+  const [dragOver, setDragOver] = useState(false);
+
+  useEffect(() => {
+    if (
+      node.kind === 'folder' &&
+      expandSignal &&
+      expandSignal.path === node.relPath
+    ) {
+      setExpanded(true);
+    }
+  }, [expandSignal, node]);
+
   const tabs = useAppStore((s) => s.tabs);
   const activeTabId = useAppStore((s) => s.activeTabId);
   const openRequest = useAppStore((s) => s.openRequest);
@@ -308,14 +376,46 @@ function TreeNode({
   const indent = 10 + depth * 14;
 
   if (node.kind === 'folder') {
+    const selected = selectedFolder === node.relPath;
     return (
       <div>
         <ContextMenu>
           <ContextMenuTrigger asChild>
             <button
-              onClick={() => setExpanded(!expanded)}
+              onClick={() => {
+                setExpanded(!expanded);
+                onSelectFolder(node.relPath);
+              }}
+              onContextMenu={() => onSelectFolder(node.relPath)}
+              onDragOver={(e) => {
+                if (
+                  e.dataTransfer.types.includes('application/x-scrapeman-req')
+                ) {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                  if (!dragOver) setDragOver(true);
+                }
+              }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => {
+                setDragOver(false);
+                const relPath = e.dataTransfer.getData(
+                  'application/x-scrapeman-req',
+                );
+                if (!relPath || relPath === node.relPath) return;
+                e.preventDefault();
+                e.stopPropagation();
+                onMoveRequest(relPath, node.relPath);
+                onRequestExpand(node.relPath);
+              }}
               style={{ paddingLeft: `${indent}px` }}
-              className="group relative flex h-7 w-full items-center gap-1.5 pr-3 text-left text-xs text-ink-2 hover:bg-bg-hover"
+              className={`group relative flex h-7 w-full items-center gap-1.5 pr-3 text-left text-xs text-ink-2 ${
+                dragOver
+                  ? 'bg-accent-soft ring-1 ring-inset ring-accent'
+                  : selected
+                    ? 'bg-bg-hover'
+                    : 'hover:bg-bg-hover'
+              }`}
             >
               <span className="w-3 text-center text-[9px] text-ink-4">
                 {expanded ? '▾' : '▸'}
@@ -349,6 +449,11 @@ function TreeNode({
               node={child}
               depth={depth + 1}
               gitStatusByPath={gitStatusByPath}
+              selectedFolder={selectedFolder}
+              onSelectFolder={onSelectFolder}
+              onMoveRequest={onMoveRequest}
+              expandSignal={expandSignal}
+              onRequestExpand={onRequestExpand}
               onNewRequest={onNewRequest}
               onNewFolder={onNewFolder}
               onRename={onRename}
@@ -363,6 +468,16 @@ function TreeNode({
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <button
+          draggable
+          onDragStart={(e) => {
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData(
+              'application/x-scrapeman-req',
+              node.relPath,
+            );
+            // Some browsers require text/plain for a drag to start reliably.
+            e.dataTransfer.setData('text/plain', node.relPath);
+          }}
           onClick={() => void openRequest(node.relPath)}
           style={{ paddingLeft: `${indent + 16}px` }}
           className={`group relative flex h-7 w-full items-center gap-2 pr-3 text-left text-xs ${

@@ -113,4 +113,27 @@ describe('WorkspaceFs', () => {
     const movedPath = await fs.move(requestPath, folderPath);
     expect(movedPath.startsWith(folderPath)).toBe(true);
   });
+
+  it('moves a sidecar body alongside its request', async () => {
+    const requestPath = await fs.createRequest('', 'BigMover');
+    const req = makeRequest('BigMover');
+    req.body = { type: 'json', content: 'x'.repeat(5000) };
+    await fs.writeRequest(requestPath, req);
+
+    const folderPath = await fs.createFolder('', 'Dest');
+    const movedPath = await fs.move(requestPath, folderPath);
+
+    const readBack = await fs.readRequest(movedPath);
+    expect(readBack.body).toMatchObject({
+      type: 'json',
+      content: 'x'.repeat(5000),
+    });
+  });
+
+  it('refuses to move when destination already has a same-named file', async () => {
+    const requestA = await fs.createRequest('', 'Dup');
+    const folder = await fs.createFolder('', 'Bucket');
+    await fs.createRequest(folder, 'Dup');
+    await expect(fs.move(requestA, folder)).rejects.toThrow(/already exists/);
+  });
 });

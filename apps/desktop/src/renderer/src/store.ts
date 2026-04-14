@@ -181,6 +181,7 @@ interface AppState {
   createFolder: (parentRelPath: string, name: string) => Promise<void>;
   renameNode: (relPath: string, newName: string) => Promise<void>;
   deleteNode: (relPath: string) => Promise<void>;
+  moveNode: (relPath: string, newParentRelPath: string) => Promise<string | null>;
 
   // Git
   gitStatus: GitStatus | null;
@@ -928,6 +929,40 @@ export const useAppStore = create<AppState>((set, get) => {
       if (!workspace) return;
       await bridge.workspaceRename(workspace.path, relPath, newName);
       await get().refreshTree();
+    },
+
+    moveNode: async (relPath: string, newParentRelPath: string) => {
+      const workspace = get().workspace;
+      if (!workspace) return null;
+      const oldParent = relPath.includes('/')
+        ? relPath.slice(0, relPath.lastIndexOf('/'))
+        : '';
+      if (oldParent === newParentRelPath) return null;
+      try {
+        const newRelPath = await bridge.workspaceMove(
+          workspace.path,
+          relPath,
+          newParentRelPath,
+        );
+        // Update any open tab pointing at the moved file.
+        const oldId = `file:${relPath}`;
+        const newId = `file:${newRelPath}`;
+        const tabs = get().tabs;
+        if (tabs.some((t) => t.id === oldId)) {
+          set({
+            tabs: tabs.map((t) =>
+              t.id === oldId ? { ...t, id: newId, relPath: newRelPath } : t,
+            ),
+            activeTabId: get().activeTabId === oldId ? newId : get().activeTabId,
+          });
+        }
+        await get().refreshTree();
+        return newRelPath;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        window.alert(`Could not move: ${message}`);
+        return null;
+      }
     },
 
     deleteNode: async (relPath: string) => {
