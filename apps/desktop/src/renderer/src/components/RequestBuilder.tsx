@@ -48,6 +48,18 @@ export function RequestBuilder(): JSX.Element {
     urlInputRef.current?.select();
   }, [focusUrlTick]);
 
+  const importCurlTick = useAppStore((s) => s.importCurlTick);
+  useEffect(() => {
+    if (importCurlTick === 0) return;
+    setImportOpen(true);
+  }, [importCurlTick]);
+
+  const loadTestTick = useAppStore((s) => s.loadTestTick);
+  useEffect(() => {
+    if (loadTestTick === 0) return;
+    setLoadTestOpen(true);
+  }, [loadTestTick]);
+
   if (!activeTab) {
     return (
       <div className="flex h-full items-center justify-center">

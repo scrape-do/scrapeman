@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import { CommandPalette } from './components/CommandPalette.js';
+import { useCommands } from './commands.js';
 import { Sidebar } from './components/Sidebar.js';
 import { RequestBuilder } from './components/RequestBuilder.js';
 import { ResponseViewer } from './components/ResponseViewer.js';
@@ -47,24 +49,35 @@ export function App(): JSX.Element {
     return unsubscribe;
   }, [workspace, refreshTree, loadEnvironments]);
 
+  const [paletteOpen, setPaletteOpen] = useState(false);
+
   const shortcuts = useMemo<Shortcut[]>(
     () => [
-      { combo: 'mod+t', description: 'New tab', handler: () => newTab() },
       {
-        combo: 'mod+w',
-        description: 'Close tab',
-        handler: () => activeTabId && closeTab(activeTabId),
+        combo: 'mod+k',
+        description: 'Command palette',
+        handler: () => setPaletteOpen((v) => !v),
       },
-      {
-        combo: 'mod+d',
-        description: 'Duplicate tab',
-        handler: () => activeTabId && duplicateTab(activeTabId),
-      },
-      { combo: 'mod+l', description: 'Focus URL bar', handler: () => focusUrl() },
-      { combo: 'mod+enter', description: 'Send request', handler: () => void send() },
-      { combo: 'mod+s', description: 'Save request', handler: () => void saveOrPrompt() },
+      ...(paletteOpen
+        ? []
+        : [
+            { combo: 'mod+t', description: 'New tab', handler: () => newTab() },
+            {
+              combo: 'mod+w',
+              description: 'Close tab',
+              handler: () => activeTabId && closeTab(activeTabId),
+            },
+            {
+              combo: 'mod+d',
+              description: 'Duplicate tab',
+              handler: () => activeTabId && duplicateTab(activeTabId),
+            },
+            { combo: 'mod+l', description: 'Focus URL bar', handler: () => focusUrl() },
+            { combo: 'mod+enter', description: 'Send request', handler: () => void send() },
+            { combo: 'mod+s', description: 'Save request', handler: () => void saveOrPrompt() },
+          ]),
     ],
-    [newTab, closeTab, duplicateTab, activeTabId, send, saveOrPrompt, focusUrl],
+    [newTab, closeTab, duplicateTab, activeTabId, send, saveOrPrompt, focusUrl, paletteOpen],
   );
   useShortcuts(shortcuts);
 
@@ -88,6 +101,16 @@ export function App(): JSX.Element {
   useEffect(() => {
     localStorage.setItem('split:orientation', splitOrientation);
   }, [splitOrientation]);
+
+  const commandExtras = useMemo(
+    () => ({
+      toggleTheme,
+      toggleSplit: () =>
+        setSplitOrientation((o) => (o === 'horizontal' ? 'vertical' : 'horizontal')),
+    }),
+    [toggleTheme],
+  );
+  const commands = useCommands(commandExtras);
 
   return (
     <div className="flex h-screen flex-col bg-bg-canvas text-ink-1">
@@ -145,6 +168,11 @@ export function App(): JSX.Element {
       </header>
       <CookiesPanel open={cookiesOpen} onClose={() => setCookiesOpen(false)} />
       <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        commands={commands}
+      />
       <div className="flex-1 overflow-hidden">
         <SplitPane
           orientation="horizontal"
