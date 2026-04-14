@@ -2,6 +2,12 @@ appId: com.scrapeman.app
 productName: Scrapeman
 copyright: Copyright © 2026 scrape-do
 
+# Force the artifact filename to use productName, not package.json name.
+# Without this, deb packaging falls back to "@scrapeman/desktop" and tries
+# to write to release/@scrapeman/... — fpm bails because the parent dir
+# does not exist.
+artifactName: ${productName}-${version}-${arch}.${ext}
+
 directories:
   output: release
   buildResources: build-resources
@@ -49,6 +55,7 @@ nsis:
   perMachine: false
 
 linux:
+  executableName: scrapeman
   target:
     - target: AppImage
       arch:

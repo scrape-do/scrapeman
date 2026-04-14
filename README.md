@@ -1,10 +1,7 @@
-<p align="center">
-  <a href="https://scrape.do">
-    <img src="https://github.com/scrape-do.png" alt="scrape-do" width="96" height="96" />
-  </a>
-</p>
-
-<h1 align="center">Scrapeman</h1>
+<h1 align="center">
+  <img src="https://github.com/scrape-do.png" alt="scrape-do" width="42" height="42" align="center" />
+  &nbsp;Scrapeman
+</h1>
 
 <p align="center">
   <strong>Postman-grade API client for every developer</strong><br/>
@@ -262,16 +259,13 @@ Internal project for now. Issues and PRs are for the scrape-do engineering team.
 ---
 
 <p align="center">
-  <a href="https://scrape.do">
-    <img src="https://github.com/scrape-do.png" alt="scrape-do" width="120" height="120" />
-  </a>
+  Made with ❤️, ☕ and a lot of <strong>vibe-coding</strong> by humans + AI<br/>
+  <sub>at <a href="https://scrape.do">scrape.do</a> — the scraping infrastructure of the internet</sub>
 </p>
 
-<h1 align="center">
-  <a href="https://scrape.do">BUILT FOR SCRAPE-DO</a>
-</h1>
-
 <p align="center">
-  <sub>The scraping infrastructure of the internet.</sub><br/>
-  <a href="https://scrape.do">scrape.do</a>
+  <sub>
+    <em>No tabs were harmed in the making of this app.<br/>
+    {{token}} stays {{token}} on disk. We promise.</em>
+  </sub>
 </p>
