@@ -38,11 +38,16 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Must run before typecheck/test — downstream packages consume the
+      # compiled dist of shared-types + http-core via workspace symlinks.
+      - name: Build workspace packages
+        run: pnpm run build:packages
+
       - name: Typecheck
         run: pnpm -r typecheck
 
       - name: Test
         run: pnpm -r test
 
-      - name: Build
-        run: pnpm -r build
+      - name: Build desktop app
+        run: pnpm --filter=@scrapeman/desktop build
