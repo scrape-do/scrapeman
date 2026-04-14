@@ -1,5 +1,5 @@
 import { promises as fsp } from 'node:fs';
-import { basename, dirname, join, posix, relative, resolve, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { FORMAT_VERSION } from '@scrapeman/shared-types';
 import type {
@@ -108,9 +108,67 @@ export class WorkspaceFs {
   async move(relPath: string, newParentRelPath: string): Promise<string> {
     const absOld = this.resolveSafe(relPath);
     const absNewParent = this.resolveSafe(newParentRelPath);
+    if (absOld === absNewParent) {
+      return this.toRel(absOld);
+    }
+    const oldParent = dirname(absOld);
+    if (oldParent === absNewParent) {
+      return this.toRel(absOld);
+    }
+    // Prevent moving a folder into itself or its descendants.
+    const stat = await fsp.stat(absOld);
+    if (stat.isDirectory()) {
+      const rel = relative(absOld, absNewParent);
+      if (rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))) {
+        throw new Error('cannot move a folder into itself');
+      }
+    }
     await fsp.mkdir(absNewParent, { recursive: true });
     const absNew = join(absNewParent, basename(absOld));
+    try {
+      await fsp.access(absNew);
+      throw new Error(`destination already exists: ${basename(absOld)}`);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    }
+
+    // If we're moving a request file, relocate its referenced sidecars too.
+    const sidecarMoves: Array<{ from: string; to: string }> = [];
+    if (stat.isFile() && absOld.endsWith(REQUEST_EXT)) {
+      const text = await fsp.readFile(absOld, 'utf8');
+      for (const ref of extractFileRefs(text)) {
+        if (isAbsolute(ref)) continue;
+        const fromAbs = resolve(oldParent, ref);
+        try {
+          this.assertInsideRoot(fromAbs);
+        } catch {
+          continue;
+        }
+        try {
+          await fsp.access(fromAbs);
+        } catch {
+          continue;
+        }
+        const toAbs = resolve(absNewParent, ref);
+        this.assertInsideRoot(toAbs);
+        sidecarMoves.push({ from: fromAbs, to: toAbs });
+      }
+    }
+
+    for (const { to } of sidecarMoves) {
+      try {
+        await fsp.access(to);
+        throw new Error(`sidecar destination already exists: ${to}`);
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+      }
+    }
+
     await fsp.rename(absOld, absNew);
+    for (const { from, to } of sidecarMoves) {
+      await fsp.mkdir(dirname(to), { recursive: true });
+      await fsp.rename(from, to);
+    }
     return this.toRel(absNew);
   }
 
@@ -215,6 +273,25 @@ function slugify(name: string): string {
 
 function stableId(relPath: string): string {
   return `n_${Buffer.from(relPath).toString('base64url')}`;
+}
+
+function extractFileRefs(yamlText: string): string[] {
+  // Grab every `file: <value>` line. Sidecar-backed bodies (json/xml/text/html/js),
+  // binary bodies, and multipart file parts all serialize this way.
+  const refs: string[] = [];
+  const re = /^\s*file:\s*(.+?)\s*$/gm;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(yamlText)) !== null) {
+    let value = m[1]!;
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    if (value) refs.push(value);
+  }
+  return refs;
 }
 
 function posixRelative(from: string, to: string): string {
