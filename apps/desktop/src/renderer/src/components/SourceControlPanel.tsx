@@ -28,6 +28,7 @@ interface SelectedFile {
 export function SourceControlPanel(): JSX.Element {
   const workspace = useAppStore((s) => s.workspace);
   const gitStatus = useAppStore((s) => s.gitStatus);
+  const gitLoaded = useAppStore((s) => s.gitLoaded);
   const gitError = useAppStore((s) => s.gitError);
   const gitBusy = useAppStore((s) => s.gitBusy);
   const loadGitStatus = useAppStore((s) => s.loadGitStatus);
@@ -84,10 +85,29 @@ export function SourceControlPanel(): JSX.Element {
     );
   }
 
-  if (!gitStatus) {
+  if (!gitLoaded) {
     return (
       <div className="flex h-full items-center justify-center px-6 text-center text-xs text-ink-3">
         Loading git status…
+      </div>
+    );
+  }
+
+  if (!gitStatus) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+        <div className="text-sm font-semibold text-ink-1">
+          Git status unavailable
+        </div>
+        <div className="text-xs text-method-delete">
+          {gitError ?? 'Unknown error'}
+        </div>
+        <button
+          onClick={() => void loadGitStatus()}
+          className="btn-ghost text-accent hover:text-accent-hover"
+        >
+          Retry
+        </button>
       </div>
     );
   }
