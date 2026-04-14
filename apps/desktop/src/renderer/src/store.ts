@@ -64,6 +64,7 @@ export interface BuilderState {
   bodyType: 'none' | 'json' | 'text';
   auth: AuthConfig;
   settings: SettingsState;
+  disabledAutoHeaders: string[];
 }
 
 export interface ExecutionState {
@@ -143,6 +144,7 @@ interface AppState {
 
   updateSettings: (patch: Partial<SettingsState>) => void;
   setAuth: (auth: AuthConfig) => void;
+  setDisabledAutoHeaders: (keys: string[]) => void;
 
   send: () => Promise<void>;
   cancelSend: () => void;
@@ -317,6 +319,7 @@ function builderFromRequest(request: ScrapemanRequest): BuilderState {
     bodyType,
     auth: request.auth ?? { type: 'none' },
     settings,
+    disabledAutoHeaders: request.disabledAutoHeaders ?? [],
   };
 }
 
@@ -371,6 +374,9 @@ function buildRequest(
     options.httpVersion = s.httpVersion;
   }
   if (Object.keys(options).length > 0) request.options = options;
+  if (builder.disabledAutoHeaders.length > 0) {
+    request.disabledAutoHeaders = [...builder.disabledAutoHeaders];
+  }
 
   return request;
 }
@@ -391,6 +397,7 @@ function emptyDraftTab(): Tab {
       bodyType: 'none',
       auth: { type: 'none' },
       settings: freshSettings(),
+      disabledAutoHeaders: [],
     },
     dirty: false,
     execution: freshExecution(),
@@ -722,6 +729,14 @@ export const useAppStore = create<AppState>((set, get) => {
       }));
     },
 
+    setDisabledAutoHeaders: (keys) => {
+      mutateActive((tab) => ({
+        ...tab,
+        builder: { ...tab.builder, disabledAutoHeaders: keys },
+        dirty: true,
+      }));
+    },
+
     send: async () => {
       const { activeTabId, tabs } = get();
       if (!activeTabId) return;
@@ -981,6 +996,7 @@ export const useAppStore = create<AppState>((set, get) => {
           bodyType,
           auth: { type: 'none' },
           settings: freshSettings(),
+          disabledAutoHeaders: [],
         },
         dirty: false,
         execution,

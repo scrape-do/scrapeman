@@ -31,7 +31,12 @@ import type {
 import { WorkspaceManager } from './workspace-manager.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const executor = new UndiciExecutor();
+const executor = new UndiciExecutor({
+  autoHeaderEnv: {
+    version: app.getVersion(),
+    platform: `${process.platform} ${process.arch}`,
+  },
+});
 const workspaceManager = new WorkspaceManager();
 const oauth2Client = new OAuth2Client();
 let historyStore: HistoryStore | null = null;

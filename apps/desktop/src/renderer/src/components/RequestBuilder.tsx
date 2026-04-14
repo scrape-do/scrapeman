@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useAppStore } from '../store.js';
 import { MethodPicker } from './MethodPicker.js';
 import { HeadersEditor } from './HeadersEditor.js';
+import { AutoHeadersPanel } from './AutoHeadersPanel.js';
 import { ParamsEditor } from './ParamsEditor.js';
 import { SettingsTab as SettingsTabPanel } from './SettingsTab.js';
 import { AuthTab } from './AuthTab.js';
@@ -24,6 +25,7 @@ export function RequestBuilder(): JSX.Element {
   const addHeader = useAppStore((s) => s.addHeader);
   const updateHeader = useAppStore((s) => s.updateHeader);
   const removeHeader = useAppStore((s) => s.removeHeader);
+  const setDisabledAutoHeaders = useAppStore((s) => s.setDisabledAutoHeaders);
   const addParam = useAppStore((s) => s.addParam);
   const updateParam = useAppStore((s) => s.updateParam);
   const removeParam = useAppStore((s) => s.removeParam);
@@ -215,12 +217,18 @@ export function RequestBuilder(): JSX.Element {
           />
         )}
         {tab === 'headers' && (
-          <HeadersEditor
-            rows={builder.headers}
-            onAdd={addHeader}
-            onUpdate={updateHeader}
-            onRemove={removeHeader}
-          />
+          <div className="flex flex-col">
+            <AutoHeadersPanel
+              builder={builder}
+              onChange={setDisabledAutoHeaders}
+            />
+            <HeadersEditor
+              rows={builder.headers}
+              onAdd={addHeader}
+              onUpdate={updateHeader}
+              onRemove={removeHeader}
+            />
+          </div>
         )}
         {tab === 'auth' && <AuthTab />}
         {tab === 'settings' && <SettingsTabPanel />}

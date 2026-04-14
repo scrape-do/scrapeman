@@ -113,6 +113,7 @@ export interface ScrapemanRequest {
   proxy?: ProxyConfig;
   scrapeDo?: ScrapeDoConfig;
   options?: RequestOptions;
+  disabledAutoHeaders?: string[];
 }
 
 export interface ResponseTimings {
