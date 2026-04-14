@@ -369,6 +369,11 @@ export interface ScrapemanBridge {
   ) => Promise<HistoryEntry[]>;
   historyDelete: (workspacePath: string, id: string) => Promise<void>;
   historyClear: (workspacePath: string) => Promise<void>;
+  historyStats: (
+    workspacePath: string,
+  ) => Promise<{ count: number; diskBytes: number; path: string }>;
+  historyClearAll: () => Promise<void>;
+  openInShell: (path: string) => Promise<void>;
 
   // Cookies
   cookieList: (workspacePath: string) => Promise<CookieEntry[]>;

@@ -121,6 +121,16 @@ const api: ScrapemanBridge = {
     ipcRenderer.invoke('history:delete', workspacePath, id) as Promise<void>,
   historyClear: (workspacePath: string) =>
     ipcRenderer.invoke('history:clear', workspacePath) as Promise<void>,
+  historyStats: (workspacePath: string) =>
+    ipcRenderer.invoke('history:stats', workspacePath) as Promise<{
+      count: number;
+      diskBytes: number;
+      path: string;
+    }>,
+  historyClearAll: () =>
+    ipcRenderer.invoke('history:clearAll') as Promise<void>,
+  openInShell: (path: string) =>
+    ipcRenderer.invoke('app:openInShell', path) as Promise<void>,
 
   cookieList: (workspacePath: string) =>
     ipcRenderer.invoke('cookies:list', workspacePath) as Promise<CookieEntry[]>,

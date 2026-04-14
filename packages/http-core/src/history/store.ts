@@ -168,6 +168,22 @@ export class HistoryStore {
     const hash = createHash('sha1').update(workspacePath).digest('hex').slice(0, 16);
     return join(this.rootDir, 'history', `${hash}.jsonl`);
   }
+
+  /** Absolute path of the on-disk history file for this workspace. */
+  getFilePath(workspacePath: string): string {
+    return this.fileFor(workspacePath);
+  }
+
+  /** Absolute path of the directory holding all workspace history files. */
+  getRootPath(): string {
+    return join(this.rootDir, 'history');
+  }
+
+  /** Drop in-memory cache so the next load re-reads from disk. */
+  invalidateCache(workspacePath?: string): void {
+    if (workspacePath) this.cache.delete(workspacePath);
+    else this.cache.clear();
+  }
 }
 
 // On-disk shape: large bodies stored gzipped to keep history files small.
