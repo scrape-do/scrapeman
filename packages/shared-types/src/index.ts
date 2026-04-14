@@ -300,6 +300,33 @@ export type ImportCurlResult =
 
 export type CodegenTarget = 'curl' | 'fetch' | 'python' | 'go';
 
+export type GitFileChangeStatus =
+  | 'untracked'
+  | 'modified'
+  | 'deleted'
+  | 'added'
+  | 'renamed';
+
+export interface GitFileChange {
+  path: string;
+  status: GitFileChangeStatus;
+  staged: boolean;
+  originalPath?: string;
+}
+
+export interface GitStatus {
+  isRepo: boolean;
+  branch: string | null;
+  ahead: number;
+  behind: number;
+  changes: GitFileChange[];
+}
+
+export interface GitOpResult {
+  ok: boolean;
+  message?: string;
+}
+
 export interface CodegenInput {
   target: CodegenTarget;
   request: ScrapemanRequest;
@@ -395,4 +422,18 @@ export interface ScrapemanBridge {
   envSetActive: (workspacePath: string, name: string | null) => Promise<void>;
 
   onWorkspaceEvent: (handler: (event: WorkspaceEvent) => void) => () => void;
+
+  // Git
+  gitStatus: (workspacePath: string) => Promise<GitStatus>;
+  gitDiff: (
+    workspacePath: string,
+    relPath: string,
+    options: { staged: boolean },
+  ) => Promise<string>;
+  gitStage: (workspacePath: string, relPath: string) => Promise<void>;
+  gitUnstage: (workspacePath: string, relPath: string) => Promise<void>;
+  gitDiscard: (workspacePath: string, relPath: string) => Promise<void>;
+  gitCommit: (workspacePath: string, message: string) => Promise<void>;
+  gitPush: (workspacePath: string) => Promise<GitOpResult>;
+  gitPull: (workspacePath: string) => Promise<GitOpResult>;
 }

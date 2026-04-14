@@ -6,6 +6,7 @@ import type {
   Environment,
   EnvironmentVariable,
   ExecutedResponse,
+  GitStatus,
   HistoryEntry,
   HttpMethod,
   HttpVersion,
@@ -172,6 +173,18 @@ interface AppState {
   createFolder: (parentRelPath: string, name: string) => Promise<void>;
   renameNode: (relPath: string, newName: string) => Promise<void>;
   deleteNode: (relPath: string) => Promise<void>;
+
+  // Git
+  gitStatus: GitStatus | null;
+  gitError: string | null;
+  gitBusy: boolean;
+  loadGitStatus: () => Promise<void>;
+  stageFile: (relPath: string) => Promise<void>;
+  unstageFile: (relPath: string) => Promise<void>;
+  discardFile: (relPath: string) => Promise<void>;
+  commitChanges: (message: string) => Promise<void>;
+  gitPush: () => Promise<void>;
+  gitPull: () => Promise<void>;
 }
 
 function freshHeader(): HeaderRow {
@@ -453,6 +466,9 @@ export const useAppStore = create<AppState>((set, get) => {
     history: [],
     tabs: [],
     activeTabId: null,
+    gitStatus: null,
+    gitError: null,
+    gitBusy: false,
     saveDialogOpen: false,
     focusUrlTick: 0,
     importCurlTick: 0,
@@ -478,10 +494,13 @@ export const useAppStore = create<AppState>((set, get) => {
         environments: [],
         activeEnvironment: null,
         history: [],
+        gitStatus: null,
+        gitError: null,
       });
       await get().loadRecents();
       await get().loadEnvironments();
       await get().loadHistory();
+      await get().loadGitStatus();
     },
 
     refreshTree: async () => {
@@ -578,6 +597,7 @@ export const useAppStore = create<AppState>((set, get) => {
       await bridge.workspaceWriteRequest(workspace.path, tab.relPath, request);
       mutateActive((t) => ({ ...t, dirty: false, method: t.builder.method }));
       await get().refreshTree();
+      void get().loadGitStatus();
     },
 
     openSaveDialog: () => set({ saveDialogOpen: true }),
@@ -1024,6 +1044,90 @@ export const useAppStore = create<AppState>((set, get) => {
       };
 
       set({ tabs: [...get().tabs, tab], activeTabId: tab.id });
+    },
+
+    loadGitStatus: async () => {
+      const workspace = get().workspace;
+      if (!workspace) {
+        set({ gitStatus: null });
+        return;
+      }
+      try {
+        const status = await bridge.gitStatus(workspace.path);
+        set({ gitStatus: status, gitError: null });
+      } catch (err) {
+        set({ gitError: err instanceof Error ? err.message : String(err) });
+      }
+    },
+
+    stageFile: async (relPath: string) => {
+      const workspace = get().workspace;
+      if (!workspace) return;
+      try {
+        await bridge.gitStage(workspace.path, relPath);
+        await get().loadGitStatus();
+      } catch (err) {
+        set({ gitError: err instanceof Error ? err.message : String(err) });
+      }
+    },
+
+    unstageFile: async (relPath: string) => {
+      const workspace = get().workspace;
+      if (!workspace) return;
+      try {
+        await bridge.gitUnstage(workspace.path, relPath);
+        await get().loadGitStatus();
+      } catch (err) {
+        set({ gitError: err instanceof Error ? err.message : String(err) });
+      }
+    },
+
+    discardFile: async (relPath: string) => {
+      const workspace = get().workspace;
+      if (!workspace) return;
+      try {
+        await bridge.gitDiscard(workspace.path, relPath);
+        await get().loadGitStatus();
+      } catch (err) {
+        set({ gitError: err instanceof Error ? err.message : String(err) });
+      }
+    },
+
+    commitChanges: async (message: string) => {
+      const workspace = get().workspace;
+      if (!workspace) return;
+      try {
+        await bridge.gitCommit(workspace.path, message);
+        await get().loadGitStatus();
+      } catch (err) {
+        set({ gitError: err instanceof Error ? err.message : String(err) });
+      }
+    },
+
+    gitPush: async () => {
+      const workspace = get().workspace;
+      if (!workspace) return;
+      set({ gitBusy: true, gitError: null });
+      try {
+        const res = await bridge.gitPush(workspace.path);
+        if (!res.ok) set({ gitError: res.message ?? 'git push failed' });
+        await get().loadGitStatus();
+      } finally {
+        set({ gitBusy: false });
+      }
+    },
+
+    gitPull: async () => {
+      const workspace = get().workspace;
+      if (!workspace) return;
+      set({ gitBusy: true, gitError: null });
+      try {
+        const res = await bridge.gitPull(workspace.path);
+        if (!res.ok) set({ gitError: res.message ?? 'git pull failed' });
+        await get().loadGitStatus();
+      } finally {
+        set({ gitBusy: false });
+      }
     },
   };
 });

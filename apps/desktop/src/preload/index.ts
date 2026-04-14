@@ -4,6 +4,8 @@ import type {
   CookieEntry,
   Environment,
   ExecuteResult,
+  GitOpResult,
+  GitStatus,
   HistoryEntry,
   HistoryListOptions,
   ImportCurlResult,
@@ -165,6 +167,32 @@ const api: ScrapemanBridge = {
     ipcRenderer.on('workspace:event', listener);
     return () => ipcRenderer.off('workspace:event', listener);
   },
+
+  gitStatus: (workspacePath: string) =>
+    ipcRenderer.invoke('git:status', workspacePath) as Promise<GitStatus>,
+  gitDiff: (
+    workspacePath: string,
+    relPath: string,
+    options: { staged: boolean },
+  ) =>
+    ipcRenderer.invoke(
+      'git:diff',
+      workspacePath,
+      relPath,
+      options,
+    ) as Promise<string>,
+  gitStage: (workspacePath: string, relPath: string) =>
+    ipcRenderer.invoke('git:stage', workspacePath, relPath) as Promise<void>,
+  gitUnstage: (workspacePath: string, relPath: string) =>
+    ipcRenderer.invoke('git:unstage', workspacePath, relPath) as Promise<void>,
+  gitDiscard: (workspacePath: string, relPath: string) =>
+    ipcRenderer.invoke('git:discard', workspacePath, relPath) as Promise<void>,
+  gitCommit: (workspacePath: string, message: string) =>
+    ipcRenderer.invoke('git:commit', workspacePath, message) as Promise<void>,
+  gitPush: (workspacePath: string) =>
+    ipcRenderer.invoke('git:push', workspacePath) as Promise<GitOpResult>,
+  gitPull: (workspacePath: string) =>
+    ipcRenderer.invoke('git:pull', workspacePath) as Promise<GitOpResult>,
 };
 
 contextBridge.exposeInMainWorld('scrapeman', api);

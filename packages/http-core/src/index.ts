@@ -18,5 +18,6 @@ export * from './scrapeDo/index.js';
 export * from './cookies/index.js';
 export * from './load/index.js';
 export * from './auto-headers.js';
+export * from './git/index.js';
 
 export type { ScrapemanRequest, ExecutedResponse };
