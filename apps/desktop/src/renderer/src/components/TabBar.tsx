@@ -54,6 +54,7 @@ function TabItem({
   onClose: () => void;
 }): JSX.Element {
   const color = METHOD_COLOR[tab.method] ?? 'text-method-custom';
+  const sending = tab.execution.status === 'sending';
 
   return (
     <div
@@ -77,6 +78,12 @@ function TabItem({
         {tab.method.slice(0, 6)}
       </span>
       <span className="flex-1 truncate">{tab.name}</span>
+      {sending && (
+        <span
+          title="Request in flight"
+          className="pulse-dot h-1.5 w-1.5 rounded-sm bg-accent"
+        />
+      )}
       {tab.dirty ? (
         <span className="h-1.5 w-1.5 rounded-full bg-accent" />
       ) : (

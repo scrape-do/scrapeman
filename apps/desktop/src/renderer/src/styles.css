@@ -152,6 +152,69 @@ html.dark {
   }
 }
 
+@keyframes progress-indeterminate {
+  0% {
+    left: -40%;
+    width: 40%;
+  }
+  50% {
+    left: 20%;
+    width: 60%;
+  }
+  100% {
+    left: 100%;
+    width: 40%;
+  }
+}
+
+.progress-indeterminate {
+  position: relative;
+  height: 2px;
+  overflow: hidden;
+  background-color: rgb(var(--bg-muted));
+}
+.progress-indeterminate::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background-color: theme(colors.accent.DEFAULT);
+  animation: progress-indeterminate 1.1s ease-in-out infinite;
+}
+
+@keyframes spinner-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  border: 1.5px solid currentColor;
+  border-top-color: transparent;
+  animation: spinner-rotate 0.7s linear infinite;
+  vertical-align: -2px;
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.9);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+
+.pulse-dot {
+  animation: pulse-dot 0.9s ease-in-out infinite;
+}
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;

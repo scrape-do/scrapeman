@@ -155,9 +155,10 @@ export function RequestBuilder(): JSX.Element {
         {sending ? (
           <button
             onClick={cancelSend}
-            className="btn-secondary min-w-[86px]"
+            className="btn-secondary min-w-[86px] gap-1.5"
             title="Cancel request"
           >
+            <span className="spinner" aria-hidden="true" />
             Cancel
           </button>
         ) : (
@@ -170,6 +171,8 @@ export function RequestBuilder(): JSX.Element {
           </button>
         )}
       </div>
+
+      {sending && <div className="progress-indeterminate" aria-hidden="true" />}
 
       <div className="flex h-9 items-center border-b border-line px-4">
         <TabButton active={tab === 'params'} onClick={() => setTab('params')}>

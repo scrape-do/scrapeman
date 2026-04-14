@@ -59,7 +59,15 @@ export function ResponseViewer(): JSX.Element {
 
   if (execution.status === 'sending') {
     return (
-      <EmptyState icon="↻" title="Sending…" description="Awaiting response." />
+      <div className="flex h-full flex-col items-center justify-center gap-3">
+        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-bg-muted text-accent">
+          <span className="spinner" aria-hidden="true" />
+        </div>
+        <div className="text-center">
+          <div className="text-sm font-semibold text-ink-1">Sending…</div>
+          <div className="mt-1 text-xs text-ink-3">Awaiting response.</div>
+        </div>
+      </div>
     );
   }
 
