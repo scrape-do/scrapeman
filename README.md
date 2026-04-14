@@ -11,9 +11,10 @@
 
 <p align="center">
   <a href="https://scrape.do"><img alt="Built for scrape-do" src="https://img.shields.io/badge/built%20for-scrape--do-FF6C37?style=for-the-badge&labelColor=0b0d10" /></a>
+  <a href="LICENSE"><img alt="License: Apache 2.0" src="https://img.shields.io/badge/license-Apache%202.0-0CBB52?style=for-the-badge" /></a>
   <img alt="Electron" src="https://img.shields.io/badge/electron-33-47848F?style=for-the-badge&logo=electron&logoColor=white" />
   <img alt="TypeScript" src="https://img.shields.io/badge/typescript-5-3178C6?style=for-the-badge&logo=typescript&logoColor=white" />
-  <img alt="Tests" src="https://img.shields.io/badge/tests-125%20passing-0CBB52?style=for-the-badge" />
+  <img alt="Tests" src="https://img.shields.io/badge/tests-159%20passing-0CBB52?style=for-the-badge" />
 </p>
 
 ---
@@ -263,11 +264,14 @@ Feature parity tracking vs Postman in [`planning/postman-parity.md`](planning/po
 
 ## License
 
-Private / proprietary — internal scrape-do project. Public release and license TBD.
+Licensed under the [Apache License 2.0](LICENSE). Copyright 2026 scrape-do.
+
+The name "Scrapeman" and the scrape-do logo are trademarks of scrape-do and
+are not covered by the license — see Section 6 of the Apache License.
 
 ## Contributing
 
-Internal project for now. Issues and PRs are for the scrape-do engineering team. See [`.github/pull_request_template.md`](.github/pull_request_template.md) for the PR checklist.
+Issues and PRs welcome. See [`.github/pull_request_template.md`](.github/pull_request_template.md) for the PR checklist. By submitting a contribution you agree to license it under Apache 2.0.
 
 ---
 
