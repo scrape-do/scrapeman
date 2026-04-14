@@ -50,7 +50,11 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: pnpm --filter=@scrapeman/desktop dist:mac
         env:
-          # Skip code signing — internal builds.
+          # Don't try to discover a real Developer ID cert in the runner's
+          # keychain — there isn't one. electron-builder.yml pins
+          # `mac.identity: '-'` so it falls back to ad-hoc signing
+          # (mandatory on Apple Silicon Big Sur+ to avoid the misleading
+          # "App is damaged" error on download).
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
       - name: Build installer (Windows)

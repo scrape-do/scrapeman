@@ -33,9 +33,16 @@ mac:
         - x64
   category: public.app-category.developer-tools
   darkModeSupport: true
-  # Unsigned builds — users will need to right-click → Open the first time.
+  # electron-builder cannot do ad-hoc signing on its own (passing `-`
+  # as identity makes it search the keychain for a real cert named
+  # "-" and fail). We skip electron-builder's signing and run
+  # `codesign --force --deep --sign -` from the afterPack hook below.
+  # Apple Silicon Big Sur+ requires this or the app launches with the
+  # misleading "damaged" error.
   identity: null
   gatekeeperAssess: false
+
+afterPack: ./build-resources/after-pack.cjs
 
 dmg:
   writeUpdateInfo: false

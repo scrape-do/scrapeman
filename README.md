@@ -130,7 +130,19 @@ Pre-built installers are published on the [Releases page](https://github.com/scr
 - **Windows** — `.exe` NSIS installer (x64)
 - **Linux** — `.AppImage` and `.deb` (x64)
 
-> Builds are currently **unsigned**. On macOS you'll need to right-click → **Open** the first time (Gatekeeper). On Windows SmartScreen will warn. Code signing is planned for v1.0.
+> Builds are currently **ad-hoc signed but not notarized**. First-launch friction:
+>
+> - **macOS:** right-click the app in Applications → **Open** → confirm "Open" in the Gatekeeper prompt. After that it launches normally.
+>   If you see *"App is damaged"* (only the very first v0.1.0 release had this), open Terminal and run:
+>   ```bash
+>   sudo xattr -cr /Applications/Scrapeman.app
+>   sudo codesign --force --deep --sign - /Applications/Scrapeman.app
+>   ```
+>   v0.1.1+ ships with the build-time ad-hoc signing fix and doesn't need this.
+> - **Windows:** SmartScreen → **More info** → **Run anyway**.
+> - **Linux:** `chmod +x` the AppImage, or `sudo dpkg -i` the deb.
+>
+> Real Developer ID signing + Apple notarization + Windows EV cert are tracked in M10 release polish.
 
 To produce a release locally:
 
