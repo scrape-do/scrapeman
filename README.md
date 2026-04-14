@@ -1,6 +1,24 @@
-# Scrapeman
+<p align="center">
+  <a href="https://scrape.do">
+    <img src="https://github.com/scrape-do.png" alt="scrape-do" width="96" height="96" />
+  </a>
+</p>
 
-> Postman-grade API client for scrape-do workflows — local-first, git-friendly collections, built-in load testing, unlimited history.
+<h1 align="center">Scrapeman</h1>
+
+<p align="center">
+  <strong>Postman-grade API client for scrape-do workflows</strong><br/>
+  Local-first · git-friendly collections · built-in load testing · unlimited history
+</p>
+
+<p align="center">
+  <a href="https://scrape.do"><img alt="Built for scrape-do" src="https://img.shields.io/badge/built%20for-scrape--do-FF6C37?style=for-the-badge&labelColor=0b0d10" /></a>
+  <img alt="Electron" src="https://img.shields.io/badge/electron-33-47848F?style=for-the-badge&logo=electron&logoColor=white" />
+  <img alt="TypeScript" src="https://img.shields.io/badge/typescript-5-3178C6?style=for-the-badge&logo=typescript&logoColor=white" />
+  <img alt="Tests" src="https://img.shields.io/badge/tests-125%20passing-0CBB52?style=for-the-badge" />
+</p>
+
+---
 
 **Scrapeman** is a desktop API client (Electron + React + TypeScript) purpose-built for the scrape-do engineering and customer workflow. It ships Postman's paid features for free, keeps everything on your machine, and treats your filesystem + git as the source of truth.
 
@@ -220,4 +238,17 @@ Internal project for now. Issues and PRs are for the scrape-do engineering team.
 
 ---
 
-🐙 Built for scrape-do.
+<p align="center">
+  <a href="https://scrape.do">
+    <img src="https://github.com/scrape-do.png" alt="scrape-do" width="120" height="120" />
+  </a>
+</p>
+
+<h1 align="center">
+  <a href="https://scrape.do">BUILT FOR SCRAPE-DO</a>
+</h1>
+
+<p align="center">
+  <sub>The scraping infrastructure of the internet.</sub><br/>
+  <a href="https://scrape.do">scrape.do</a>
+</p>
