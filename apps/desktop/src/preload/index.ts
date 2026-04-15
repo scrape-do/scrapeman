@@ -216,6 +216,12 @@ const api: ScrapemanBridge = {
     ipcRenderer.invoke('git:push', workspacePath) as Promise<GitOpResult>,
   gitPull: (workspacePath: string) =>
     ipcRenderer.invoke('git:pull', workspacePath) as Promise<GitOpResult>,
+  gitLocalHiddenList: (workspacePath: string) =>
+    ipcRenderer.invoke('git:localHiddenList', workspacePath) as Promise<string[]>,
+  gitLocalHide: (workspacePath: string, relPath: string) =>
+    ipcRenderer.invoke('git:localHide', workspacePath, relPath) as Promise<void>,
+  gitLocalUnhide: (workspacePath: string, relPath: string) =>
+    ipcRenderer.invoke('git:localUnhide', workspacePath, relPath) as Promise<void>,
 };
 
 contextBridge.exposeInMainWorld('scrapeman', api);

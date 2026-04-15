@@ -24,6 +24,9 @@ export function useCommands(extras: CommandExtras): Command[] {
   const focusUrl = useAppStore((s) => s.focusUrl);
   const openImportCurl = useAppStore((s) => s.openImportCurl);
   const openLoadTest = useAppStore((s) => s.openLoadTest);
+  const toggleHiddenRequest = useAppStore((s) => s.toggleHiddenRequest);
+  const tabs = useAppStore((s) => s.tabs);
+  const isRepo = useAppStore((s) => s.gitStatus?.isRepo === true);
 
   return useMemo<Command[]>(
     () => [
@@ -78,6 +81,22 @@ export function useCommands(extras: CommandExtras): Command[] {
           if (activeTabId) duplicateTab(activeTabId);
         },
       },
+      ...(isRepo
+        ? [
+            {
+              id: 'request.toggle-hidden',
+              title: 'Toggle sync with git (on/off)',
+              section: 'Request',
+              shortcut: 'mod+shift+h',
+              run: () => {
+                const active = tabs.find((t) => t.id === activeTabId);
+                if (active?.kind === 'file' && active.relPath) {
+                  void toggleHiddenRequest(active.relPath);
+                }
+              },
+            },
+          ]
+        : []),
       {
         id: 'view.focus-url',
         title: 'Focus URL bar',
@@ -108,6 +127,9 @@ export function useCommands(extras: CommandExtras): Command[] {
       focusUrl,
       openImportCurl,
       openLoadTest,
+      toggleHiddenRequest,
+      tabs,
+      isRepo,
       extras,
     ],
   );

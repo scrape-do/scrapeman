@@ -9,6 +9,7 @@ import {
   ContextMenuTrigger,
 } from '../ui/ContextMenu.js';
 import { ConfirmDialog } from '../ui/Dialog.js';
+import { EyeOffIcon } from '../ui/EyeOffIcon.js';
 
 const METHOD_COLOR: Record<string, string> = {
   GET: 'text-method-get',
@@ -37,6 +38,7 @@ interface GuardState {
 export function TabBar(): JSX.Element {
   const tabs = useAppStore((s) => s.tabs);
   const activeTabId = useAppStore((s) => s.activeTabId);
+  const hiddenRequests = useAppStore((s) => s.hiddenRequests);
   const newTab = useAppStore((s) => s.newTab);
   const closeTab = useAppStore((s) => s.closeTab);
   const closeOtherTabs = useAppStore((s) => s.closeOtherTabs);
@@ -155,6 +157,11 @@ export function TabBar(): JSX.Element {
                 <TabItem
                   tab={tab}
                   active={tab.id === activeTabId}
+                  hidden={
+                    tab.kind === 'file' &&
+                    tab.relPath !== null &&
+                    hiddenRequests.has(tab.relPath)
+                  }
                   dragging={dragId === tab.id}
                   dropTarget={
                     dropTargetId === tab.id && dragId !== null && dragId !== tab.id
@@ -252,6 +259,7 @@ export function TabBar(): JSX.Element {
 interface TabItemOwnProps {
   tab: Tab;
   active: boolean;
+  hidden: boolean;
   dragging: boolean;
   dropTarget: boolean;
   onSelect: () => void;
@@ -275,6 +283,7 @@ const TabItem = forwardRef<HTMLDivElement, TabItemProps>(
     {
       tab,
       active,
+      hidden,
       dragging,
       dropTarget,
       onSelect,
@@ -332,7 +341,15 @@ const TabItem = forwardRef<HTMLDivElement, TabItemProps>(
       <span className={`font-mono text-[10px] font-semibold ${color}`}>
         {tab.method.slice(0, 6)}
       </span>
-      <span className="flex-1 truncate">{tab.name}</span>
+      <span className={`flex-1 truncate ${hidden ? 'italic opacity-70' : ''}`}>
+        {tab.name}
+      </span>
+      {hidden && (
+        <EyeOffIcon
+          className="h-3.5 w-3.5 text-ink-3"
+          title="Sync: off (local only, not pushed to git)"
+        />
+      )}
       {sending && (
         <span
           title="Request in flight"

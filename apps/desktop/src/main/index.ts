@@ -45,6 +45,9 @@ import {
   gitCommit,
   gitPush,
   gitPull,
+  gitLocalHiddenList,
+  gitLocalHide,
+  gitLocalUnhide,
   GitError,
 } from './git.js';
 
@@ -707,6 +710,33 @@ app.whenReady().then(() => {
   );
   ipcMain.handle('git:push', (_e, workspacePath: string) =>
     gitPush(workspacePath),
+  );
+  ipcMain.handle('git:localHiddenList', async (_e, workspacePath: string) => {
+    try {
+      return await gitLocalHiddenList(workspacePath);
+    } catch (err) {
+      throw toGitError(err);
+    }
+  });
+  ipcMain.handle(
+    'git:localHide',
+    async (_e, workspacePath: string, relPath: string) => {
+      try {
+        await gitLocalHide(workspacePath, relPath);
+      } catch (err) {
+        throw toGitError(err);
+      }
+    },
+  );
+  ipcMain.handle(
+    'git:localUnhide',
+    async (_e, workspacePath: string, relPath: string) => {
+      try {
+        await gitLocalUnhide(workspacePath, relPath);
+      } catch (err) {
+        throw toGitError(err);
+      }
+    },
   );
   ipcMain.handle('git:pull', (_e, workspacePath: string) =>
     gitPull(workspacePath),
