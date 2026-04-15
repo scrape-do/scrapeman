@@ -1,6 +1,14 @@
-import { useState } from 'react';
+import { forwardRef, useState, type HTMLAttributes } from 'react';
 import { useAppStore, type Tab } from '../store.js';
 import { shortcutLabel } from '../hooks/useShortcuts.js';
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '../ui/ContextMenu.js';
+import { ConfirmDialog } from '../ui/Dialog.js';
 
 const METHOD_COLOR: Record<string, string> = {
   GET: 'text-method-get',
@@ -12,44 +20,211 @@ const METHOD_COLOR: Record<string, string> = {
   OPTIONS: 'text-method-options',
 };
 
+type GuardKind =
+  | 'close'
+  | 'closeOthers'
+  | 'closeRight'
+  | 'closeSaved'
+  | 'closeAll';
+
+interface GuardState {
+  kind: GuardKind;
+  tabId?: string;
+  tabName?: string;
+  dirtyCount: number;
+}
+
 export function TabBar(): JSX.Element {
   const tabs = useAppStore((s) => s.tabs);
   const activeTabId = useAppStore((s) => s.activeTabId);
   const newTab = useAppStore((s) => s.newTab);
   const closeTab = useAppStore((s) => s.closeTab);
+  const closeOtherTabs = useAppStore((s) => s.closeOtherTabs);
+  const closeTabsToRight = useAppStore((s) => s.closeTabsToRight);
+  const closeSavedTabs = useAppStore((s) => s.closeSavedTabs);
+  const closeAllTabs = useAppStore((s) => s.closeAllTabs);
+  const duplicateTab = useAppStore((s) => s.duplicateTab);
+  const revealInSidebar = useAppStore((s) => s.revealInSidebar);
+  const setSidebarView = useAppStore((s) => s.setSidebarView);
   const setActiveTab = useAppStore((s) => s.setActiveTab);
   const reorderTab = useAppStore((s) => s.reorderTab);
 
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+  const [guard, setGuard] = useState<GuardState | null>(null);
+
+  const savedCount = tabs.filter((t) => !t.dirty).length;
+
+  const requestClose = (tab: Tab): void => {
+    if (tab.dirty) {
+      setGuard({ kind: 'close', tabId: tab.id, tabName: tab.name, dirtyCount: 1 });
+      return;
+    }
+    closeTab(tab.id);
+  };
+
+  const requestCloseOthers = (tab: Tab): void => {
+    const dirtyCount = tabs.filter((t) => t.id !== tab.id && t.dirty).length;
+    if (dirtyCount > 0) {
+      setGuard({ kind: 'closeOthers', tabId: tab.id, dirtyCount });
+      return;
+    }
+    closeOtherTabs(tab.id);
+  };
+
+  const requestCloseRight = (tab: Tab): void => {
+    const idx = tabs.findIndex((t) => t.id === tab.id);
+    const dirtyCount = tabs.slice(idx + 1).filter((t) => t.dirty).length;
+    if (dirtyCount > 0) {
+      setGuard({ kind: 'closeRight', tabId: tab.id, dirtyCount });
+      return;
+    }
+    closeTabsToRight(tab.id);
+  };
+
+  const requestCloseSaved = (): void => {
+    // Close Saved never touches dirty tabs — no guard needed.
+    closeSavedTabs();
+  };
+
+  const requestCloseAll = (): void => {
+    const dirtyCount = tabs.filter((t) => t.dirty).length;
+    if (dirtyCount > 0) {
+      setGuard({ kind: 'closeAll', dirtyCount });
+      return;
+    }
+    closeAllTabs();
+  };
+
+  const confirmGuard = (): void => {
+    if (!guard) return;
+    switch (guard.kind) {
+      case 'close':
+        if (guard.tabId) closeTab(guard.tabId);
+        break;
+      case 'closeOthers':
+        if (guard.tabId) closeOtherTabs(guard.tabId);
+        break;
+      case 'closeRight':
+        if (guard.tabId) closeTabsToRight(guard.tabId);
+        break;
+      case 'closeSaved':
+        closeSavedTabs();
+        break;
+      case 'closeAll':
+        closeAllTabs();
+        break;
+    }
+  };
+
+  const guardTitle = ((): string => {
+    if (!guard) return '';
+    if (guard.kind === 'close') {
+      return `'${guard.tabName ?? 'Untitled'}' has unsaved changes`;
+    }
+    return `You have ${guard.dirtyCount} unsaved tab${guard.dirtyCount === 1 ? '' : 's'}`;
+  })();
+
+  const guardDescription = ((): string => {
+    if (!guard) return '';
+    if (guard.kind === 'close') return 'Close without saving?';
+    return 'Close anyway?';
+  })();
+
+  const guardConfirmLabel = ((): string => {
+    if (!guard) return 'Close';
+    if (guard.kind === 'close') return 'Close';
+    return `Close ${guard.dirtyCount}`;
+  })();
 
   return (
     <div className="flex h-10 items-center border-b border-line bg-bg-subtle">
       <div className="flex h-full flex-1 items-stretch overflow-x-auto">
-        {tabs.map((tab) => (
-          <TabItem
-            key={tab.id}
-            tab={tab}
-            active={tab.id === activeTabId}
-            dragging={dragId === tab.id}
-            dropTarget={dropTargetId === tab.id && dragId !== null && dragId !== tab.id}
-            onSelect={() => setActiveTab(tab.id)}
-            onClose={() => closeTab(tab.id)}
-            onDragStart={() => setDragId(tab.id)}
-            onDragEnter={() => {
-              if (dragId && dragId !== tab.id) setDropTargetId(tab.id);
-            }}
-            onDragEnd={() => {
-              setDragId(null);
-              setDropTargetId(null);
-            }}
-            onDrop={() => {
-              if (dragId && dragId !== tab.id) reorderTab(dragId, tab.id);
-              setDragId(null);
-              setDropTargetId(null);
-            }}
-          />
-        ))}
+        {tabs.map((tab, index) => {
+          const isLast = index === tabs.length - 1;
+          const canCloseOthers = tabs.length > 1;
+          const canCloseRight = !isLast;
+          const canCloseSaved = savedCount > 0;
+          const canCopyUrl = tab.builder.url.trim().length > 0;
+          return (
+            <ContextMenu key={tab.id}>
+              <ContextMenuTrigger asChild>
+                <TabItem
+                  tab={tab}
+                  active={tab.id === activeTabId}
+                  dragging={dragId === tab.id}
+                  dropTarget={
+                    dropTargetId === tab.id && dragId !== null && dragId !== tab.id
+                  }
+                  onSelect={() => setActiveTab(tab.id)}
+                  onClose={() => requestClose(tab)}
+                  onDragStart={() => setDragId(tab.id)}
+                  onDragEnter={() => {
+                    if (dragId && dragId !== tab.id) setDropTargetId(tab.id);
+                  }}
+                  onDragEnd={() => {
+                    setDragId(null);
+                    setDropTargetId(null);
+                  }}
+                  onDrop={() => {
+                    if (dragId && dragId !== tab.id) reorderTab(dragId, tab.id);
+                    setDragId(null);
+                    setDropTargetId(null);
+                  }}
+                />
+              </ContextMenuTrigger>
+              <ContextMenuContent>
+                <ContextMenuItem onSelect={() => requestClose(tab)}>
+                  Close
+                </ContextMenuItem>
+                <ContextMenuItem
+                  disabled={!canCloseOthers}
+                  onSelect={() => requestCloseOthers(tab)}
+                >
+                  Close Others
+                </ContextMenuItem>
+                <ContextMenuItem
+                  disabled={!canCloseRight}
+                  onSelect={() => requestCloseRight(tab)}
+                >
+                  Close to the Right
+                </ContextMenuItem>
+                <ContextMenuItem
+                  disabled={!canCloseSaved}
+                  onSelect={requestCloseSaved}
+                >
+                  Close Saved
+                </ContextMenuItem>
+                <ContextMenuItem onSelect={requestCloseAll}>
+                  Close All
+                </ContextMenuItem>
+                <ContextMenuSeparator />
+                <ContextMenuItem onSelect={() => duplicateTab(tab.id)}>
+                  Duplicate
+                </ContextMenuItem>
+                <ContextMenuSeparator />
+                <ContextMenuItem
+                  disabled={!canCopyUrl}
+                  onSelect={() => {
+                    void navigator.clipboard.writeText(tab.builder.url);
+                  }}
+                >
+                  Copy URL
+                </ContextMenuItem>
+                {tab.kind === 'file' && tab.relPath !== null && (
+                  <ContextMenuItem
+                    onSelect={() => {
+                      setSidebarView('files');
+                      if (tab.relPath) revealInSidebar(tab.relPath);
+                    }}
+                  >
+                    Reveal in sidebar
+                  </ContextMenuItem>
+                )}
+              </ContextMenuContent>
+            </ContextMenu>
+          );
+        })}
       </div>
       <button
         onClick={newTab}
@@ -58,22 +233,20 @@ export function TabBar(): JSX.Element {
       >
         +
       </button>
+      <ConfirmDialog
+        open={guard !== null}
+        title={guardTitle}
+        description={guardDescription}
+        confirmLabel={guardConfirmLabel}
+        destructive
+        onConfirm={confirmGuard}
+        onClose={() => setGuard(null)}
+      />
     </div>
   );
 }
 
-function TabItem({
-  tab,
-  active,
-  dragging,
-  dropTarget,
-  onSelect,
-  onClose,
-  onDragStart,
-  onDragEnter,
-  onDragEnd,
-  onDrop,
-}: {
+interface TabItemOwnProps {
   tab: Tab;
   active: boolean;
   dragging: boolean;
@@ -84,12 +257,40 @@ function TabItem({
   onDragEnter: () => void;
   onDragEnd: () => void;
   onDrop: () => void;
-}): JSX.Element {
+}
+
+type TabItemProps = TabItemOwnProps &
+  Omit<
+    HTMLAttributes<HTMLDivElement>,
+    keyof TabItemOwnProps | 'onMouseDown' | 'onClick'
+  >;
+
+// forwardRef so Radix ContextMenuTrigger (asChild) can attach its ref and
+// injected event handlers to the underlying DOM node.
+const TabItem = forwardRef<HTMLDivElement, TabItemProps>(
+  function TabItem(
+    {
+      tab,
+      active,
+      dragging,
+      dropTarget,
+      onSelect,
+      onClose,
+      onDragStart,
+      onDragEnter,
+      onDragEnd,
+      onDrop,
+      ...rest
+    },
+    ref,
+  ) {
   const color = METHOD_COLOR[tab.method] ?? 'text-method-custom';
   const sending = tab.execution.status === 'sending';
 
   return (
     <div
+      ref={ref}
+      {...rest}
       draggable
       onDragStart={(e) => {
         e.dataTransfer.effectAllowed = 'move';
@@ -151,4 +352,5 @@ function TabItem({
       )}
     </div>
   );
-}
+  },
+);

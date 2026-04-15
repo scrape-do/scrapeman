@@ -19,16 +19,19 @@ export function ContextMenuItem({
   onSelect,
   shortcut,
   destructive = false,
+  disabled = false,
 }: {
   children: ReactNode;
   onSelect: () => void;
   shortcut?: string;
   destructive?: boolean;
+  disabled?: boolean;
 }): JSX.Element {
   return (
     <RCM.Item
       onSelect={onSelect}
-      className={`flex cursor-default items-center justify-between gap-4 rounded px-2.5 py-1.5 text-xs outline-none ${
+      disabled={disabled}
+      className={`flex cursor-default items-center justify-between gap-4 rounded px-2.5 py-1.5 text-xs outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-40 ${
         destructive
           ? 'text-method-delete data-[highlighted]:bg-method-delete/10'
           : 'text-ink-2 data-[highlighted]:bg-accent data-[highlighted]:text-white'

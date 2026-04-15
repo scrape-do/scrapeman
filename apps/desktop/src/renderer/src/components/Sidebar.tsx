@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CollectionNode, GitFileChangeStatus } from '@scrapeman/shared-types';
 import { useAppStore } from '../store.js';
 import {
@@ -58,6 +58,8 @@ export function Sidebar(): JSX.Element {
   const gitStatus = useAppStore((s) => s.gitStatus);
   const view = useAppStore((s) => s.sidebarView);
   const setView = useAppStore((s) => s.setSidebarView);
+  const revealTick = useAppStore((s) => s.revealInSidebarTick);
+  const revealPath = useAppStore((s) => s.revealInSidebarPath);
 
   const [dialog, setDialog] = useState<DialogState>({ kind: 'none' });
   const [selectedFolder, setSelectedFolder] = useState<string>('');
@@ -151,6 +153,8 @@ export function Sidebar(): JSX.Element {
           onMoveRequest={(relPath, parent) =>
             void moveNode(relPath, parent)
           }
+          revealTick={revealTick}
+          revealPath={revealPath}
         />
       )}
 
@@ -215,6 +219,8 @@ interface FilesViewProps {
   selectedFolder: string;
   onSelectFolder: (relPath: string) => void;
   onMoveRequest: (relPath: string, newParent: string) => void;
+  revealTick: number;
+  revealPath: string | null;
 }
 
 function FilesView({
@@ -228,12 +234,26 @@ function FilesView({
   selectedFolder,
   onSelectFolder,
   onMoveRequest,
+  revealTick,
+  revealPath,
 }: FilesViewProps): JSX.Element {
   const [expandTick, setExpandTick] = useState<{ path: string; tick: number } | null>(
     null,
   );
   const expandFolder = (relPath: string): void =>
     setExpandTick({ path: relPath, tick: Date.now() });
+
+  // Reveal-in-sidebar: bump an internal signal when the store tick changes
+  // so descendant TreeNodes can react via useEffect.
+  const [revealSignal, setRevealSignal] = useState<{
+    path: string;
+    tick: number;
+  } | null>(null);
+  useEffect(() => {
+    if (revealTick > 0 && revealPath) {
+      setRevealSignal({ path: revealPath, tick: revealTick });
+    }
+  }, [revealTick, revealPath]);
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex h-10 items-center gap-1 border-b border-line px-2">
@@ -300,6 +320,7 @@ function FilesView({
                     onMoveRequest={onMoveRequest}
                     expandSignal={expandTick}
                     onRequestExpand={expandFolder}
+                    revealSignal={revealSignal}
                     onNewRequest={(parent) => setDialog({ kind: 'newRequest', parent })}
                     onNewFolder={(parent) => setDialog({ kind: 'newFolder', parent })}
                     onRename={(relPath, currentName) =>
@@ -329,6 +350,7 @@ interface TreeNodeProps {
   onMoveRequest: (relPath: string, newParent: string) => void;
   expandSignal: { path: string; tick: number } | null;
   onRequestExpand: (relPath: string) => void;
+  revealSignal: { path: string; tick: number } | null;
   onNewRequest: (parent: string) => void;
   onNewFolder: (parent: string) => void;
   onRename: (relPath: string, currentName: string) => void;
@@ -344,6 +366,7 @@ function TreeNode({
   onMoveRequest,
   expandSignal,
   onRequestExpand,
+  revealSignal,
   onNewRequest,
   onNewFolder,
   onRename,
@@ -351,6 +374,7 @@ function TreeNode({
 }: TreeNodeProps): JSX.Element {
   const [expanded, setExpanded] = useState(depth < 1);
   const [dragOver, setDragOver] = useState(false);
+  const fileRowRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     if (
@@ -361,6 +385,22 @@ function TreeNode({
       setExpanded(true);
     }
   }, [expandSignal, node]);
+
+  // Reveal-in-sidebar: expand this folder if it's an ancestor of the target,
+  // or scroll this file row into view if it's the target.
+  useEffect(() => {
+    if (!revealSignal) return;
+    if (node.kind === 'folder') {
+      if (
+        node.relPath !== '' &&
+        revealSignal.path.startsWith(`${node.relPath}/`)
+      ) {
+        setExpanded(true);
+      }
+    } else if (node.relPath === revealSignal.path) {
+      fileRowRef.current?.scrollIntoView({ block: 'nearest' });
+    }
+  }, [revealSignal, node]);
 
   const tabs = useAppStore((s) => s.tabs);
   const activeTabId = useAppStore((s) => s.activeTabId);
@@ -453,6 +493,7 @@ function TreeNode({
               onMoveRequest={onMoveRequest}
               expandSignal={expandSignal}
               onRequestExpand={onRequestExpand}
+              revealSignal={revealSignal}
               onNewRequest={onNewRequest}
               onNewFolder={onNewFolder}
               onRename={onRename}
@@ -467,6 +508,7 @@ function TreeNode({
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <button
+          ref={fileRowRef}
           draggable
           onDragStart={(e) => {
             e.dataTransfer.effectAllowed = 'move';
