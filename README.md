@@ -5,7 +5,7 @@
 <h1 align="center">Scrapeman</h1>
 
 <p align="center">
-  <strong>The AI-native API Platform</strong><br/>
+  <strong>The unlimited API client</strong><br/>
   Local-first · git-friendly collections · built-in load testing · unlimited history
 </p>
 
@@ -25,7 +25,7 @@
 
 ## About
 
-**Scrapeman** is the AI-native API platform — an open-source desktop API client built by **Scrape.do** to give every developer Postman's paid features for free. It keeps everything on your machine, treats your filesystem + git as the source of truth, and ships first-class proxy support so the scraping use case is a one-toggle affair instead of a side plugin.
+**Scrapeman** is an open-source desktop API client built by **Scrape.do** to give every developer Postman's paid features for free. It keeps everything on your machine, treats your filesystem + git as the source of truth, and ships first-class proxy support so the scraping use case is a one-toggle affair instead of a side plugin.
 
 Apache 2.0, runs offline on macOS, Windows, and Linux. No account. No cloud sync. No paywall.
 
