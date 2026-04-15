@@ -1088,8 +1088,69 @@ tasks:
       - HAR: entries[] with request + response
       - Integration test round-trip
 
+  # ================= M12: Competitive gaps from Hoppscotch / Yaak research =================
+
+  - id: T1200
+    title: Request chaining via response variable capture
+    milestone: M12
+    owner: developer-core
+    estimate_hours: 12
+    depends_on: [T030, T034]
+    tags: [core, competitive-gap, from-research]
+    acceptance:
+      - Both Hoppscotch and Yaak let users pull a value from one response and use it in a later request; scope.md lists this as v1.5 but no task has been filed yet
+      - Unlocks multi-step flows (login → token → authenticated call) without a script sandbox
+      - Per-request "Capture" tab defines named captures (JSONPath, regex, or header name) persisted in .req.yaml
+      - Captured values stored in a runtime scope accessible as {{capture.name}} in any later request in the tab session or collection run
+      - Scope precedence: capture beats env, loses to explicit local override
+      - "Acceptance: send request A that captures $.token, then send request B with Authorization: Bearer {{capture.token}} and assert the header is resolved correctly in an integration test"
+
+  - id: T1201
+    title: Response diff viewer between two history entries or load-runner samples
+    milestone: M12
+    owner: developer-ui
+    estimate_hours: 10
+    depends_on: [T370, T1100]
+    tags: [ui, competitive-gap, from-research]
+    acceptance:
+      - Yaak ships an HTTP request diff between runs; scope.md lists this as v1.5 but no task exists
+      - Helps users spot unintended response changes after deploying scraper changes or rotating proxies
+      - Right-click two history entries → "Diff responses" opens a unified diff of status line, headers, and body
+      - JSON bodies diffed structurally (key-aware) with add/remove/change hunks; other kinds diffed as text
+      - Also reachable from the load-runner panel by picking any two completed iterations
+      - Acceptance: diff of two history entries with a single changed JSON field renders exactly one change hunk highlighting that field
+
+  - id: T1202
+    title: GraphQL body editor with schema introspection
+    milestone: M12
+    owner: developer-ui
+    estimate_hours: 14
+    depends_on: [T011]
+    tags: [ui, competitive-gap, from-research]
+    acceptance:
+      - Both Hoppscotch and Yaak ship a dedicated GraphQL editor with schema introspection; scope.md lists this as v1.5 with no task
+      - Scraping customers hitting GraphQL endpoints currently have to hand-author raw JSON bodies
+      - Body tab gains a "GraphQL" mode alongside raw/form/multipart, with query + variables editors
+      - Fetch & cache introspection from the current URL; operation/field autocomplete driven by the cached schema
+      - Serializes to { query, variables, operationName } JSON on send — no new transport, still uses the existing HTTP engine
+      - Acceptance: point at a public GraphQL endpoint, run introspection, autocomplete shows at least the root Query fields, and sending a simple query returns a 200 rendered in the existing JSON tree viewer
+
+  - id: T1203
+    title: Type-aware variable autocomplete with value preview and source badge
+    milestone: M12
+    owner: developer-ui
+    estimate_hours: 5
+    depends_on: [T034]
+    tags: [ui, polish, competitive-gap, from-research]
+    acceptance:
+      - Yaak's {{var}} popup shows resolved value, type, and source environment; T034 today only shows names
+      - Helps users catch "wrong env active" and "secret vs plaintext" mistakes before sending
+      - Popup rows show variable name, resolved preview (masked if secret), type hint (string/number/secret/dynamic), and source badge (env / collection / built-in / capture)
+      - Fuzzy filter as user types after {{
+      - Acceptance: with two envs defining the same key to different values, the popup preview reflects the currently active env; toggling env updates it live
+
 totals:
-  task_count: 93
+  task_count: 97
   total_estimate_hours: 597
   working_days_at_6h_focus: 100
   calendar_weeks_2_devs: 11
