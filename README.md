@@ -149,12 +149,13 @@ The full marketing site lives at **[scrapeman.app](https://scrapeman.app)** and 
 ### macOS (Homebrew, recommended)
 
 ```bash
-brew install --cask scrapeman
+brew tap scrape-do/scrapeman && brew install --cask scrapeman
 ```
 
-Picks the right DMG for your arch (arm64 or x64) and drops Scrapeman into
-`/Applications`. Future releases bump the cask automatically via the
-`bump-cask` job in `.github/workflows/release.yml`, so
+Taps `scrape-do/homebrew-scrapeman` on the first run, then installs the
+cask, which picks the right DMG for your arch (arm64 or x64) and drops
+Scrapeman into `/Applications`. Future releases bump the cask automatically
+via the `bump-cask` job in `.github/workflows/release.yml`, so
 `brew upgrade --cask scrapeman` keeps you current.
 
 ### Direct downloads
