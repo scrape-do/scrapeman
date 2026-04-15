@@ -115,6 +115,9 @@ export function TabBar(): JSX.Element {
         closeAllTabs();
         break;
     }
+    // Clear explicitly so a stale dirtyCount can't flash if the user
+    // reopens the dialog mid-close-animation.
+    setGuard(null);
   };
 
   const guardTitle = ((): string => {

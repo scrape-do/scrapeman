@@ -243,17 +243,10 @@ function FilesView({
   const expandFolder = (relPath: string): void =>
     setExpandTick({ path: relPath, tick: Date.now() });
 
-  // Reveal-in-sidebar: bump an internal signal when the store tick changes
-  // so descendant TreeNodes can react via useEffect.
-  const [revealSignal, setRevealSignal] = useState<{
-    path: string;
-    tick: number;
-  } | null>(null);
-  useEffect(() => {
-    if (revealTick > 0 && revealPath) {
-      setRevealSignal({ path: revealPath, tick: revealTick });
-    }
-  }, [revealTick, revealPath]);
+  const revealSignal = useMemo<{ path: string; tick: number } | null>(
+    () => (revealTick > 0 && revealPath ? { path: revealPath, tick: revealTick } : null),
+    [revealTick, revealPath],
+  );
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex h-10 items-center gap-1 border-b border-line px-2">
@@ -387,20 +380,24 @@ function TreeNode({
   }, [expandSignal, node]);
 
   // Reveal-in-sidebar: expand this folder if it's an ancestor of the target,
-  // or scroll this file row into view if it's the target.
+  // or scroll this file row into view if it's the target. Depend on the tick
+  // + this node's relPath rather than the whole node object so unrelated
+  // parent re-renders don't retrigger the scroll.
+  const revealTickValue = revealSignal?.tick ?? 0;
+  const revealTargetPath = revealSignal?.path ?? null;
   useEffect(() => {
-    if (!revealSignal) return;
+    if (!revealTargetPath) return;
     if (node.kind === 'folder') {
       if (
         node.relPath !== '' &&
-        revealSignal.path.startsWith(`${node.relPath}/`)
+        revealTargetPath.startsWith(`${node.relPath}/`)
       ) {
         setExpanded(true);
       }
-    } else if (node.relPath === revealSignal.path) {
+    } else if (node.relPath === revealTargetPath) {
       fileRowRef.current?.scrollIntoView({ block: 'nearest' });
     }
-  }, [revealSignal, node]);
+  }, [revealTickValue, revealTargetPath, node.kind, node.relPath]);
 
   const tabs = useAppStore((s) => s.tabs);
   const activeTabId = useAppStore((s) => s.activeTabId);

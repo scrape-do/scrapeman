@@ -567,13 +567,16 @@ export const useAppStore = create<AppState>((set, get) => {
     closeOtherTabs: (keepId: string) => {
       const { tabs } = get();
       if (tabs.length <= 1) return;
-      tabs.forEach((tab, index) => {
-        if (tab.id === keepId) return;
-        closedTabStack.push({ tab, index });
-        if (closedTabStack.length > CLOSED_TAB_STACK_LIMIT) closedTabStack.shift();
-      });
       const kept = tabs.find((t) => t.id === keepId);
       if (!kept) return;
+      // Push in reverse so the rightmost closed tab pops first on ⌘⇧T
+      // (VS Code most-recent-first semantics).
+      for (let i = tabs.length - 1; i >= 0; i -= 1) {
+        const tab = tabs[i]!;
+        if (tab.id === keepId) continue;
+        closedTabStack.push({ tab, index: i });
+        if (closedTabStack.length > CLOSED_TAB_STACK_LIMIT) closedTabStack.shift();
+      }
       set({ tabs: [kept], activeTabId: keepId });
     },
 
@@ -581,7 +584,7 @@ export const useAppStore = create<AppState>((set, get) => {
       const { tabs, activeTabId } = get();
       const idx = tabs.findIndex((t) => t.id === fromId);
       if (idx < 0 || idx === tabs.length - 1) return;
-      for (let i = idx + 1; i < tabs.length; i += 1) {
+      for (let i = tabs.length - 1; i > idx; i -= 1) {
         closedTabStack.push({ tab: tabs[i]!, index: i });
         if (closedTabStack.length > CLOSED_TAB_STACK_LIMIT) closedTabStack.shift();
       }
@@ -596,15 +599,19 @@ export const useAppStore = create<AppState>((set, get) => {
     closeSavedTabs: () => {
       const { tabs, activeTabId } = get();
       const keepers: Tab[] = [];
+      const removed: Array<{ tab: Tab; index: number }> = [];
       tabs.forEach((tab, index) => {
         if (tab.dirty) {
           keepers.push(tab);
           return;
         }
-        closedTabStack.push({ tab, index });
-        if (closedTabStack.length > CLOSED_TAB_STACK_LIMIT) closedTabStack.shift();
+        removed.push({ tab, index });
       });
-      if (keepers.length === tabs.length) return;
+      if (removed.length === 0) return;
+      for (let i = removed.length - 1; i >= 0; i -= 1) {
+        closedTabStack.push(removed[i]!);
+        if (closedTabStack.length > CLOSED_TAB_STACK_LIMIT) closedTabStack.shift();
+      }
       const stillActive = keepers.some((t) => t.id === activeTabId);
       set({
         tabs: keepers,
@@ -615,10 +622,10 @@ export const useAppStore = create<AppState>((set, get) => {
     closeAllTabs: () => {
       const { tabs } = get();
       if (tabs.length === 0) return;
-      tabs.forEach((tab, index) => {
-        closedTabStack.push({ tab, index });
+      for (let i = tabs.length - 1; i >= 0; i -= 1) {
+        closedTabStack.push({ tab: tabs[i]!, index: i });
         if (closedTabStack.length > CLOSED_TAB_STACK_LIMIT) closedTabStack.shift();
-      });
+      }
       set({ tabs: [], activeTabId: null });
     },
 
