@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Scrapeman — brand final (V1 Hookline)</title>
+    <style>
+      :root {
+        --bg: #0b0d10;
+        --bg-2: #14171c;
+        --line: #262a31;
+        --ink: #f0f0f5;
+        --ink-2: #9ea1a8;
+        --accent: #ff6c37;
+      }
+      @media (prefers-color-scheme: light) {
+        :root {
+          --bg: #ffffff;
+          --bg-2: #fafafa;
+          --line: #e6e6e8;
+          --ink: #1a1a1c;
+          --ink-2: #6b6b6e;
+        }
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family:
+          -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+        font-size: 14px;
+        line-height: 1.5;
+      }
+      .wrap {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 48px 32px 96px;
+      }
+      header {
+        border-bottom: 1px solid var(--line);
+        padding-bottom: 24px;
+        margin-bottom: 40px;
+      }
+      h1 {
+        margin: 0 0 4px;
+        font-size: 22px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+      .sub {
+        color: var(--ink-2);
+        font-size: 13px;
+      }
+      .locked {
+        display: inline-block;
+        font-family: 'Geist Mono', ui-monospace, monospace;
+        font-size: 10px;
+        color: var(--accent);
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        border: 1px solid var(--accent);
+        padding: 2px 8px;
+        border-radius: 4px;
+        margin-left: 8px;
+      }
+      .caption {
+        font-family: 'Geist Mono', ui-monospace, monospace;
+        font-size: 10px;
+        color: var(--accent);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 12px;
+      }
+      .hero {
+        padding: 56px 48px;
+        background: var(--bg-2);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin-bottom: 56px;
+      }
+      .hero img {
+        width: 100%;
+        max-width: 640px;
+        display: block;
+      }
+      section {
+        margin-bottom: 56px;
+      }
+      .variant-head h2 {
+        margin: 0 0 16px;
+        font-size: 17px;
+        font-weight: 600;
+      }
+      .desc {
+        color: var(--ink-2);
+        font-size: 13px;
+        max-width: 720px;
+        margin: 0 0 20px;
+      }
+      .sizes {
+        display: flex;
+        align-items: flex-end;
+        gap: 24px;
+        flex-wrap: wrap;
+        padding: 24px;
+        background: var(--bg-2);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+      }
+      .size {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+      }
+      .size .tile {
+        background: var(--bg);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .size .label {
+        font-family: 'Geist Mono', ui-monospace, monospace;
+        font-size: 10px;
+        color: var(--ink-2);
+      }
+      .integration {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        margin-top: 20px;
+      }
+      .slot {
+        padding: 18px;
+        background: var(--bg-2);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+      }
+      .slot .cap {
+        font-family: 'Geist Mono', ui-monospace, monospace;
+        font-size: 10px;
+        color: var(--ink-2);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 10px;
+      }
+      .slot .body {
+        font-size: 13px;
+        color: var(--ink-2);
+      }
+      code {
+        font-family: 'Geist Mono', ui-monospace, monospace;
+        font-size: 11px;
+        background: var(--bg);
+        padding: 1px 6px;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+      }
+      footer {
+        margin-top: 64px;
+        padding-top: 24px;
+        border-top: 1px solid var(--line);
+        color: var(--ink-2);
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <h1>
+          Scrapeman — V1 Hookline <span class="locked">FINAL · LOCKED</span>
+        </h1>
+        <div class="sub">
+          Tek path, tek gesture. Turn 5'te kilitlendi. V2/V3/V4/V4′/V5/V6 drop.
+          Canonical:
+          <code>assets/logos/scrapeman-mark.svg</code>
+        </div>
+      </header>
+
+      <section>
+        <div class="caption">Main lockup · mark + wordmark + tagline</div>
+        <div class="hero">
+          <img src="lockup-main-v1.svg" alt="Scrapeman lockup" />
+        </div>
+      </section>
+
+      <section>
+        <div class="variant-head"><h2>Mark — size ladder (16 → 256 px)</h2></div>
+        <p class="desc">
+          Aynı SVG path, farklı display boyutları. 16px'te silüet dikenli bir
+          slash'a düşer ama tanınabilir kalır; 64 üstü her yerde tek-gesture
+          okuması sağlam.
+        </p>
+        <div class="sizes">
+          <div class="size"><div class="tile"><img src="v1-hookline.svg" width="16" height="16" /></div><div class="label">16</div></div>
+          <div class="size"><div class="tile"><img src="v1-hookline.svg" width="24" height="24" /></div><div class="label">24</div></div>
+          <div class="size"><div class="tile"><img src="v1-hookline.svg" width="32" height="32" /></div><div class="label">32</div></div>
+          <div class="size"><div class="tile"><img src="v1-hookline.svg" width="48" height="48" /></div><div class="label">48</div></div>
+          <div class="size"><div class="tile"><img src="v1-hookline.svg" width="64" height="64" /></div><div class="label">64</div></div>
+          <div class="size"><div class="tile"><img src="v1-hookline.svg" width="128" height="128" /></div><div class="label">128</div></div>
+          <div class="size"><div class="tile"><img src="v1-hookline.svg" width="256" height="256" /></div><div class="label">256</div></div>
+        </div>
+      </section>
+
+      <section>
+        <div class="variant-head"><h2>Integration checklist</h2></div>
+        <div class="integration">
+          <div class="slot">
+            <div class="cap">App header</div>
+            <div class="body">
+              <code>apps/desktop/src/renderer/src/App.tsx</code> — inline SVG,
+              <code>h-6 w-6 text-accent</code>. Tek-harf placeholder yerine
+              geçti.
+            </div>
+          </div>
+          <div class="slot">
+            <div class="cap">README</div>
+            <div class="body">
+              Header 96×96 mark + H1 "Scrapeman" + tagline. Scrape-do credit
+              alt-sub olarak.
+            </div>
+          </div>
+          <div class="slot">
+            <div class="cap">macOS installer</div>
+            <div class="body">
+              <code>apps/desktop/build-resources/icon.icns</code> — 7 boyutlu
+              iconset + <code>iconutil -c icns</code>. electron-builder
+              auto-pickup.
+            </div>
+          </div>
+          <div class="slot">
+            <div class="cap">Linux / Windows fallback</div>
+            <div class="body">
+              <code>apps/desktop/build-resources/icon.png</code> — 1024×1024.
+              Gerçek Windows <code>.ico</code> M10 signing milestone'una parked.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <footer>
+        Icon build: <code>scripts/build-icons.sh</code> (resvg + iconutil).
+        Rebuild: <code>./scripts/build-icons.sh</code>.
+      </footer>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,12 @@
+<svg viewBox="0 0 600 160" xmlns="http://www.w3.org/2000/svg">
+  <!-- Mark: V1 Hookline scaled to ~112px (64 * 1.75) -->
+  <g transform="translate(16, 24) scale(1.75)">
+    <path d="M8 20 L40 20 Q52 20 52 34 Q52 46 40 46 Q30 46 30 36 L36 40" stroke="#FF6C37" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <!-- Wordmark -->
+  <text x="148" y="86" font-family="Geist Mono, ui-monospace, monospace" font-size="54" font-weight="700" fill="#F0F0F5" letter-spacing="-1">Scrapeman</text>
+  <!-- Tagline -->
+  <text x="150" y="116" font-family="Geist Mono, ui-monospace, monospace" font-size="16" font-weight="400" fill="#9EA1A8" letter-spacing="0.5">The AI-native API Platform</text>
+  <!-- Orange accent beat -->
+  <rect x="148" y="124" width="12" height="2" fill="#FF6C37"/>
+</svg>

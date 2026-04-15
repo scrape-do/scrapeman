@@ -55,6 +55,7 @@ Thumbs.db
 
 # Claude / agent files that live per-machine
 .claude/sessions/
+.claude/worktrees/
 
 # Temp
 *.tmp
