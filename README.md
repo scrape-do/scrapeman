@@ -1,12 +1,16 @@
 <p align="center">
-  <img src="https://github.com/scrape-do.png" alt="scrape-do" width="96" height="96" />
+  <img src="assets/logos/scrapeman-mark.svg" alt="Scrapeman" width="96" height="96" />
 </p>
 
 <h1 align="center">Scrapeman</h1>
 
 <p align="center">
-  <strong>Postman-grade API client for every developer</strong><br/>
+  <strong>The AI-native API Platform</strong><br/>
   Local-first · git-friendly collections · built-in load testing · unlimited history
+</p>
+
+<p align="center">
+  <sub>by <a href="https://scrape.do">scrape-do</a></sub>
 </p>
 
 <p align="center">

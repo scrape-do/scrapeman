@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, session, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, nativeImage, session, shell } from 'electron';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { promises as fsp } from 'node:fs';
@@ -49,6 +49,21 @@ import {
 } from './git.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// Dev-mode icon path — packaged builds bake the icon into the .app bundle /
+// .exe / .AppImage via electron-builder and don't need runtime wiring, but
+// `pnpm dev` launches the Electron binary directly so we have to set the
+// dock/window icon ourselves or the generic Electron icon shows up.
+const devIconPath = join(__dirname, '../../build-resources/icon.png');
+const isDev = Boolean(process.env['ELECTRON_RENDERER_URL']);
+
+// Override the app name so the application menu, About panel, and various
+// macOS surfaces say "Scrapeman" instead of "Electron" when running the dev
+// binary. Packaged builds get the name from electron-builder.yml's
+// productName already; this is purely for `pnpm dev`. Must run before
+// app.whenReady().
+app.setName('Scrapeman');
+process.title = 'Scrapeman';
 const executor = new UndiciExecutor({
   autoHeaderEnv: {
     version: app.getVersion(),
@@ -90,6 +105,9 @@ function createWindow(): void {
     backgroundColor: '#FFFFFF',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
     trafficLightPosition: { x: 14, y: 14 },
+    // Dev-only: Windows / Linux window chrome picks up this icon. macOS uses
+    // app.dock.setIcon below instead.
+    ...(isDev ? { icon: devIconPath } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.mjs'),
       sandbox: false,
@@ -155,6 +173,11 @@ function installContentSecurityPolicy(): void {
 
 app.whenReady().then(() => {
   installContentSecurityPolicy();
+
+  if (isDev && process.platform === 'darwin' && app.dock) {
+    const image = nativeImage.createFromPath(devIconPath);
+    if (!image.isEmpty()) app.dock.setIcon(image);
+  }
 
   historyStore = new HistoryStore({ rootDir: app.getPath('userData') });
   cookieJar = new WorkspaceCookieJar({ rootDir: app.getPath('userData') });

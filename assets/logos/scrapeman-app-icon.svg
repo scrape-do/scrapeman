@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Scrapeman">
+  <!-- macOS Big Sur+ squircle: radius ≈ 22% of the canvas. -->
+  <rect x="8" y="8" width="1008" height="1008" rx="224" ry="224" fill="#ffffff" stroke="#e5e7eb" stroke-width="6"/>
+  <!-- Hookline mark, 64-unit coordinate space scaled ×11 and centered. -->
+  <g transform="translate(160 160) scale(11)">
+    <path d="M8 20 L40 20 Q52 20 52 34 Q52 46 40 46 Q30 46 30 36 L36 40" fill="none" stroke="#FF6C37" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

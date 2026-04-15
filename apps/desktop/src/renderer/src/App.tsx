@@ -144,9 +144,20 @@ export function App(): JSX.Element {
         style={{ paddingLeft: isMac ? 84 : 14, paddingRight: 14 }}
       >
         <div className="flex items-center gap-2">
-          <div className="flex h-5 w-5 items-center justify-center rounded bg-accent text-[11px] font-bold text-white">
-            S
-          </div>
+          <svg
+            viewBox="0 0 64 64"
+            className="h-6 w-6 text-accent"
+            aria-hidden="true"
+          >
+            <path
+              d="M8 20 L40 20 Q52 20 52 34 Q52 46 40 46 Q30 46 30 36 L36 40"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
           <div className="text-[13px] font-semibold text-ink-1">Scrapeman</div>
         </div>
         <div className="mx-4 h-3 w-px bg-line-strong" />
