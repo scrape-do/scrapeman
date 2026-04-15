@@ -31,8 +31,8 @@ describe('resolveString', () => {
     expect(resolveString('Bearer {{ token }}', ctx)).toBe('Bearer secret-token');
   });
 
-  it('leaves unknown variables untouched', () => {
-    expect(resolveString('{{unknown}}/path', ctx)).toBe('{{unknown}}/path');
+  it('replaces unknown variables with an empty string', () => {
+    expect(resolveString('{{unknown}}/path', ctx)).toBe('/path');
   });
 
   it('passes through strings with no variables', () => {
@@ -140,6 +140,20 @@ describe('resolveRequest', () => {
       type: 'json',
       content: '{"id":"42","key":"k_abc"}',
     });
+  });
+
+  it('drops undefined variables from URL and headers at send-time', () => {
+    const req: ScrapemanRequest = {
+      scrapeman: FORMAT_VERSION,
+      meta: { name: 'broken' },
+      method: 'GET',
+      url: '{{baseUrl}}/{{missing}}/end',
+      headers: { 'X-Key': '{{alsoMissing}}', 'X-Ok': '{{apiKey}}' },
+    };
+    const { request, unresolved } = resolveRequest(req, ctx);
+    expect(request.url).toBe('https://api.example.com//end');
+    expect(request.headers).toEqual({ 'X-Key': '', 'X-Ok': 'k_abc' });
+    expect(unresolved.sort()).toEqual(['alsoMissing', 'missing']);
   });
 
   it('reports unresolved variables aggregated from everywhere', () => {

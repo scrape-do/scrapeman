@@ -32,12 +32,15 @@ export interface ResolveOutcome {
 }
 
 export function resolveString(input: string, ctx: VariableContext): string {
-  return input.replace(VAR_PATTERN, (match, name: string) => {
+  return input.replace(VAR_PATTERN, (_match, name: string) => {
     const value = ctx.variables[name];
     if (value !== undefined) return value;
     const builtin = BUILTIN_VARIABLES[name];
     if (builtin) return builtin();
-    return match;
+    // Undefined variable: drop the token so the outgoing request does not
+    // contain a literal `{{var}}`. `findUnresolved` still reports it via
+    // resolveRequest so the UI can warn.
+    return '';
   });
 }
 
