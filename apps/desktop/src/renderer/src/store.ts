@@ -135,11 +135,20 @@ interface AppState {
 
   newTab: () => void;
   closeTab: (id: string) => void;
+  closeOtherTabs: (keepId: string) => void;
+  closeTabsToRight: (fromId: string) => void;
+  closeSavedTabs: () => void;
+  closeAllTabs: () => void;
   duplicateTab: (id: string) => void;
   setActiveTab: (id: string) => void;
   activateTabByIndex: (index: number) => void;
   reopenClosedTab: () => void;
   reorderTab: (fromId: string, toId: string) => void;
+
+  // Signal the Sidebar to expand ancestors of a file and scroll it into view.
+  revealInSidebarTick: number;
+  revealInSidebarPath: string | null;
+  revealInSidebar: (relPath: string) => void;
   openRequest: (relPath: string) => Promise<void>;
   saveActive: () => Promise<void>;
   saveActiveAs: (parentRelPath: string, name: string) => Promise<void>;
@@ -490,6 +499,8 @@ export const useAppStore = create<AppState>((set, get) => {
     focusUrlTick: 0,
     importCurlTick: 0,
     loadTestTick: 0,
+    revealInSidebarTick: 0,
+    revealInSidebarPath: null,
 
     loadRecents: async () => {
       const recents = await bridge.workspaceList();
@@ -550,6 +561,79 @@ export const useAppStore = create<AppState>((set, get) => {
       }
       set({ tabs: next, activeTabId: nextActive });
     },
+
+    // Bulk-close helpers snapshot every removed tab onto closedTabStack so
+    // ⌘⇧T reopen still works, then commit in one set() to avoid N renders.
+    closeOtherTabs: (keepId: string) => {
+      const { tabs } = get();
+      if (tabs.length <= 1) return;
+      const kept = tabs.find((t) => t.id === keepId);
+      if (!kept) return;
+      // Push in reverse so the rightmost closed tab pops first on ⌘⇧T
+      // (VS Code most-recent-first semantics).
+      for (let i = tabs.length - 1; i >= 0; i -= 1) {
+        const tab = tabs[i]!;
+        if (tab.id === keepId) continue;
+        closedTabStack.push({ tab, index: i });
+        if (closedTabStack.length > CLOSED_TAB_STACK_LIMIT) closedTabStack.shift();
+      }
+      set({ tabs: [kept], activeTabId: keepId });
+    },
+
+    closeTabsToRight: (fromId: string) => {
+      const { tabs, activeTabId } = get();
+      const idx = tabs.findIndex((t) => t.id === fromId);
+      if (idx < 0 || idx === tabs.length - 1) return;
+      for (let i = tabs.length - 1; i > idx; i -= 1) {
+        closedTabStack.push({ tab: tabs[i]!, index: i });
+        if (closedTabStack.length > CLOSED_TAB_STACK_LIMIT) closedTabStack.shift();
+      }
+      const next = tabs.slice(0, idx + 1);
+      const stillActive = next.some((t) => t.id === activeTabId);
+      set({
+        tabs: next,
+        activeTabId: stillActive ? activeTabId : fromId,
+      });
+    },
+
+    closeSavedTabs: () => {
+      const { tabs, activeTabId } = get();
+      const keepers: Tab[] = [];
+      const removed: Array<{ tab: Tab; index: number }> = [];
+      tabs.forEach((tab, index) => {
+        if (tab.dirty) {
+          keepers.push(tab);
+          return;
+        }
+        removed.push({ tab, index });
+      });
+      if (removed.length === 0) return;
+      for (let i = removed.length - 1; i >= 0; i -= 1) {
+        closedTabStack.push(removed[i]!);
+        if (closedTabStack.length > CLOSED_TAB_STACK_LIMIT) closedTabStack.shift();
+      }
+      const stillActive = keepers.some((t) => t.id === activeTabId);
+      set({
+        tabs: keepers,
+        activeTabId: stillActive ? activeTabId : (keepers[0]?.id ?? null),
+      });
+    },
+
+    closeAllTabs: () => {
+      const { tabs } = get();
+      if (tabs.length === 0) return;
+      for (let i = tabs.length - 1; i >= 0; i -= 1) {
+        closedTabStack.push({ tab: tabs[i]!, index: i });
+        if (closedTabStack.length > CLOSED_TAB_STACK_LIMIT) closedTabStack.shift();
+      }
+      set({ tabs: [], activeTabId: null });
+    },
+
+    revealInSidebar: (relPath: string) =>
+      set({
+        revealInSidebarPath: relPath,
+        revealInSidebarTick: get().revealInSidebarTick + 1,
+      }),
 
     activateTabByIndex: (index: number) => {
       const { tabs } = get();
