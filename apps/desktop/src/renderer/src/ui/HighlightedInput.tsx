@@ -67,6 +67,10 @@ export const HighlightedInput = forwardRef<HTMLInputElement, HighlightedInputPro
     useImperativeHandle(ref, () => inputRef.current as HTMLInputElement);
 
     const variables = useAvailableVariables();
+    const variableNames = useMemo(
+      () => new Set(variables.map((v) => v.name)),
+      [variables],
+    );
     const [auto, setAuto] = useState<AutocompleteState>(CLOSED_AUTOCOMPLETE);
     const [popoverRect, setPopoverRect] = useState<{
       top: number;
@@ -250,7 +254,7 @@ export const HighlightedInput = forwardRef<HTMLInputElement, HighlightedInputPro
           className={`pointer-events-none absolute inset-0 flex items-center overflow-hidden ${padding} ${baseInner} text-ink-1`}
         >
           <span className="block whitespace-pre">
-            {value.length > 0 ? renderHighlighted(value) : null}
+            {value.length > 0 ? renderHighlighted(value, variableNames) : null}
           </span>
         </div>
         <input
@@ -333,7 +337,10 @@ export const HighlightedInput = forwardRef<HTMLInputElement, HighlightedInputPro
   },
 );
 
-function renderHighlighted(text: string): ReactNode[] {
+function renderHighlighted(
+  text: string,
+  knownVariables: ReadonlySet<string>,
+): ReactNode[] {
   const parts: ReactNode[] = [];
   let last = 0;
   VAR_PATTERN.lastIndex = 0;
@@ -342,10 +349,19 @@ function renderHighlighted(text: string): ReactNode[] {
     if (match.index > last) {
       parts.push(text.slice(last, match.index));
     }
+    // Strip the `{{` `}}` and optional whitespace to match against the
+    // available-variables list. Unknown tokens render in the delete/red
+    // palette so users notice they will be sent as empty at request time.
+    const name = match[0].slice(2, -2).trim();
+    const isKnown = knownVariables.has(name);
+    const cls = isKnown
+      ? 'rounded-sm bg-accent-soft px-0.5 font-medium text-accent'
+      : 'rounded-sm bg-method-delete/10 px-0.5 font-medium text-method-delete';
     parts.push(
       <span
         key={`v-${match.index}`}
-        className="rounded-sm bg-accent-soft px-0.5 font-medium text-accent"
+        className={cls}
+        {...(isKnown ? {} : { title: 'undefined variable' })}
       >
         {match[0]}
       </span>,
