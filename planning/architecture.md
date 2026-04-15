@@ -49,7 +49,7 @@ updated: 2026-04-14
 │  - RequestExecutor interface                │
 │  - PostmanRuntimeAdapter (HTTP/1.x)         │
 │  - Http2Adapter (HTTP/2)                    │
-│  - ProxyResolver (incl. scrape-do mode)     │
+│  - ProxyResolver (incl. Scrape.do mode)     │
 │  - AuthResolver                             │
 │  - CookieStore                              │
 │  - CodegenAdapter (postman-code-generators) │
@@ -77,7 +77,7 @@ One request per file. YAML-like but with a header block for metadata and a body 
 
 ```
 meta:
-  name: Fetch product page via scrape-do
+  name: Fetch product page via Scrape.do
   method: GET
 
 url: https://api.scrape.do/?token={{token}}&url={{target}}&render=true
@@ -96,8 +96,8 @@ scrapeDo:
 
 Rationale: stable key order → clean diffs. No JSON (Postman v2.1 has ordering issues with objects).
 
-### D3: scrape-do native mode
-A first-class feature, not a plugin. When enabled on a request, the UI shows a scrape-do parameter panel and the URL is composed at send-time. Token stored as a secret variable. This is our differentiator — must be polished.
+### D3: Scrape.do native mode
+A first-class feature, not a plugin. When enabled on a request, the UI shows a Scrape.do parameter panel and the URL is composed at send-time. Token stored as a secret variable. This is our differentiator — must be polished.
 
 ### D4: No script sandbox in v1
 Explicit non-goal. Reduces scope by ~30%. We lose pre-request dynamic behavior, but variable substitution + request chaining (v1.5) covers 80% of use cases in our context.

@@ -12,7 +12,7 @@ Snapshot of where we left off so the next session can pick up cold.
 ## Quick resume
 
 ```bash
-cd /Users/mert/Developer/scrapeman
+cd ~/Developer/scrapeman
 claude --resume         # picks last Claude Code session
 # or start fresh:
 claude

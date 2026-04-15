@@ -11,7 +11,7 @@ updated: 2026-04-14
 
 **Slogan:** *The HTTP client built for scraping engineers.*
 
-Scrapeman'i diğerlerinden ayıran tek bir cümle: Postman'ın ücretli özelliklerini ücretsiz verir, Bruno'nun doğru modelini (local-first, git-friendly) alır, Postman'ın yapamadığı şeyleri (SSE, büyük response, proxy-first, scrape.do entegrasyonu) yapar.
+Scrapeman'i diğerlerinden ayıran tek bir cümle: Postman'ın ücretli özelliklerini ücretsiz verir, Bruno'nun doğru modelini (local-first, git-friendly) alır, Postman'ın yapamadığı şeyleri (SSE, büyük response, proxy-first, Scrape.do entegrasyonu) yapar.
 
 Landing, bir ürün satış sayfası değil — bir **manifestodur**. "Biz neden varız ve diğerleri neden yetmez" sorusuna güçlü, kanıtlı ve görsel cevap verir.
 
@@ -116,7 +116,7 @@ Her kart scroll'da slide-up + fade animasyonu (intersection observer, stagger).
 **Kart 1 — Proxy-first**
 İkon: Network/Globe (Lucide)
 ```
-Built for scrape.do
+Built for Scrape.do
 One toggle. Residential proxy, JS rendering,
 geo targeting — directly from the request builder.
 No curl hacks.
@@ -168,7 +168,7 @@ Everything Postman puts behind a paywall.
 
 Animasyonlu tabs: `Postman` / `Bruno` / `Scrapeman`
 
-Her tab'da aynı işlem (örn: scrape-do proxy açma) nasıl yapılıyor gösterimi.
+Her tab'da aynı işlem (örn: Scrape.do proxy açma) nasıl yapılıyor gösterimi.
 - Postman: 6 adım, plan gerekli → 😤
 - Bruno: "Not supported" → 😤  
 - Scrapeman: 1 toggle → 🎉
@@ -256,7 +256,7 @@ Tüm feature karşılaştırması, kategori bazlı:
 - Local-first: No vs Yes
 
 **Scraping Features**
-- Proxy configuration: Basic vs Advanced (SOCKS5, scrape.do)
+- Proxy configuration: Basic vs Advanced (SOCKS5, Scrape.do)
 - SSE streaming: Basic vs Buffered, crash-proof
 - Large response handling: Crashes (>10MB) vs Truncated for UI, full for scripts
 - Anti-bot detection: No vs Yes (Cloudflare, CAPTCHA signals)
@@ -366,7 +366,7 @@ Our test: oauth2.test.ts — "concurrent dedup: 5 parallel → 1 token call"
 |---|---|---|
 | Local-first | ✅ | ✅ |
 | Git-friendly YAML | ✅ | ✅ |
-| scrape.do integration | ❌ | ✅ |
+| Scrape.do integration | ❌ | ✅ |
 | SSE streaming (correct) | ❌ Bug #7083 | ✅ |
 | Large response safe | ❌ Bug #7624 | ✅ |
 | Cookie persistence | ❌ Bug #6903 | ✅ |
@@ -613,7 +613,7 @@ Her sayfa için:
 ```html
 <!-- Ana sayfa -->
 <title>Scrapeman — HTTP Client for Scraping Engineers</title>
-<meta name="description" content="Local-first HTTP client with scrape.do integration, proxy-first design, unlimited history. Free forever. No account required.">
+<meta name="description" content="Local-first HTTP client with Scrape.do integration, proxy-first design, unlimited history. Free forever. No account required.">
 
 <!-- vs/postman -->
 <title>Scrapeman vs Postman — Local-first, Free, No Account</title>
@@ -632,8 +632,8 @@ Open Graph: Uygulama screenshot'lu dark background, 1200×630.
 ## Başlangıç Komutu
 
 ```bash
-mkdir -p /Users/mert/Developer/scrapeman-landing
-cd /Users/mert/Developer/scrapeman-landing
+mkdir -p ~/Developer/scrapeman-landing
+cd ~/Developer/scrapeman-landing
 npm create astro@latest . -- --template minimal --typescript strict --install
 npx astro add tailwind
 npm install motion

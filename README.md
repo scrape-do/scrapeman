@@ -10,20 +10,36 @@
 </p>
 
 <p align="center">
-  <sub>by <a href="https://scrape.do">scrape-do</a></sub>
+  <sub>by <a href="https://scrape.do">Scrape.do</a></sub>
 </p>
 
 <p align="center">
-  <a href="https://scrape.do"><img alt="Built for scrape-do" src="https://img.shields.io/badge/built%20for-scrape--do-FF6C37?style=for-the-badge&labelColor=0b0d10" /></a>
+  <a href="https://scrape.do"><img alt="Built by Scrape.do" src="https://img.shields.io/badge/built%20by-Scrape.do-FF6C37?style=for-the-badge&labelColor=0b0d10" /></a>
   <a href="LICENSE"><img alt="License: Apache 2.0" src="https://img.shields.io/badge/license-Apache%202.0-0CBB52?style=for-the-badge" /></a>
   <img alt="Electron" src="https://img.shields.io/badge/electron-33-47848F?style=for-the-badge&logo=electron&logoColor=white" />
   <img alt="TypeScript" src="https://img.shields.io/badge/typescript-5-3178C6?style=for-the-badge&logo=typescript&logoColor=white" />
-  <img alt="Tests" src="https://img.shields.io/badge/tests-159%20passing-0CBB52?style=for-the-badge" />
+  <img alt="Tests" src="https://img.shields.io/badge/tests-196%20passing-0CBB52?style=for-the-badge" />
 </p>
 
 ---
 
-**Scrapeman** is an API client for every developer who wants Postman's paid features for free. It keeps everything on your machine, treats your filesystem + git as the source of truth, and ships first-class proxy support for the scraping use case.
+## About
+
+**Scrapeman** is the AI-native API platform — an open-source desktop API client built by **Scrape.do** to give every developer Postman's paid features for free. It keeps everything on your machine, treats your filesystem + git as the source of truth, and ships first-class proxy support so the scraping use case is a one-toggle affair instead of a side plugin.
+
+Apache 2.0, runs offline on macOS, Windows, and Linux. No account. No cloud sync. No paywall.
+
+## Useful resources
+
+The full marketing site lives at **[scrapeman.app](https://scrapeman.app)** and breaks the project down by what it replaces and how:
+
+- **[scrapeman.app](https://scrapeman.app/)** — the pitch in 30 seconds
+- **[/features](https://scrapeman.app/features)** — every feature broken down into one-liners
+- **[/postman-alternative](https://scrapeman.app/postman-alternative)** — Postman caps free history at 25 requests, locks OAuth2 behind $19/seat, and syncs collections to its cloud. Scrapeman ships every paid feature for free
+- **[/bruno-alternative](https://scrapeman.app/bruno-alternative)** — Bruno is great for git-friendly collections but has open bugs blocking real work (SSE hangs #7083, large-response crashes #7624, cookies dropping #6903, OAuth2 race #7565). Scrapeman fixes all four
+- **[/insomnia-alternative](https://scrapeman.app/insomnia-alternative)** — Kong acquired Insomnia in 2023 and forced cloud sync. Scrapeman is the Apache 2.0 alternative no acquisition can change
+- **[/hoppscotch-alternative](https://scrapeman.app/hoppscotch-alternative)** — Hoppscotch is web-based. Scrapeman is a native desktop app with git-friendly YAML, native proxy, a built-in load runner, and every auth flow free
+- **[/yaak-alternative](https://scrapeman.app/yaak-alternative)** — Yaak is a great desktop client. Scrapeman is the Apache 2.0 alternative with native Scrape.do proxy support, a built-in load runner, and the backing of a funded company
 
 ## Why not just use Postman / Bruno / Insomnia?
 
@@ -32,7 +48,7 @@
 | Unlimited history | ❌ (paid) | ❌ | ❌ (cloud) | ✅ local JSONL |
 | Unlimited env vars | ❌ (paid) | ✅ | ✅ | ✅ |
 | Unlimited collection runs | ❌ (paid) | ✅ | ✅ (paid) | ✅ (load runner) |
-| Native scrape-do proxy mode | ❌ | ❌ | ❌ | ✅ first-class |
+| Native Scrape.do proxy mode | ❌ | ❌ | ❌ | ✅ first-class |
 | Local-first / no cloud sync | ❌ | ✅ | ❌ | ✅ |
 | Git-friendly file format | ❌ | ✅ | ❌ | ✅ YAML, one file per req |
 | HTTP/2 toggle | ✅ | ❌ | ❌ | ✅ (undici `allowH2`) |
@@ -55,7 +71,7 @@
 - URL bar with `{{var}}` syntax highlighting (overlay technique)
 - **Params** tab with two-way URL ↔ params sync
 - **Headers** / **Auth** / **Body** / **Settings** / **Code** tabs
-- Per-request settings: proxy, timeout, redirect, TLS, HTTP version, scrape-do native mode
+- Per-request settings: proxy, timeout, redirect, TLS, HTTP version, Scrape.do native mode
 - `{{var}}` autocomplete popover — env variables + built-in dynamics (`{{random}}`, `{{timestamp}}`, `{{isoDate}}`, `{{randomInt}}`)
 - Right-click cell context menu: URL/Base64 encode-decode, copy, paste, clear
 
@@ -69,7 +85,7 @@
 - Per-workspace environments stored as `.env.yaml` files under `.scrapeman/environments/`
 - Secret flag with masked display
 - Active environment persisted in workspace state
-- `{{var}}` resolution across URL, params, headers, body, auth, proxy, scrape-do fields
+- `{{var}}` resolution across URL, params, headers, body, auth, proxy, Scrape.do fields
 - Built-in dynamic variables fresh per send: `{{random}}`, `{{uuid}}`, `{{timestamp}}`, `{{timestampSec}}`, `{{isoDate}}`, `{{randomInt}}`
 
 ### Collections & file format
@@ -126,7 +142,7 @@
 - Resizable sidebar + history panel
 - Dark mode with CSS variable tokens, system preference fallback
 - Cross-platform keyboard shortcuts: ⌘T new tab, ⌘W close, ⌘↵ send, ⌘S save (with draft save-as flow)
-- Postman-light design system, Inter + JetBrains Mono fonts
+- Postman-light design system, Inter + Geist Mono fonts
 
 ## Install
 
@@ -233,7 +249,7 @@ pnpm -r build
 - **RequestExecutor interface** is the seam between HTTP engine and the rest of the app. Only `UndiciExecutor` exists today; HTTP/3 or a custom adapter could slot in without UI changes.
 - **Main process execution pipeline** (order matters):
   1. `resolveRequest` — substitute `{{var}}` including built-in dynamics
-  2. `composeScrapeDoRequest` — rewrite URL to api.scrape.do if native mode on
+  2. `composeScrapeDoRequest` — rewrite URL to `api.scrape.do` if Scrape.do native mode is on
   3. `signAwsSigV4` — sign if auth type is SigV4
   4. `OAuth2Client.getToken` — fetch + cache bearer if auth type is OAuth2
   5. `applyAuth` — inject Authorization / API Key headers
@@ -250,7 +266,7 @@ See [`planning/architecture.md`](planning/architecture.md) for all key decisions
 
 Live in [`planning/milestones.yaml`](planning/milestones.yaml) with task-level detail in [`planning/tasks.yaml`](planning/tasks.yaml). High-level:
 
-- **M0–M6** ✅ Scaffold, HTTP engine, collections, env vars, auth, proxy + scrape-do, cookie jar + HTTP/2
+- **M0–M6** ✅ Scaffold, HTTP engine, collections, env vars, auth, proxy + Scrape.do, cookie jar + HTTP/2
 - **M7** 🔵 Full code generation (20+ langs via postman-code-generators)
 - **M8** 🟡 UX polish — dark mode ✅, response search ✅, JSON tree ✅, timings ✅, virtual-scroll history + large-response streaming pending
 - **M9** 🔵 Import/export (Postman v2.1 / Bruno / Insomnia / HAR)
@@ -264,13 +280,13 @@ Feature parity tracking vs Postman in [`planning/postman-parity.md`](planning/po
 1. **Local-first.** Nothing ever leaves your machine unless you explicitly commit collections to a git remote. History is never synced.
 2. **Git-friendly.** Collections live as human-readable YAML with stable key order. Secrets (history, cookies, state) live in app data dir and never touch the workspace folder.
 3. **Postman-grade polish.** Feel fast, feel stable. Radix primitives, CSS-variable theming, keyboard-accessible everywhere.
-4. **scrape-do native.** Proxy-first mindset. `{{var}}` + per-request proxy + load runner are the things our users need daily.
+4. **Scrape.do native.** Proxy-first mindset. `{{var}}` + per-request proxy + load runner are the things our users need daily.
 
 ## License
 
-Licensed under the [Apache License 2.0](LICENSE). Copyright 2026 scrape-do.
+Licensed under the [Apache License 2.0](LICENSE). Copyright 2026 Scrape.do.
 
-The name "Scrapeman" and the scrape-do logo are trademarks of scrape-do and
+The name "Scrapeman" and the Scrape.do logo are trademarks of Scrape.do and
 are not covered by the license — see Section 6 of the Apache License.
 
 ## Contributing
@@ -281,7 +297,7 @@ Issues and PRs welcome. See [`.github/pull_request_template.md`](.github/pull_re
 
 <p align="center">
   Made with ❤️, ☕ and a lot of <strong>vibe-coding</strong> by humans + AI<br/>
-  <sub>at <a href="https://scrape.do">scrape.do</a> — the scraping infrastructure of the internet</sub>
+  <sub>at <a href="https://scrape.do">Scrape.do</a> — the scraping infrastructure of the internet</sub>
 </p>
 
 <p align="center">
