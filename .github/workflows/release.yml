@@ -106,3 +106,75 @@ jobs:
           files: release/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  bump-cask:
+    name: Bump Homebrew cask
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tap repo
+        uses: actions/checkout@v4
+        with:
+          repository: scrape-do/homebrew-scrapeman
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+
+      - name: Compute version + SHA256s
+        id: hashes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name || inputs.tag }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+          mkdir -p dmgs
+          gh release download "$TAG" \
+            --repo "${{ github.repository }}" \
+            --pattern "Scrapeman-${VERSION}-arm64.dmg" \
+            --pattern "Scrapeman-${VERSION}-x64.dmg" \
+            --dir dmgs
+
+          ARM_SHA=$(shasum -a 256 "dmgs/Scrapeman-${VERSION}-arm64.dmg" | awk '{print $1}')
+          INTEL_SHA=$(shasum -a 256 "dmgs/Scrapeman-${VERSION}-x64.dmg" | awk '{print $1}')
+          echo "arm=$ARM_SHA" >> "$GITHUB_OUTPUT"
+          echo "intel=$INTEL_SHA" >> "$GITHUB_OUTPUT"
+
+          echo "version=$VERSION arm=$ARM_SHA intel=$INTEL_SHA"
+
+      - name: Patch cask
+        working-directory: tap
+        env:
+          VERSION: ${{ steps.hashes.outputs.version }}
+          ARM_SHA: ${{ steps.hashes.outputs.arm }}
+          INTEL_SHA: ${{ steps.hashes.outputs.intel }}
+        run: |
+          set -euo pipefail
+          # Update the version line, then the on_arm sha256 (between
+          # `on_arm do` and `on_intel do`), then the on_intel sha256
+          # (between `on_intel do` and the next bare `end`).
+          sed -i \
+            -e "s/^  version \".*\"/  version \"$VERSION\"/" \
+            -e "/on_arm do/,/on_intel do/ s/^    sha256 \".*\"/    sha256 \"$ARM_SHA\"/" \
+            -e "/on_intel do/,/^  end\$/ s/^    sha256 \".*\"/    sha256 \"$INTEL_SHA\"/" \
+            Casks/scrapeman.rb
+
+          echo '--- patched cask ---'
+          cat Casks/scrapeman.rb
+
+      - name: Commit and push
+        working-directory: tap
+        env:
+          VERSION: ${{ steps.hashes.outputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet; then
+            echo "Cask already at v$VERSION, nothing to push."
+            exit 0
+          fi
+          git add Casks/scrapeman.rb
+          git commit -m "chore(cask): bump scrapeman to v$VERSION"
+          git push
