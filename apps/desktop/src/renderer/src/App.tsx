@@ -32,6 +32,9 @@ export function App(): JSX.Element {
   const send = useAppStore((s) => s.send);
   const saveOrPrompt = useAppStore((s) => s.saveOrPrompt);
   const focusUrl = useAppStore((s) => s.focusUrl);
+  const toggleHiddenRequest = useAppStore((s) => s.toggleHiddenRequest);
+  const tabs = useAppStore((s) => s.tabs);
+  const isRepo = useAppStore((s) => s.gitStatus?.isRepo === true);
 
   useEffect(() => {
     void loadRecents();
@@ -46,7 +49,10 @@ export function App(): JSX.Element {
   useEffect(() => {
     const unsubscribe = bridge.onWorkspaceEvent((event) => {
       if (!workspace || event.workspacePath !== workspace.path) return;
-      if (event.type === 'tree-changed') void refreshTree();
+      if (event.type === 'tree-changed') {
+        void refreshTree();
+        void useAppStore.getState().loadHiddenRequests();
+      }
       if (event.type === 'environments-changed') void loadEnvironments();
     });
     return unsubscribe;
@@ -84,6 +90,20 @@ export function App(): JSX.Element {
               description: 'Reopen closed tab',
               handler: () => reopenClosedTab(),
             },
+            ...(isRepo
+              ? [
+                  {
+                    combo: 'mod+shift+h',
+                    description: 'Toggle sync with git',
+                    handler: (): void => {
+                      const active = tabs.find((t) => t.id === activeTabId);
+                      if (active?.kind === 'file' && active.relPath) {
+                        void toggleHiddenRequest(active.relPath);
+                      }
+                    },
+                  },
+                ]
+              : []),
             ...([1, 2, 3, 4, 5, 6, 7, 8, 9] as const).map((n) => ({
               combo: `mod+${n}` as const,
               description: `Switch to tab ${n}`,
@@ -101,6 +121,9 @@ export function App(): JSX.Element {
       send,
       saveOrPrompt,
       focusUrl,
+      toggleHiddenRequest,
+      tabs,
+      isRepo,
       paletteOpen,
     ],
   );

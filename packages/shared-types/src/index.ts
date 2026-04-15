@@ -506,4 +506,7 @@ export interface ScrapemanBridge {
   gitCommit: (workspacePath: string, message: string) => Promise<void>;
   gitPush: (workspacePath: string) => Promise<GitOpResult>;
   gitPull: (workspacePath: string) => Promise<GitOpResult>;
+  gitLocalHiddenList: (workspacePath: string) => Promise<string[]>;
+  gitLocalHide: (workspacePath: string, relPath: string) => Promise<void>;
+  gitLocalUnhide: (workspacePath: string, relPath: string) => Promise<void>;
 }

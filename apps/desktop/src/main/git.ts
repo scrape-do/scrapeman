@@ -5,7 +5,7 @@
 
 import { execFile } from 'node:child_process';
 import { promises as fsp } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { parsePorcelainStatus } from '@scrapeman/http-core';
 import type {
@@ -238,6 +238,146 @@ export async function gitCommit(
     throw new GitError('Commit message is required', '', null);
   }
   await run(workspacePath, ['commit', '-m', message]);
+}
+
+// Local-only hide feature (issue #42): mark a request as ignored via
+// .git/info/exclude so it stays on disk for the current user but is never
+// synced via .gitignore (which itself would be tracked). Entries live in a
+// marker block so we can list and unhide them cleanly without clobbering
+// anything the user has in the rest of the file.
+const EXCLUDE_BEGIN = '# >>> scrapeman:hidden (managed — do not edit)';
+const EXCLUDE_END = '# <<< scrapeman:hidden';
+
+async function gitDir(workspacePath: string): Promise<string> {
+  const { stdout } = await run(workspacePath, ['rev-parse', '--git-dir']);
+  const dir = stdout.trim();
+  return dir.startsWith('/') ? dir : join(workspacePath, dir);
+}
+
+async function readExcludeFile(
+  workspacePath: string,
+): Promise<{ path: string; lines: string[] }> {
+  const path = join(await gitDir(workspacePath), 'info', 'exclude');
+  try {
+    const text = await fsp.readFile(path, 'utf8');
+    return { path, lines: text.split('\n') };
+  } catch {
+    return { path, lines: [] };
+  }
+}
+
+function parseHiddenBlock(lines: string[]): {
+  before: string[];
+  hidden: string[];
+  after: string[];
+} {
+  const begin = lines.indexOf(EXCLUDE_BEGIN);
+  if (begin < 0) return { before: lines, hidden: [], after: [] };
+  const end = lines.indexOf(EXCLUDE_END, begin + 1);
+  if (end < 0) return { before: lines, hidden: [], after: [] };
+  const hidden: string[] = [];
+  for (let i = begin + 1; i < end; i += 1) {
+    const line = lines[i]!.trim();
+    if (!line || line.startsWith('#')) continue;
+    hidden.push(line.startsWith('/') ? line.slice(1) : line);
+  }
+  return {
+    before: lines.slice(0, begin),
+    hidden,
+    after: lines.slice(end + 1),
+  };
+}
+
+function serializeExcludeFile(
+  before: string[],
+  hidden: string[],
+  after: string[],
+): string {
+  const pieces: string[] = [];
+  if (before.length > 0) pieces.push(before.join('\n').replace(/\n+$/, ''));
+  if (hidden.length > 0) {
+    const block = [EXCLUDE_BEGIN, ...hidden.map((p) => `/${p}`), EXCLUDE_END];
+    pieces.push(block.join('\n'));
+  }
+  if (after.length > 0) pieces.push(after.join('\n').replace(/^\n+/, ''));
+  return pieces.filter((p) => p.length > 0).join('\n\n') + '\n';
+}
+
+// "Whatever appears in git is unhidden": if any entry in our managed block
+// is currently tracked by git (e.g. the user ran `git add` manually, or we
+// failed to `rm --cached` earlier), drop it from the exclude file and
+// report it as not-hidden. This makes hide/unhide self-consistent with the
+// index — the only source of truth that matters for sync.
+export async function gitLocalHiddenList(
+  workspacePath: string,
+): Promise<string[]> {
+  if (!(await isInsideWorkTree(workspacePath))) return [];
+  const { path, lines } = await readExcludeFile(workspacePath);
+  const { before, hidden, after } = parseHiddenBlock(lines);
+  if (hidden.length === 0) return [];
+
+  const tracked = new Set<string>();
+  try {
+    const { stdout } = await run(workspacePath, [
+      'ls-files',
+      '-z',
+      '--',
+      ...hidden,
+    ]);
+    for (const entry of stdout.split('\0')) {
+      if (entry) tracked.add(entry);
+    }
+  } catch {
+    // ls-files shouldn't fail, but if it does treat nothing as tracked.
+  }
+
+  const stillHidden = hidden.filter((p) => !tracked.has(p));
+  if (stillHidden.length !== hidden.length) {
+    await fsp.writeFile(
+      path,
+      serializeExcludeFile(before, stillHidden, after),
+      'utf8',
+    );
+  }
+  return stillHidden;
+}
+
+export async function gitLocalHide(
+  workspacePath: string,
+  relPath: string,
+): Promise<void> {
+  if (!(await isInsideWorkTree(workspacePath))) {
+    throw new GitError(
+      'Hiding requires a git repository. Run `git init` in this workspace first.',
+      '',
+      null,
+    );
+  }
+  const { path, lines } = await readExcludeFile(workspacePath);
+  const { before, hidden, after } = parseHiddenBlock(lines);
+  if (!hidden.includes(relPath)) hidden.push(relPath);
+  await fsp.mkdir(dirname(path), { recursive: true });
+  await fsp.writeFile(path, serializeExcludeFile(before, hidden, after), 'utf8');
+
+  // If the file is already tracked, remove it from the index so the hide
+  // actually takes effect. `--cached` leaves the working-tree file alone.
+  try {
+    await run(workspacePath, ['rm', '--cached', '--quiet', '--', relPath]);
+  } catch {
+    // Not tracked — nothing to do.
+  }
+}
+
+export async function gitLocalUnhide(
+  workspacePath: string,
+  relPath: string,
+): Promise<void> {
+  if (!(await isInsideWorkTree(workspacePath))) return;
+  const { path, lines } = await readExcludeFile(workspacePath);
+  const { before, hidden, after } = parseHiddenBlock(lines);
+  const next = hidden.filter((p) => p !== relPath);
+  if (next.length === hidden.length) return;
+  await fsp.writeFile(path, serializeExcludeFile(before, next, after), 'utf8');
 }
 
 export async function gitPush(

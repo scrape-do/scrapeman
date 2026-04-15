@@ -9,6 +9,7 @@ import {
   ContextMenuTrigger,
 } from '../ui/ContextMenu.js';
 import { ConfirmDialog, PromptDialog } from '../ui/Dialog.js';
+import { EyeOffIcon } from '../ui/EyeOffIcon.js';
 import { HistoryPanel } from './HistoryPanel.js';
 import { SourceControlPanel } from './SourceControlPanel.js';
 import { SplitPane } from './SplitPane.js';
@@ -56,6 +57,8 @@ export function Sidebar(): JSX.Element {
   const deleteNode = useAppStore((s) => s.deleteNode);
   const moveNode = useAppStore((s) => s.moveNode);
   const gitStatus = useAppStore((s) => s.gitStatus);
+  const hiddenRequests = useAppStore((s) => s.hiddenRequests);
+  const toggleHiddenRequest = useAppStore((s) => s.toggleHiddenRequest);
   const view = useAppStore((s) => s.sidebarView);
   const setView = useAppStore((s) => s.setSidebarView);
   const revealTick = useAppStore((s) => s.revealInSidebarTick);
@@ -147,6 +150,8 @@ export function Sidebar(): JSX.Element {
           onPick={() => void pickAndOpenWorkspace()}
           root={root}
           gitStatusByPath={gitStatusByPath}
+          hiddenRequests={hiddenRequests}
+          onToggleHidden={(relPath) => void toggleHiddenRequest(relPath)}
           setDialog={setDialog}
           selectedFolder={selectedFolder}
           onSelectFolder={setSelectedFolder}
@@ -215,6 +220,8 @@ interface FilesViewProps {
   onPick: () => void;
   root: NonNullable<ReturnType<typeof useAppStore.getState>['root']>;
   gitStatusByPath: Map<string, GitFileChangeStatus>;
+  hiddenRequests: Set<string>;
+  onToggleHidden: (relPath: string) => void;
   setDialog: (dialog: DialogState) => void;
   selectedFolder: string;
   onSelectFolder: (relPath: string) => void;
@@ -230,6 +237,8 @@ function FilesView({
   onPick,
   root,
   gitStatusByPath,
+  hiddenRequests,
+  onToggleHidden,
   setDialog,
   selectedFolder,
   onSelectFolder,
@@ -308,6 +317,8 @@ function FilesView({
                     node={child}
                     depth={0}
                     gitStatusByPath={gitStatusByPath}
+                    hiddenRequests={hiddenRequests}
+                    onToggleHidden={onToggleHidden}
                     selectedFolder={selectedFolder}
                     onSelectFolder={onSelectFolder}
                     onMoveRequest={onMoveRequest}
@@ -338,6 +349,8 @@ interface TreeNodeProps {
   node: CollectionNode;
   depth: number;
   gitStatusByPath: Map<string, GitFileChangeStatus>;
+  hiddenRequests: Set<string>;
+  onToggleHidden: (relPath: string) => void;
   selectedFolder: string;
   onSelectFolder: (relPath: string) => void;
   onMoveRequest: (relPath: string, newParent: string) => void;
@@ -354,6 +367,8 @@ function TreeNode({
   node,
   depth,
   gitStatusByPath,
+  hiddenRequests,
+  onToggleHidden,
   selectedFolder,
   onSelectFolder,
   onMoveRequest,
@@ -402,6 +417,7 @@ function TreeNode({
   const tabs = useAppStore((s) => s.tabs);
   const activeTabId = useAppStore((s) => s.activeTabId);
   const openRequest = useAppStore((s) => s.openRequest);
+  const isRepo = useAppStore((s) => s.gitStatus?.isRepo === true);
 
   const fileTab =
     node.kind === 'request'
@@ -409,6 +425,7 @@ function TreeNode({
       : null;
   const dirty = fileTab?.dirty === true;
   const active = fileTab !== null && fileTab.id === activeTabId;
+  const hidden = node.kind === 'request' && hiddenRequests.has(node.relPath);
   const indent = 10 + depth * 14;
 
   if (node.kind === 'folder') {
@@ -485,6 +502,8 @@ function TreeNode({
               node={child}
               depth={depth + 1}
               gitStatusByPath={gitStatusByPath}
+              hiddenRequests={hiddenRequests}
+              onToggleHidden={onToggleHidden}
               selectedFolder={selectedFolder}
               onSelectFolder={onSelectFolder}
               onMoveRequest={onMoveRequest}
@@ -534,7 +553,15 @@ function TreeNode({
           >
             {node.method.slice(0, 6)}
           </span>
-          <span className="flex-1 truncate">{node.name}</span>
+          <span className={`flex-1 truncate ${hidden ? 'italic opacity-60' : ''}`}>
+            {node.name}
+          </span>
+          {hidden && (
+            <EyeOffIcon
+              className="h-3.5 w-3.5 text-ink-3"
+              title="Sync: off (local only, not pushed to git)"
+            />
+          )}
           {(() => {
             const gitStatus =
               node.kind === 'request'
@@ -563,6 +590,14 @@ function TreeNode({
           Open
         </ContextMenuItem>
         <ContextMenuSeparator />
+        {isRepo && (
+          <>
+            <ContextMenuItem onSelect={() => onToggleHidden(node.relPath)}>
+              {hidden ? 'Start syncing to git' : 'Stop syncing to git'}
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+          </>
+        )}
         <ContextMenuItem onSelect={() => onRename(node.relPath, node.name)}>
           Rename
         </ContextMenuItem>

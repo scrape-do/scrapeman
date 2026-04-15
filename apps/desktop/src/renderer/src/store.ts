@@ -208,6 +208,13 @@ interface AppState {
   commitChanges: (message: string) => Promise<void>;
   gitPush: () => Promise<void>;
   gitPull: () => Promise<void>;
+
+  // Local-hide (issue #42): requests the user has hidden from git sync via
+  // .git/info/exclude. Scoped per workspace; reloaded whenever the tree or
+  // git status refreshes.
+  hiddenRequests: Set<string>;
+  loadHiddenRequests: () => Promise<void>;
+  toggleHiddenRequest: (relPath: string) => Promise<void>;
 }
 
 function freshHeader(): HeaderRow {
@@ -493,6 +500,7 @@ export const useAppStore = create<AppState>((set, get) => {
     gitLoaded: false,
     gitError: null,
     gitBusy: false,
+    hiddenRequests: new Set<string>(),
     sidebarView: 'files',
     setSidebarView: (view) => set({ sidebarView: view }),
     saveDialogOpen: false,
@@ -525,11 +533,13 @@ export const useAppStore = create<AppState>((set, get) => {
         gitStatus: null,
         gitLoaded: false,
         gitError: null,
+        hiddenRequests: new Set<string>(),
       });
       await get().loadRecents();
       await get().loadEnvironments();
       await get().loadHistory();
       await get().loadGitStatus();
+      await get().loadHiddenRequests();
     },
 
     refreshTree: async () => {
@@ -1334,6 +1344,37 @@ export const useAppStore = create<AppState>((set, get) => {
       }
       await get().loadGitStatus();
       set({ gitBusy: false, gitError: actionError });
+    },
+
+    loadHiddenRequests: async () => {
+      const workspace = get().workspace;
+      if (!workspace) {
+        set({ hiddenRequests: new Set<string>() });
+        return;
+      }
+      try {
+        const list = await bridge.gitLocalHiddenList(workspace.path);
+        set({ hiddenRequests: new Set(list) });
+      } catch {
+        set({ hiddenRequests: new Set<string>() });
+      }
+    },
+
+    toggleHiddenRequest: async (relPath: string) => {
+      const workspace = get().workspace;
+      if (!workspace) return;
+      const current = get().hiddenRequests;
+      try {
+        if (current.has(relPath)) {
+          await bridge.gitLocalUnhide(workspace.path, relPath);
+        } else {
+          await bridge.gitLocalHide(workspace.path, relPath);
+        }
+        await get().loadHiddenRequests();
+        await get().loadGitStatus();
+      } catch (err) {
+        set({ gitError: err instanceof Error ? err.message : String(err) });
+      }
     },
   };
 });
