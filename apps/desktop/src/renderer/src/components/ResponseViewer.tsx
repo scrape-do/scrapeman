@@ -46,6 +46,12 @@ export function ResponseViewer(): JSX.Element {
   });
   const [tab, setTab] = useState<Tab>('body');
 
+  const focusSearchTick = useAppStore((s) => s.focusSearchTick);
+  useEffect(() => {
+    if (focusSearchTick === 0) return;
+    setTab('body');
+  }, [focusSearchTick]);
+
   if (!execution) {
     return (
       <EmptyState icon="↵" title="No tab" description="Open or create a request first." />
@@ -255,7 +261,15 @@ function BodyPanel({ response }: { response: ExecutedResponse }): JSX.Element {
   }, [matches.length]);
 
   const searchable_supported = mode === 'raw' || mode === 'pretty';
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const activeMatchRef = useRef<HTMLElement | null>(null);
+
+  const focusSearchTick = useAppStore((s) => s.focusSearchTick);
+  useEffect(() => {
+    if (focusSearchTick === 0) return;
+    searchInputRef.current?.focus();
+    searchInputRef.current?.select();
+  }, [focusSearchTick]);
 
   useEffect(() => {
     if (activeMatchRef.current) {
@@ -280,6 +294,7 @@ function BodyPanel({ response }: { response: ExecutedResponse }): JSX.Element {
 
         {searchable_supported && (
           <SearchBox
+            inputRef={searchInputRef}
             value={search}
             onChange={setSearch}
             matchCount={matches.length}
@@ -326,6 +341,7 @@ function BodyPanel({ response }: { response: ExecutedResponse }): JSX.Element {
 }
 
 function SearchBox({
+  inputRef,
   value,
   onChange,
   matchCount,
@@ -333,6 +349,7 @@ function SearchBox({
   onPrev,
   onNext,
 }: {
+  inputRef?: React.Ref<HTMLInputElement>;
   value: string;
   onChange: (value: string) => void;
   matchCount: number;
@@ -343,6 +360,7 @@ function SearchBox({
   return (
     <div className="ml-3 flex items-center gap-1 rounded-md border border-line bg-bg-canvas pl-2 pr-1 focus-within:border-accent focus-within:shadow-focus">
       <input
+        ref={inputRef}
         type="text"
         value={value}
         placeholder="Find in body"
