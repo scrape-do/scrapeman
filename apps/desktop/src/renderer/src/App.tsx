@@ -15,6 +15,7 @@ import { bridge } from './bridge.js';
 import { usePlatform } from './hooks/usePlatform.js';
 import { useShortcuts, type Shortcut } from './hooks/useShortcuts.js';
 import { useTheme } from './hooks/useTheme.js';
+import { UpdateBanner } from './components/UpdateBanner.js';
 
 export function App(): JSX.Element {
   const workspace = useAppStore((s) => s.workspace);
@@ -29,6 +30,7 @@ export function App(): JSX.Element {
   const activateTabByIndex = useAppStore((s) => s.activateTabByIndex);
   const reopenClosedTab = useAppStore((s) => s.reopenClosedTab);
   const activeTabId = useAppStore((s) => s.activeTabId);
+  const setUpdateInfo = useAppStore((s) => s.setUpdateInfo);
   const saveOrPrompt = useAppStore((s) => s.saveOrPrompt);
   const focusUrl = useAppStore((s) => s.focusUrl);
   const toggleHiddenRequest = useAppStore((s) => s.toggleHiddenRequest);
@@ -56,6 +58,10 @@ export function App(): JSX.Element {
     });
     return unsubscribe;
   }, [workspace, refreshTree, loadEnvironments]);
+
+  useEffect(() => {
+    return bridge.onUpdateAvailable((info) => setUpdateInfo(info));
+  }, [setUpdateInfo]);
 
   const [paletteOpen, setPaletteOpen] = useState(false);
 
@@ -256,6 +262,7 @@ export function App(): JSX.Element {
           }
           second={
             <div className="flex h-full flex-col overflow-hidden">
+              <UpdateBanner />
               <TabBar />
               <div className="flex-1 overflow-hidden">
                 <SplitPane

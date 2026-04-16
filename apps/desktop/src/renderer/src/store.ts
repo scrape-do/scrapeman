@@ -16,6 +16,7 @@ import type {
   ScrapeDoConfig,
   ScrapemanRequest,
   SerializedExecutorError,
+  UpdateInfo,
   WorkspaceInfo,
 } from '@scrapeman/shared-types';
 import { bridge } from './bridge.js';
@@ -191,6 +192,12 @@ interface AppState {
   renameNode: (relPath: string, newName: string) => Promise<void>;
   deleteNode: (relPath: string) => Promise<void>;
   moveNode: (relPath: string, newParentRelPath: string) => Promise<string | null>;
+
+  // Auto-update
+  updateInfo: UpdateInfo | null;
+  dismissedVersions: string[];
+  setUpdateInfo: (info: UpdateInfo) => void;
+  dismissUpdate: (version: string) => void;
 
   // Git
   gitStatus: GitStatus | null;
@@ -505,6 +512,22 @@ export const useAppStore = create<AppState>((set, get) => {
     history: [],
     tabs: [],
     activeTabId: null,
+    updateInfo: null,
+    dismissedVersions: [],
+    setUpdateInfo: (info) => {
+      const { dismissedVersions } = get();
+      if (dismissedVersions.includes(info.version)) return;
+      set({ updateInfo: info });
+    },
+    dismissUpdate: (version) => {
+      const { dismissedVersions } = get();
+      bridge.dismissUpdate(version);
+      set({
+        updateInfo: null,
+        dismissedVersions: [...dismissedVersions, version],
+      });
+    },
+
     gitStatus: null,
     gitLoaded: false,
     gitError: null,

@@ -387,6 +387,14 @@ export interface CodegenInput {
   workspacePath?: string;
 }
 
+export interface UpdateInfo {
+  version: string;
+  tagName: string;
+  releaseUrl: string;
+  publishedAt: string;
+  notes?: string;
+}
+
 // IPC bridge contract — source of truth for preload + main + renderer.
 export interface ScrapemanBridge {
   ping: () => Promise<'pong'>;
@@ -509,4 +517,9 @@ export interface ScrapemanBridge {
   gitLocalHiddenList: (workspacePath: string) => Promise<string[]>;
   gitLocalHide: (workspacePath: string, relPath: string) => Promise<void>;
   gitLocalUnhide: (workspacePath: string, relPath: string) => Promise<void>;
+
+  // Auto-update
+  onUpdateAvailable: (handler: (info: UpdateInfo) => void) => () => void;
+  dismissUpdate: (version: string) => void;
+  openReleasePage: (url: string) => void;
 }
