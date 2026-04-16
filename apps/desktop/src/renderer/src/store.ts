@@ -372,6 +372,15 @@ function builderFromRequest(request: ScrapemanRequest): BuilderState {
   };
 }
 
+/** Prepend http:// when the URL has no schema. */
+function normalizeUrlSchema(raw: string): string {
+  const url = raw.trim();
+  if (!url) return url;
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(url)) return url;
+  if (url.startsWith(':/')) return 'http://0.0.0.0' + url.slice(1);
+  return 'http://' + url;
+}
+
 function buildRequest(
   builder: BuilderState,
   meta: { name: string },
@@ -933,7 +942,11 @@ export const useAppStore = create<AppState>((set, get) => {
         },
       }));
 
-      const request = buildRequest(tab.builder, { name: tab.name });
+      const normalizedBuilder = {
+        ...tab.builder,
+        url: normalizeUrlSchema(tab.builder.url),
+      };
+      const request = buildRequest(normalizedBuilder, { name: tab.name });
       const workspace = get().workspace;
       const requestId = crypto.randomUUID();
       inflightRequestIds.set(tab.id, requestId);
