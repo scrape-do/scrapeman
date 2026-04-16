@@ -132,6 +132,10 @@ interface AppState {
   focusSearchTick: number;
   focusSearch: () => void;
 
+  // Bumped by ⌘⇧F (global) or ⌘F (sidebar focused); Sidebar watches and focuses its search input.
+  focusSidebarSearchTick: number;
+  focusSidebarSearch: () => void;
+
   // Ticks bumped by the command palette to open dialogs owned by RequestBuilder.
   importCurlTick: number;
   openImportCurl: () => void;
@@ -165,9 +169,13 @@ interface AppState {
   setBody: (body: string) => void;
   setBodyType: (type: BuilderState['bodyType']) => void;
   addHeader: () => void;
+  /** Insert a fresh header row immediately after the row with the given id. Returns the new row id. */
+  insertHeaderAfter: (afterId: string) => string;
   updateHeader: (id: string, patch: Partial<HeaderRow>) => void;
   removeHeader: (id: string) => void;
   addParam: () => void;
+  /** Insert a fresh param row immediately after the row with the given id. Returns the new row id. */
+  insertParamAfter: (afterId: string) => string;
   updateParam: (id: string, patch: Partial<ParamRow>) => void;
   removeParam: (id: string) => void;
 
@@ -542,6 +550,7 @@ export const useAppStore = create<AppState>((set, get) => {
     saveDialogOpen: false,
     focusUrlTick: 0,
     focusSearchTick: 0,
+    focusSidebarSearchTick: 0,
     importCurlTick: 0,
     loadTestTick: 0,
     revealInSidebarTick: 0,
@@ -588,12 +597,21 @@ export const useAppStore = create<AppState>((set, get) => {
 
     focusUrl: () => set({ focusUrlTick: get().focusUrlTick + 1 }),
     focusSearch: () => set({ focusSearchTick: get().focusSearchTick + 1 }),
+    focusSidebarSearch: () =>
+      set({ focusSidebarSearchTick: get().focusSidebarSearchTick + 1 }),
     openImportCurl: () => set({ importCurlTick: get().importCurlTick + 1 }),
     openLoadTest: () => set({ loadTestTick: get().loadTestTick + 1 }),
 
     newTab: () => {
       const tab = emptyDraftTab();
-      set({ tabs: [...get().tabs, tab], activeTabId: tab.id });
+      // Bump focusUrlTick so RequestBuilder auto-focuses the URL input on
+      // fresh tabs. History restore and openRequest intentionally do NOT
+      // touch this counter, so they never steal focus.
+      set({
+        tabs: [...get().tabs, tab],
+        activeTabId: tab.id,
+        focusUrlTick: get().focusUrlTick + 1,
+      });
     },
 
     closeTab: (id: string) => {
@@ -869,6 +887,17 @@ export const useAppStore = create<AppState>((set, get) => {
       if (!active) return;
       patchBuilder({ headers: [...active.builder.headers, freshHeader()] });
     },
+    insertHeaderAfter: (afterId) => {
+      const active = get().tabs.find((t) => t.id === get().activeTabId);
+      const row = freshHeader();
+      if (!active) return row.id;
+      const idx = active.builder.headers.findIndex((h) => h.id === afterId);
+      const next = [...active.builder.headers];
+      // Insert after the found index; if not found, append at end.
+      next.splice(idx < 0 ? next.length : idx + 1, 0, row);
+      patchBuilder({ headers: next });
+      return row.id;
+    },
     updateHeader: (id, patch) => {
       const active = get().tabs.find((t) => t.id === get().activeTabId);
       if (!active) return;
@@ -895,6 +924,25 @@ export const useAppStore = create<AppState>((set, get) => {
         builder: { ...tab.builder, params: newParams },
         dirty: true,
       }));
+    },
+    insertParamAfter: (afterId) => {
+      const active = get().tabs.find((t) => t.id === get().activeTabId);
+      const row = freshParam();
+      if (!active) return row.id;
+      const idx = active.builder.params.findIndex((p) => p.id === afterId);
+      const next = [...active.builder.params];
+      // Insert after the found index; if not found, append at end.
+      next.splice(idx < 0 ? next.length : idx + 1, 0, row);
+      mutateActive((tab) => ({
+        ...tab,
+        builder: {
+          ...tab.builder,
+          params: next,
+          url: urlFromParams(tab.builder.url, next),
+        },
+        dirty: true,
+      }));
+      return row.id;
     },
     updateParam: (id, patch) => {
       const active = get().tabs.find((t) => t.id === get().activeTabId);

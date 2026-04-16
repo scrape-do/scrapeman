@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CollectionNode, GitFileChangeStatus } from '@scrapeman/shared-types';
 import { useAppStore } from '../store.js';
 import {
@@ -63,6 +63,7 @@ export function Sidebar(): JSX.Element {
   const setView = useAppStore((s) => s.setSidebarView);
   const revealTick = useAppStore((s) => s.revealInSidebarTick);
   const revealPath = useAppStore((s) => s.revealInSidebarPath);
+  const focusSidebarSearchTick = useAppStore((s) => s.focusSidebarSearchTick);
 
   const [dialog, setDialog] = useState<DialogState>({ kind: 'none' });
   const [selectedFolder, setSelectedFolder] = useState<string>('');
@@ -160,6 +161,7 @@ export function Sidebar(): JSX.Element {
           }
           revealTick={revealTick}
           revealPath={revealPath}
+          focusSidebarSearchTick={focusSidebarSearchTick}
         />
       )}
 
@@ -213,6 +215,54 @@ export function Sidebar(): JSX.Element {
   );
 }
 
+/**
+ * Parse a "METHOD query" prefix from the search string. If the first token
+ * is an HTTP method keyword, split it off; otherwise treat the full string
+ * as the text query.
+ */
+const HTTP_METHODS = new Set([
+  'GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS','TRACE','CONNECT',
+]);
+
+function parseQuery(raw: string): { method: string | null; text: string } {
+  const trimmed = raw.trim();
+  const spaceIdx = trimmed.indexOf(' ');
+  if (spaceIdx === -1) return { method: null, text: trimmed };
+  const first = trimmed.slice(0, spaceIdx).toUpperCase();
+  if (HTTP_METHODS.has(first)) {
+    return { method: first, text: trimmed.slice(spaceIdx + 1).trim() };
+  }
+  return { method: null, text: trimmed };
+}
+
+function filterTreeWithMethod(
+  node: CollectionNode,
+  method: string | null,
+  text: string,
+): CollectionNode | null {
+  if (node.kind === 'request') {
+    // Method filter: must match exactly if a method prefix was given.
+    if (method && node.method.toUpperCase() !== method) return null;
+    // Text filter: match name or relPath.
+    if (text) {
+      const q = text.toLowerCase();
+      if (
+        !node.name.toLowerCase().includes(q) &&
+        !node.relPath.toLowerCase().includes(q)
+      ) {
+        return null;
+      }
+    }
+    return node;
+  }
+  // folder — recurse
+  const filteredChildren = node.children
+    .map((child) => filterTreeWithMethod(child, method, text))
+    .filter((c): c is CollectionNode => c !== null);
+  if (filteredChildren.length === 0) return null;
+  return { ...node, children: filteredChildren };
+}
+
 interface FilesViewProps {
   workspaceName: string;
   onNewRequest: () => void;
@@ -228,6 +278,7 @@ interface FilesViewProps {
   onMoveRequest: (relPath: string, newParent: string) => void;
   revealTick: number;
   revealPath: string | null;
+  focusSidebarSearchTick: number;
 }
 
 function FilesView({
@@ -245,6 +296,7 @@ function FilesView({
   onMoveRequest,
   revealTick,
   revealPath,
+  focusSidebarSearchTick,
 }: FilesViewProps): JSX.Element {
   const [expandTick, setExpandTick] = useState<{ path: string; tick: number } | null>(
     null,
@@ -256,8 +308,52 @@ function FilesView({
     () => (revealTick > 0 && revealPath ? { path: revealPath, tick: revealTick } : null),
     [revealTick, revealPath],
   );
+
+  const [query, setQuery] = useState('');
+  const searchRef = useRef<HTMLInputElement | null>(null);
+  const treeRef = useRef<HTMLDivElement | null>(null);
+  const sidebarRef = useRef<HTMLDivElement | null>(null);
+
+  // Focus search input when the global tick fires.
+  useEffect(() => {
+    if (focusSidebarSearchTick === 0) return;
+    searchRef.current?.focus();
+    searchRef.current?.select();
+  }, [focusSidebarSearchTick]);
+
+  // Cmd+F focuses search when sidebar already has focus.
+  const onSidebarKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    const isMac = /Mac/i.test(navigator.userAgent);
+    const modDown = isMac ? e.metaKey : e.ctrlKey;
+    if (modDown && !e.shiftKey && e.key.toLowerCase() === 'f') {
+      // Only intercept if the active element is inside this sidebar panel.
+      if (sidebarRef.current?.contains(document.activeElement)) {
+        e.preventDefault();
+        e.stopPropagation();
+        searchRef.current?.focus();
+        searchRef.current?.select();
+      }
+    }
+  }, []);
+
+  // Compute filtered children. When the query is empty, show the full tree.
+  const visibleChildren = useMemo<CollectionNode[]>(() => {
+    if (!query.trim()) return root.children;
+    const { method, text } = parseQuery(query);
+    return root.children
+      .map((child) => filterTreeWithMethod(child, method, text))
+      .filter((c): c is CollectionNode => c !== null);
+  }, [root.children, query]);
+
+  const isFiltering = query.trim().length > 0;
+  const noResults = isFiltering && visibleChildren.length === 0;
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div
+      ref={sidebarRef}
+      className="flex min-h-0 flex-1 flex-col"
+      onKeyDown={onSidebarKeyDown}
+    >
       <div className="flex h-10 items-center gap-1 border-b border-line px-2">
         <div className="flex-1 truncate px-1.5 text-xs font-semibold text-ink-1">
           {workspaceName}
@@ -272,6 +368,40 @@ function FilesView({
           ⇄
         </button>
       </div>
+      {/* Search input */}
+      <div className="flex items-center gap-1 border-b border-line px-2 py-1.5">
+        <span className="text-ink-3 text-xs leading-none select-none" aria-hidden="true">
+          ⌕
+        </span>
+        <input
+          ref={searchRef}
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              setQuery('');
+              // Return focus to tree so keyboard navigation continues.
+              treeRef.current?.focus();
+            }
+          }}
+          placeholder="Filter requests… (⌘⇧F)"
+          aria-label="Filter collection"
+          className="min-w-0 flex-1 bg-transparent text-xs text-ink-1 placeholder:text-ink-3 outline-none focus:outline-none"
+        />
+        {query && (
+          <button
+            onClick={() => {
+              setQuery('');
+              treeRef.current?.focus();
+            }}
+            aria-label="Clear filter"
+            className="text-ink-3 hover:text-ink-1 leading-none text-xs"
+          >
+            ✕
+          </button>
+        )}
+      </div>
       <div className="flex-1 overflow-hidden">
         <SplitPane
           orientation="vertical"
@@ -281,7 +411,9 @@ function FilesView({
           storageKey="sidebar/history"
           first={
             <div
-              className="h-full overflow-auto py-1"
+              ref={treeRef}
+              tabIndex={-1}
+              className="h-full overflow-auto py-1 outline-none"
               onClick={(e) => {
                 if (e.target === e.currentTarget) onSelectFolder('');
               }}
@@ -310,8 +442,20 @@ function FilesView({
                     Create your first request
                   </button>
                 </div>
+              ) : noResults ? (
+                <div className="flex flex-col items-center justify-center gap-2 px-6 py-12 text-center">
+                  <div className="text-xs text-ink-3">
+                    No requests match &ldquo;{query}&rdquo;.
+                  </div>
+                  <button
+                    onClick={() => setQuery('')}
+                    className="btn-ghost text-accent hover:text-accent-hover text-xs"
+                  >
+                    Clear filter
+                  </button>
+                </div>
               ) : (
-                root.children.map((child) => (
+                visibleChildren.map((child) => (
                   <TreeNode
                     key={child.id}
                     node={child}
@@ -322,9 +466,9 @@ function FilesView({
                     selectedFolder={selectedFolder}
                     onSelectFolder={onSelectFolder}
                     onMoveRequest={onMoveRequest}
-                    expandSignal={expandTick}
+                    expandSignal={isFiltering ? null : expandTick}
                     onRequestExpand={expandFolder}
-                    revealSignal={revealSignal}
+                    revealSignal={isFiltering ? null : revealSignal}
                     onNewRequest={(parent) => setDialog({ kind: 'newRequest', parent })}
                     onNewFolder={(parent) => setDialog({ kind: 'newFolder', parent })}
                     onRename={(relPath, currentName) =>
@@ -333,6 +477,7 @@ function FilesView({
                     onDelete={(relPath, name) =>
                       setDialog({ kind: 'delete', relPath, name })
                     }
+                    forceExpand={isFiltering}
                   />
                 ))
               )}
@@ -361,6 +506,8 @@ interface TreeNodeProps {
   onNewFolder: (parent: string) => void;
   onRename: (relPath: string, currentName: string) => void;
   onDelete: (relPath: string, name: string) => void;
+  /** When true, folders are always rendered as expanded (used during filtering). */
+  forceExpand?: boolean;
 }
 
 function TreeNode({
@@ -379,6 +526,7 @@ function TreeNode({
   onNewFolder,
   onRename,
   onDelete,
+  forceExpand = false,
 }: TreeNodeProps): JSX.Element {
   const [expanded, setExpanded] = useState(depth < 1);
   const [dragOver, setDragOver] = useState(false);
@@ -430,6 +578,8 @@ function TreeNode({
 
   if (node.kind === 'folder') {
     const selected = selectedFolder === node.relPath;
+    // forceExpand overrides the local expanded state (used while filtering).
+    const isExpanded = forceExpand || expanded;
     return (
       <div>
         <ContextMenu>
@@ -471,7 +621,7 @@ function TreeNode({
               }`}
             >
               <span className="w-6 text-center text-xl leading-none text-ink-3">
-                {expanded ? '▾' : '▸'}
+                {isExpanded ? '▾' : '▸'}
               </span>
               <span className="truncate font-medium">{node.name}</span>
             </button>
@@ -495,7 +645,7 @@ function TreeNode({
             </ContextMenuItem>
           </ContextMenuContent>
         </ContextMenu>
-        {expanded &&
+        {isExpanded &&
           node.children.map((child) => (
             <TreeNode
               key={child.id}
@@ -514,6 +664,7 @@ function TreeNode({
               onNewFolder={onNewFolder}
               onRename={onRename}
               onDelete={onDelete}
+              forceExpand={forceExpand}
             />
           ))}
       </div>

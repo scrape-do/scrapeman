@@ -6,6 +6,9 @@
 set -e
 cd "$(git rev-parse --show-toplevel)"
 
+echo "[pre-push] pnpm run build:packages"
+pnpm run build:packages
+
 echo "[pre-push] pnpm -r typecheck"
 pnpm -r typecheck
 

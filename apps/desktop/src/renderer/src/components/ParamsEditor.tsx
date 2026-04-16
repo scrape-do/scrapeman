@@ -1,3 +1,4 @@
+import { useCallback, useRef } from 'react';
 import type { ParamRow } from '../store.js';
 import { HighlightedInput } from '../ui/HighlightedInput.js';
 import { CellContextMenu } from '../ui/CellContextMenu.js';
@@ -5,14 +6,65 @@ import { CellContextMenu } from '../ui/CellContextMenu.js';
 export function ParamsEditor({
   rows,
   onAdd,
+  onInsertAfter,
   onUpdate,
   onRemove,
 }: {
   rows: ParamRow[];
   onAdd: () => void;
+  /** Insert a new empty row below the given row id. Returns the new row id. */
+  onInsertAfter: (afterId: string) => string;
   onUpdate: (id: string, patch: Partial<ParamRow>) => void;
   onRemove: (id: string) => void;
 }): JSX.Element {
+  // Refs map: rowId -> HTMLInputElement for key cell focus after insert.
+  const keyRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  const focusKeyCell = useCallback(
+    (rowId: string) => {
+      // Use requestAnimationFrame so the new row has been rendered first.
+      requestAnimationFrame(() => {
+        keyRefs.current[rowId]?.focus();
+      });
+    },
+    [],
+  );
+
+  const handleKeyKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>, row: ParamRow) => {
+      // T1301: Shift+Enter → insert row below, focus its Key cell.
+      if (e.key === 'Enter' && e.shiftKey) {
+        e.preventDefault();
+        const newId = onInsertAfter(row.id);
+        focusKeyCell(newId);
+        return;
+      }
+      // T1302: Tab from Key cell of last row when key is non-empty →
+      // append new row. Focus stays on the Value cell (natural Tab target).
+      if (e.key === 'Tab' && !e.shiftKey) {
+        const isLastRow = rows[rows.length - 1]?.id === row.id;
+        if (isLastRow && row.key.trim().length > 0) {
+          // Append without preventing default so Tab still moves focus
+          // to the Value cell of this row.
+          onAdd();
+        }
+      }
+    },
+    [rows, onAdd, onInsertAfter, focusKeyCell],
+  );
+
+  const handleValueKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>, row: ParamRow) => {
+      // T1301: Shift+Enter → insert row below, focus its Key cell.
+      if (e.key === 'Enter' && e.shiftKey) {
+        e.preventDefault();
+        const newId = onInsertAfter(row.id);
+        focusKeyCell(newId);
+      }
+    },
+    [onInsertAfter, focusKeyCell],
+  );
+
   return (
     <div className="flex flex-col">
       <div className="grid grid-cols-[32px_1fr_1.5fr_32px] items-center border-b border-line bg-bg-subtle px-3 text-[10px] font-semibold uppercase tracking-wider text-ink-4">
@@ -35,10 +87,12 @@ export function ParamsEditor({
             />
           </div>
           <input
+            ref={(el) => { keyRefs.current[row.id] = el; }}
             type="text"
             value={row.key}
             placeholder="key"
             onChange={(e) => onUpdate(row.id, { key: e.target.value })}
+            onKeyDown={(e) => handleKeyKeyDown(e, row)}
             className="h-8 bg-transparent pr-2 font-mono text-xs text-ink-1 outline-none placeholder:text-ink-4"
           />
           <CellContextMenu
@@ -49,6 +103,7 @@ export function ParamsEditor({
               <HighlightedInput
                 value={row.value}
                 onChange={(e) => onUpdate(row.id, { value: e.target.value })}
+                onKeyDown={(e) => handleValueKeyDown(e, row)}
                 placeholder="value or {{var}}"
                 variant="cell"
               />

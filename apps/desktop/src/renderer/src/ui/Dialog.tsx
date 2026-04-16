@@ -83,6 +83,8 @@ export function ConfirmDialog({
   description,
   confirmLabel = 'Delete',
   destructive = false,
+  dontAskChecked,
+  onDontAskChange,
   onConfirm,
   onClose,
 }: {
@@ -91,6 +93,9 @@ export function ConfirmDialog({
   description?: string;
   confirmLabel?: string;
   destructive?: boolean;
+  /** When provided, renders a "Don't ask again for this session" checkbox. */
+  dontAskChecked?: boolean;
+  onDontAskChange?: (checked: boolean) => void;
   onConfirm: () => void;
   onClose: () => void;
 }): JSX.Element {
@@ -107,24 +112,39 @@ export function ConfirmDialog({
               {description}
             </RadixDialog.Description>
           )}
-          <div className="mt-5 flex items-center justify-end gap-2">
-            <button type="button" className="btn-secondary" onClick={onClose}>
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                onConfirm();
-                onClose();
-              }}
-              className={
-                destructive
-                  ? 'inline-flex h-8 items-center justify-center rounded-md bg-method-delete px-3.5 text-xs font-semibold text-white hover:bg-[#B6383D] active:bg-[#9D3034]'
-                  : 'btn-primary'
-              }
-            >
-              {confirmLabel}
-            </button>
+          <div className="mt-5 flex items-center justify-between gap-2">
+            {dontAskChecked !== undefined && onDontAskChange ? (
+              <label className="flex cursor-pointer items-center gap-2 text-xs text-ink-3 select-none">
+                <input
+                  type="checkbox"
+                  checked={dontAskChecked}
+                  onChange={(e) => onDontAskChange(e.target.checked)}
+                  className="h-3.5 w-3.5 rounded accent-accent"
+                />
+                Don't ask again for this session
+              </label>
+            ) : (
+              <span />
+            )}
+            <div className="flex items-center gap-2">
+              <button type="button" className="btn-secondary" onClick={onClose}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onConfirm();
+                  onClose();
+                }}
+                className={
+                  destructive
+                    ? 'inline-flex h-8 items-center justify-center rounded-md bg-method-delete px-3.5 text-xs font-semibold text-white hover:bg-[#B6383D] active:bg-[#9D3034]'
+                    : 'btn-primary'
+                }
+              >
+                {confirmLabel}
+              </button>
+            </div>
           </div>
         </RadixDialog.Content>
       </RadixDialog.Portal>

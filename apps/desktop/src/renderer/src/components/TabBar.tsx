@@ -8,8 +8,8 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '../ui/ContextMenu.js';
-import { ConfirmDialog } from '../ui/Dialog.js';
 import { EyeOffIcon } from '../ui/EyeOffIcon.js';
+import type { DirtyTabGuard } from '../hooks/useDirtyTabGuard.js';
 
 const METHOD_COLOR: Record<string, string> = {
   GET: 'text-method-get',
@@ -21,30 +21,15 @@ const METHOD_COLOR: Record<string, string> = {
   OPTIONS: 'text-method-options',
 };
 
-type GuardKind =
-  | 'close'
-  | 'closeOthers'
-  | 'closeRight'
-  | 'closeSaved'
-  | 'closeAll';
-
-interface GuardState {
-  kind: GuardKind;
-  tabId?: string;
-  tabName?: string;
-  dirtyCount: number;
+interface TabBarProps {
+  guard: DirtyTabGuard;
 }
 
-export function TabBar(): JSX.Element {
+export function TabBar({ guard }: TabBarProps): JSX.Element {
   const tabs = useAppStore((s) => s.tabs);
   const activeTabId = useAppStore((s) => s.activeTabId);
   const hiddenRequests = useAppStore((s) => s.hiddenRequests);
   const newTab = useAppStore((s) => s.newTab);
-  const closeTab = useAppStore((s) => s.closeTab);
-  const closeOtherTabs = useAppStore((s) => s.closeOtherTabs);
-  const closeTabsToRight = useAppStore((s) => s.closeTabsToRight);
-  const closeSavedTabs = useAppStore((s) => s.closeSavedTabs);
-  const closeAllTabs = useAppStore((s) => s.closeAllTabs);
   const duplicateTab = useAppStore((s) => s.duplicateTab);
   const revealInSidebar = useAppStore((s) => s.revealInSidebar);
   const setSidebarView = useAppStore((s) => s.setSidebarView);
@@ -53,94 +38,8 @@ export function TabBar(): JSX.Element {
 
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
-  const [guard, setGuard] = useState<GuardState | null>(null);
 
   const savedCount = tabs.filter((t) => !t.dirty).length;
-
-  const requestClose = (tab: Tab): void => {
-    if (tab.dirty) {
-      setGuard({ kind: 'close', tabId: tab.id, tabName: tab.name, dirtyCount: 1 });
-      return;
-    }
-    closeTab(tab.id);
-  };
-
-  const requestCloseOthers = (tab: Tab): void => {
-    const dirtyCount = tabs.filter((t) => t.id !== tab.id && t.dirty).length;
-    if (dirtyCount > 0) {
-      setGuard({ kind: 'closeOthers', tabId: tab.id, dirtyCount });
-      return;
-    }
-    closeOtherTabs(tab.id);
-  };
-
-  const requestCloseRight = (tab: Tab): void => {
-    const idx = tabs.findIndex((t) => t.id === tab.id);
-    const dirtyCount = tabs.slice(idx + 1).filter((t) => t.dirty).length;
-    if (dirtyCount > 0) {
-      setGuard({ kind: 'closeRight', tabId: tab.id, dirtyCount });
-      return;
-    }
-    closeTabsToRight(tab.id);
-  };
-
-  const requestCloseSaved = (): void => {
-    // Close Saved never touches dirty tabs — no guard needed.
-    closeSavedTabs();
-  };
-
-  const requestCloseAll = (): void => {
-    const dirtyCount = tabs.filter((t) => t.dirty).length;
-    if (dirtyCount > 0) {
-      setGuard({ kind: 'closeAll', dirtyCount });
-      return;
-    }
-    closeAllTabs();
-  };
-
-  const confirmGuard = (): void => {
-    if (!guard) return;
-    switch (guard.kind) {
-      case 'close':
-        if (guard.tabId) closeTab(guard.tabId);
-        break;
-      case 'closeOthers':
-        if (guard.tabId) closeOtherTabs(guard.tabId);
-        break;
-      case 'closeRight':
-        if (guard.tabId) closeTabsToRight(guard.tabId);
-        break;
-      case 'closeSaved':
-        closeSavedTabs();
-        break;
-      case 'closeAll':
-        closeAllTabs();
-        break;
-    }
-    // Clear explicitly so a stale dirtyCount can't flash if the user
-    // reopens the dialog mid-close-animation.
-    setGuard(null);
-  };
-
-  const guardTitle = ((): string => {
-    if (!guard) return '';
-    if (guard.kind === 'close') {
-      return `'${guard.tabName ?? 'Untitled'}' has unsaved changes`;
-    }
-    return `You have ${guard.dirtyCount} unsaved tab${guard.dirtyCount === 1 ? '' : 's'}`;
-  })();
-
-  const guardDescription = ((): string => {
-    if (!guard) return '';
-    if (guard.kind === 'close') return 'Close without saving?';
-    return 'Close anyway?';
-  })();
-
-  const guardConfirmLabel = ((): string => {
-    if (!guard) return 'Close';
-    if (guard.kind === 'close') return 'Close';
-    return `Close ${guard.dirtyCount}`;
-  })();
 
   return (
     <div className="flex h-10 items-center border-b border-line bg-bg-subtle">
@@ -167,7 +66,7 @@ export function TabBar(): JSX.Element {
                     dropTargetId === tab.id && dragId !== null && dragId !== tab.id
                   }
                   onSelect={() => setActiveTab(tab.id)}
-                  onClose={() => requestClose(tab)}
+                  onClose={() => guard.requestClose(tab)}
                   onDragStart={() => setDragId(tab.id)}
                   onDragEnter={() => {
                     if (dragId && dragId !== tab.id) setDropTargetId(tab.id);
@@ -184,28 +83,28 @@ export function TabBar(): JSX.Element {
                 />
               </ContextMenuTrigger>
               <ContextMenuContent>
-                <ContextMenuItem onSelect={() => requestClose(tab)}>
+                <ContextMenuItem onSelect={() => guard.requestClose(tab)}>
                   Close
                 </ContextMenuItem>
                 <ContextMenuItem
                   disabled={!canCloseOthers}
-                  onSelect={() => requestCloseOthers(tab)}
+                  onSelect={() => guard.requestCloseOthers(tab)}
                 >
                   Close Others
                 </ContextMenuItem>
                 <ContextMenuItem
                   disabled={!canCloseRight}
-                  onSelect={() => requestCloseRight(tab)}
+                  onSelect={() => guard.requestCloseRight(tab)}
                 >
                   Close to the Right
                 </ContextMenuItem>
                 <ContextMenuItem
                   disabled={!canCloseSaved}
-                  onSelect={requestCloseSaved}
+                  onSelect={guard.requestCloseSaved}
                 >
                   Close Saved
                 </ContextMenuItem>
-                <ContextMenuItem onSelect={requestCloseAll}>
+                <ContextMenuItem onSelect={guard.requestCloseAll}>
                   Close All
                 </ContextMenuItem>
                 <ContextMenuSeparator />
@@ -243,15 +142,7 @@ export function TabBar(): JSX.Element {
       >
         +
       </button>
-      <ConfirmDialog
-        open={guard !== null}
-        title={guardTitle}
-        description={guardDescription}
-        confirmLabel={guardConfirmLabel}
-        destructive
-        onConfirm={confirmGuard}
-        onClose={() => setGuard(null)}
-      />
+      {guard.GuardDialog}
     </div>
   );
 }

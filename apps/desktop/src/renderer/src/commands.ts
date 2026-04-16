@@ -12,13 +12,14 @@ export interface Command {
 export interface CommandExtras {
   toggleTheme: () => void;
   toggleSplit: () => void;
+  requestCloseActive: () => void;
+  requestCloseAll: () => void;
 }
 
 export function useCommands(extras: CommandExtras): Command[] {
   const send = useAppStore((s) => s.send);
   const saveOrPrompt = useAppStore((s) => s.saveOrPrompt);
   const newTab = useAppStore((s) => s.newTab);
-  const closeTab = useAppStore((s) => s.closeTab);
   const duplicateTab = useAppStore((s) => s.duplicateTab);
   const activeTabId = useAppStore((s) => s.activeTabId);
   const focusUrl = useAppStore((s) => s.focusUrl);
@@ -68,9 +69,7 @@ export function useCommands(extras: CommandExtras): Command[] {
         title: 'Close tab',
         section: 'Tabs',
         shortcut: 'mod+w',
-        run: () => {
-          if (activeTabId) closeTab(activeTabId);
-        },
+        run: () => extras.requestCloseActive(),
       },
       {
         id: 'tab.duplicate',
@@ -121,7 +120,6 @@ export function useCommands(extras: CommandExtras): Command[] {
       send,
       saveOrPrompt,
       newTab,
-      closeTab,
       duplicateTab,
       activeTabId,
       focusUrl,

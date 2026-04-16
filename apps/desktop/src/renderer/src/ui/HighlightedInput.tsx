@@ -21,6 +21,7 @@ export interface HighlightedInputProps {
   value: string;
   onChange: (event: ChangeEvent<HTMLInputElement>) => void;
   onPaste?: (event: ClipboardEvent<HTMLInputElement>) => void;
+  onKeyDown?: (event: React.KeyboardEvent<HTMLInputElement>) => void;
   placeholder?: string;
   variant?: HighlightedInputVariant;
   type?: 'text' | 'password';
@@ -52,6 +53,7 @@ export const HighlightedInput = forwardRef<HTMLInputElement, HighlightedInputPro
       value,
       onChange,
       onPaste,
+      onKeyDown: onKeyDownProp,
       placeholder,
       variant = 'field',
       type = 'text',
@@ -186,30 +188,39 @@ export const HighlightedInput = forwardRef<HTMLInputElement, HighlightedInputPro
         return;
       }
 
-      if (!auto.open || filtered.length === 0) return;
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        setAuto((a) => ({
-          ...a,
-          selectedIndex: (a.selectedIndex + 1) % filtered.length,
-        }));
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        setAuto((a) => ({
-          ...a,
-          selectedIndex:
-            (a.selectedIndex - 1 + filtered.length) % filtered.length,
-        }));
-      } else if (e.key === 'Enter' || e.key === 'Tab') {
-        const choice = filtered[auto.selectedIndex];
-        if (choice) {
+      if (auto.open && filtered.length > 0) {
+        if (e.key === 'ArrowDown') {
           e.preventDefault();
-          insertVariable(choice.name);
+          setAuto((a) => ({
+            ...a,
+            selectedIndex: (a.selectedIndex + 1) % filtered.length,
+          }));
+          return;
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          setAuto((a) => ({
+            ...a,
+            selectedIndex:
+              (a.selectedIndex - 1 + filtered.length) % filtered.length,
+          }));
+          return;
+        } else if (e.key === 'Enter' || e.key === 'Tab') {
+          const choice = filtered[auto.selectedIndex];
+          if (choice) {
+            e.preventDefault();
+            insertVariable(choice.name);
+            return;
+          }
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          setAuto(CLOSED_AUTOCOMPLETE);
+          return;
         }
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        setAuto(CLOSED_AUTOCOMPLETE);
       }
+
+      // Delegate to the caller's handler for any key the autocomplete
+      // dropdown didn't consume (e.g. Shift+Enter, Tab row-append).
+      onKeyDownProp?.(e);
     };
 
     const insertVariable = (name: string): void => {

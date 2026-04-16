@@ -16,6 +16,7 @@ import { usePlatform } from './hooks/usePlatform.js';
 import { useShortcuts, type Shortcut } from './hooks/useShortcuts.js';
 import { useTheme } from './hooks/useTheme.js';
 import { UpdateBanner } from './components/UpdateBanner.js';
+import { useDirtyTabGuard } from './hooks/useDirtyTabGuard.js';
 
 export function App(): JSX.Element {
   const workspace = useAppStore((s) => s.workspace);
@@ -25,7 +26,6 @@ export function App(): JSX.Element {
   const loadEnvironments = useAppStore((s) => s.loadEnvironments);
   const recents = useAppStore((s) => s.recents);
   const newTab = useAppStore((s) => s.newTab);
-  const closeTab = useAppStore((s) => s.closeTab);
   const duplicateTab = useAppStore((s) => s.duplicateTab);
   const activateTabByIndex = useAppStore((s) => s.activateTabByIndex);
   const reopenClosedTab = useAppStore((s) => s.reopenClosedTab);
@@ -34,9 +34,12 @@ export function App(): JSX.Element {
   const saveOrPrompt = useAppStore((s) => s.saveOrPrompt);
   const focusUrl = useAppStore((s) => s.focusUrl);
   const focusSearch = useAppStore((s) => s.focusSearch);
+  const focusSidebarSearch = useAppStore((s) => s.focusSidebarSearch);
   const toggleHiddenRequest = useAppStore((s) => s.toggleHiddenRequest);
   const tabs = useAppStore((s) => s.tabs);
   const isRepo = useAppStore((s) => s.gitStatus?.isRepo === true);
+
+  const guard = useDirtyTabGuard();
 
   useEffect(() => {
     void loadRecents();
@@ -81,7 +84,12 @@ export function App(): JSX.Element {
             {
               combo: 'mod+w',
               description: 'Close tab',
-              handler: () => activeTabId && closeTab(activeTabId),
+              handler: () => guard.requestCloseActive(),
+            },
+            {
+              combo: 'mod+shift+w',
+              description: 'Close all tabs',
+              handler: () => guard.requestCloseAll(),
             },
             {
               combo: 'mod+d',
@@ -89,6 +97,11 @@ export function App(): JSX.Element {
               handler: () => activeTabId && duplicateTab(activeTabId),
             },
             { combo: 'mod+l', description: 'Focus URL bar', handler: () => focusUrl() },
+            {
+              combo: 'mod+shift+f',
+              description: 'Focus collection search',
+              handler: () => focusSidebarSearch(),
+            },
             {
               combo: 'mod+f',
               description: 'Find in response',
@@ -142,7 +155,7 @@ export function App(): JSX.Element {
     ],
     [
       newTab,
-      closeTab,
+      guard,
       duplicateTab,
       activateTabByIndex,
       reopenClosedTab,
@@ -150,6 +163,7 @@ export function App(): JSX.Element {
       saveOrPrompt,
       focusUrl,
       focusSearch,
+      focusSidebarSearch,
       toggleHiddenRequest,
       tabs,
       isRepo,
@@ -184,8 +198,10 @@ export function App(): JSX.Element {
       toggleTheme,
       toggleSplit: () =>
         setSplitOrientation((o) => (o === 'horizontal' ? 'vertical' : 'horizontal')),
+      requestCloseActive: () => guard.requestCloseActive(),
+      requestCloseAll: () => guard.requestCloseAll(),
     }),
-    [toggleTheme],
+    [toggleTheme, guard],
   );
   const commands = useCommands(commandExtras);
 
@@ -276,7 +292,7 @@ export function App(): JSX.Element {
           second={
             <div className="flex h-full flex-col overflow-hidden">
               <UpdateBanner />
-              <TabBar />
+              <TabBar guard={guard} />
               <div className="flex-1 overflow-hidden">
                 <SplitPane
                   orientation={splitOrientation}

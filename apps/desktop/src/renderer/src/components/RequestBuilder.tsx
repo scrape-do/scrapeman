@@ -23,10 +23,12 @@ export function RequestBuilder(): JSX.Element {
   const setBody = useAppStore((s) => s.setBody);
   const setBodyType = useAppStore((s) => s.setBodyType);
   const addHeader = useAppStore((s) => s.addHeader);
+  const insertHeaderAfter = useAppStore((s) => s.insertHeaderAfter);
   const updateHeader = useAppStore((s) => s.updateHeader);
   const removeHeader = useAppStore((s) => s.removeHeader);
   const setDisabledAutoHeaders = useAppStore((s) => s.setDisabledAutoHeaders);
   const addParam = useAppStore((s) => s.addParam);
+  const insertParamAfter = useAppStore((s) => s.insertParamAfter);
   const updateParam = useAppStore((s) => s.updateParam);
   const removeParam = useAppStore((s) => s.removeParam);
   const send = useAppStore((s) => s.send);
@@ -227,6 +229,7 @@ export function RequestBuilder(): JSX.Element {
           <ParamsEditor
             rows={builder.params}
             onAdd={addParam}
+            onInsertAfter={insertParamAfter}
             onUpdate={updateParam}
             onRemove={removeParam}
           />
@@ -240,6 +243,7 @@ export function RequestBuilder(): JSX.Element {
             <HeadersEditor
               rows={builder.headers}
               onAdd={addHeader}
+              onInsertAfter={insertHeaderAfter}
               onUpdate={updateHeader}
               onRemove={removeHeader}
             />
