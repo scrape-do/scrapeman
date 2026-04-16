@@ -29,7 +29,6 @@ export function App(): JSX.Element {
   const activateTabByIndex = useAppStore((s) => s.activateTabByIndex);
   const reopenClosedTab = useAppStore((s) => s.reopenClosedTab);
   const activeTabId = useAppStore((s) => s.activeTabId);
-  const send = useAppStore((s) => s.send);
   const saveOrPrompt = useAppStore((s) => s.saveOrPrompt);
   const focusUrl = useAppStore((s) => s.focusUrl);
   const toggleHiddenRequest = useAppStore((s) => s.toggleHiddenRequest);
@@ -83,7 +82,19 @@ export function App(): JSX.Element {
               handler: () => activeTabId && duplicateTab(activeTabId),
             },
             { combo: 'mod+l', description: 'Focus URL bar', handler: () => focusUrl() },
-            { combo: 'mod+enter', description: 'Send request', handler: () => void send() },
+            {
+              combo: 'mod+enter',
+              description: 'Send / cancel request',
+              handler: () => {
+                const state = useAppStore.getState();
+                const tab = state.tabs.find((t) => t.id === state.activeTabId);
+                if (tab?.execution.status === 'sending') {
+                  state.cancelSend();
+                } else {
+                  void state.send();
+                }
+              },
+            },
             { combo: 'mod+s', description: 'Save request', handler: () => void saveOrPrompt() },
             {
               combo: 'mod+shift+t',
@@ -118,7 +129,6 @@ export function App(): JSX.Element {
       activateTabByIndex,
       reopenClosedTab,
       activeTabId,
-      send,
       saveOrPrompt,
       focusUrl,
       toggleHiddenRequest,
