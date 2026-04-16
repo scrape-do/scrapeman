@@ -1149,11 +1149,127 @@ tasks:
       - Fuzzy filter as user types after {{
       - Acceptance: with two envs defining the same key to different values, the popup preview reflects the currently active env; toggling env updates it live
 
+  # ================= M13: UX polish + docs (2026-04-16 feature requests) =================
+
+  - id: T1300
+    title: Add search/filter input to collection tree sidebar
+    milestone: M13
+    owner: developer-ui
+    estimate_hours: 6
+    depends_on: [T020]
+    tags: [ui, ux-polish]
+    acceptance:
+      - A search input appears at the top of the collection sidebar
+      - Typing filters the tree in real-time by request name and URL (case-insensitive string.includes)
+      - Method prefix filtering works (typing "GET /users" matches requests whose method is GET and name or URL contains "/users")
+      - Filter operates on the in-memory Zustand collection state, does not re-read files from disk
+      - Cmd+Shift+F focuses the collection search input from anywhere in the app
+      - Cmd+F focuses the search input when the sidebar already has focus
+      - Clearing the input restores the full tree; ESC clears the input and returns focus to the tree
+      - Empty-state text shown when filter matches zero requests
+
+  - id: T1301
+    title: "Headers/Params table: Shift+Enter inserts new row below"
+    milestone: M13
+    owner: developer-ui
+    estimate_hours: 3
+    depends_on: [T013]
+    tags: [ui, ux-polish]
+    acceptance:
+      - Pressing Shift+Enter while editing any cell in the key-value table inserts a new empty row immediately below the current row
+      - Focus moves to the Key cell of the newly inserted row
+      - Works identically in both the Headers tab and the Params tab
+      - Shift+Enter does NOT trigger request send (Cmd+Enter is the send shortcut)
+      - Undo (Cmd+Z) removes the inserted row and restores focus to the original cell
+
+  - id: T1302
+    title: "Headers/Params table: auto-append row on tab from last row"
+    milestone: M13
+    owner: developer-ui
+    estimate_hours: 3
+    depends_on: [T013]
+    tags: [ui, ux-polish]
+    acceptance:
+      - Tabbing from the Key cell to the Value cell on the last row of the table auto-appends a new empty row at the bottom when the Key cell is non-empty
+      - The new row is not appended if the Key cell is empty (prevents infinite blank rows)
+      - Focus stays on the Value cell of the current row, not the new row
+      - Works identically in both the Headers tab and the Params tab
+      - The auto-appended row has enabled=true by default
+
+  - id: T1303
+    title: "Cmd+N new tab auto-focuses URL input"
+    milestone: M13
+    owner: developer-ui
+    estimate_hours: 2
+    depends_on: [T012]
+    tags: [ui, ux-polish]
+    acceptance:
+      - Creating a new tab via Cmd+N or the "+" tab button places cursor focus in the URL input field
+      - Focus fires only for fresh tabs (no URL set yet); restoring a tab from history does NOT steal focus
+      - The URL input is visually highlighted (ring/outline) so the user sees where focus landed
+      - Works on both macOS (Cmd+N) and Windows/Linux (Ctrl+N)
+
+  - id: T1304
+    title: Scaffold documentation site with Astro Starlight
+    milestone: M13
+    owner: developer-ui
+    estimate_hours: 8
+    depends_on: []
+    tags: [docs, infrastructure]
+    acceptance:
+      - A /docs directory exists in the scrapeman repo with a working Astro Starlight project
+      - pnpm dev from /docs starts a local dev server with sidebar navigation and dark theme
+      - Sidebar structure has placeholder pages for all 8 required sections (Getting started, Environment variables, Auth schemes, Collections, Load runner, Keyboard shortcuts, Proxy, Code export)
+      - Getting started section is fully written (install, first request, save to collection)
+      - Build produces static HTML deployable to any CDN
+      - CI job added to validate the docs build does not break on PR
+
+  - id: T1305
+    title: Write docs content for environment variables and auth schemes sections
+    milestone: M13
+    owner: developer-ui
+    estimate_hours: 8
+    depends_on: [T1304]
+    tags: [docs]
+    acceptance:
+      - Environment variables section covers {{var}} syntax, built-in dynamics ({{random}}, {{timestamp}}, etc.), secret flag behavior, and per-workspace .env.yaml file structure
+      - Auth schemes section has a sub-page per scheme (Basic, Bearer, API Key, OAuth2 client credentials, AWS SigV4) with screenshots or annotated UI descriptions
+      - All code examples use real Scrapeman UI field names and match the current implementation
+      - Both sections render correctly in the Starlight sidebar and pass a broken-link check
+
+  - id: T1306
+    title: Write docs content for collections and keyboard shortcuts sections
+    milestone: M13
+    owner: developer-ui
+    estimate_hours: 6
+    depends_on: [T1304]
+    tags: [docs]
+    acceptance:
+      - Collections section covers the YAML format (*.req.yaml), body sidecar mechanism, workspace setup, git workflow, and per-request sync toggle
+      - Keyboard shortcuts section lists every shortcut currently shipped, grouped by context (global, sidebar, request builder, response viewer, load runner)
+      - Keyboard shortcuts table renders with platform-aware symbols (Cmd for mac, Ctrl for win/linux)
+
+  - id: T1307
+    title: "Unify dirty-tab close guard across all close triggers + add 'don't ask again'"
+    milestone: M13
+    owner: developer-ui
+    estimate_hours: 4
+    depends_on: []
+    tags: [ui, ux-polish, bug]
+    acceptance:
+      - The unsaved-changes confirmation dialog fires consistently for ALL tab close paths (middle-click on tab, Cmd+W, close-button click on tab, Cmd+Shift+W close-all, quit app with dirty tabs)
+      - Currently middle-click shows the dialog but Cmd+W does not — both must behave the same
+      - The dialog includes a checkbox or button labeled "Don't ask again for this session"
+      - When "Don't ask again" is checked, subsequent dirty-tab closes in the same app session skip the dialog and close immediately (discard changes)
+      - The "don't ask again" preference resets on app restart (session-scoped, not persisted to disk)
+      - If the user has never checked "don't ask again", the default behavior is always to show the dialog for dirty tabs
+      - The dialog text clearly shows which tab is about to be closed (request name or "Untitled")
+
 totals:
-  task_count: 97
-  total_estimate_hours: 597
-  working_days_at_6h_focus: 100
-  calendar_weeks_2_devs: 11
+  task_count: 105
+  total_estimate_hours: 637
+  working_days_at_6h_focus: 106
+  calendar_weeks_2_devs: 12
   notes: |
     Estimates assume 6 productive hours/day per dev. Team lead estimate overlaps with
     review/pairing time not counted separately. PM hours are lightweight coordination.
@@ -1171,5 +1287,8 @@ totals:
       - M3.12 Bruno weak spots (T3W0-T3W3, 24h)
       - M3.13 Auto-headers (T3B0-T3B1, 11h)
 
-    Calendar: ~11 weeks with 2 devs to M10 internal release.
+    Adds 8 new tasks (+40h) for:
+      - M13 UX polish + docs (T1300-T1307, 40h)
+
+    Calendar: ~12 weeks with 2 devs to M10 internal release.
     M11 load runner is +1.5 weeks post-M10, or parallelized with M10 polish.
