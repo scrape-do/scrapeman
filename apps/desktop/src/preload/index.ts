@@ -16,6 +16,7 @@ import type {
   RecentWorkspace,
   ScrapemanBridge,
   ScrapemanRequest,
+  UpdateInfo,
   WorkspaceEvent,
   WorkspaceTree,
 } from '@scrapeman/shared-types';
@@ -222,6 +223,19 @@ const api: ScrapemanBridge = {
     ipcRenderer.invoke('git:localHide', workspacePath, relPath) as Promise<void>,
   gitLocalUnhide: (workspacePath: string, relPath: string) =>
     ipcRenderer.invoke('git:localUnhide', workspacePath, relPath) as Promise<void>,
+
+  onUpdateAvailable: (handler: (info: UpdateInfo) => void) => {
+    const listener = (_event: unknown, payload: UpdateInfo): void =>
+      handler(payload);
+    ipcRenderer.on('update:available', listener);
+    return () => ipcRenderer.off('update:available', listener);
+  },
+  dismissUpdate: (version: string) => {
+    ipcRenderer.send('update:dismiss', version);
+  },
+  openReleasePage: (url: string) => {
+    ipcRenderer.send('update:open-release', url);
+  },
 };
 
 contextBridge.exposeInMainWorld('scrapeman', api);

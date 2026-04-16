@@ -32,6 +32,7 @@ import type {
   ScrapemanRequest,
 } from '@scrapeman/shared-types';
 import { WorkspaceManager } from './workspace-manager.js';
+import { initAutoUpdater } from './updater.js';
 import {
   gitIsRepo,
   gitLog,
@@ -97,7 +98,7 @@ function rememberFullBody(requestId: string, bytes: Uint8Array): void {
   }
 }
 
-function createWindow(): void {
+function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 1320,
     height: 860,
@@ -139,6 +140,8 @@ function createWindow(): void {
   win.webContents.on('preload-error', (_event, preloadPath, error) => {
     console.error('[scrapeman] preload error:', preloadPath, error);
   });
+
+  return win;
 }
 
 function installContentSecurityPolicy(): void {
@@ -763,7 +766,8 @@ app.whenReady().then(() => {
       workspaceManager.setActiveEnvironment(workspacePath, name),
   );
 
-  createWindow();
+  const mainWindow = createWindow();
+  initAutoUpdater(mainWindow);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
