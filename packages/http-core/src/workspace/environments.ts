@@ -136,6 +136,23 @@ export class EnvironmentsFs {
     }
     return out;
   }
+
+  /**
+   * Returns the set of variable keys marked as secret in the active
+   * environment. Used by code export to mask resolved values.
+   */
+  async resolveSecretKeys(
+    activeEnv: string | null,
+  ): Promise<Set<string>> {
+    if (!activeEnv) return new Set();
+    const env = await this.readEnvironment(activeEnv);
+    if (!env) return new Set();
+    const keys = new Set<string>();
+    for (const variable of env.variables) {
+      if (variable.enabled && variable.secret) keys.add(variable.key);
+    }
+    return keys;
+  }
 }
 
 async function atomicWrite(absPath: string, data: string): Promise<void> {

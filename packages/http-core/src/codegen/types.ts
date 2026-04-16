@@ -10,6 +10,11 @@ export interface CodegenOptions {
    */
   inlineVariables: boolean;
   variables: Record<string, string>;
+  /**
+   * Variable keys whose values are secret. When inlineVariables is true,
+   * these values are partially masked instead of shown in plain text.
+   */
+  secretKeys?: ReadonlySet<string>;
 }
 
 export interface Codegen {

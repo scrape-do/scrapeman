@@ -555,9 +555,13 @@ app.whenReady().then(() => {
       const variables = input.workspacePath
         ? await workspaceManager.resolveActiveVariables(input.workspacePath)
         : {};
+      const secretKeys = input.workspacePath
+        ? await workspaceManager.resolveActiveSecretKeys(input.workspacePath)
+        : new Set<string>();
       return generateCode(input.target, input.request, {
         inlineVariables: input.inlineVariables,
         variables,
+        secretKeys,
       });
     },
   );

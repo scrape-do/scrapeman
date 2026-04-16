@@ -101,6 +101,15 @@ export class WorkspaceManager {
     return entry.envs.resolveVariables(state.activeEnvironment);
   }
 
+  async resolveActiveSecretKeys(
+    workspacePath: string,
+  ): Promise<Set<string>> {
+    const entry = this.openWorkspaces.get(workspacePath);
+    if (!entry) return new Set();
+    const state = await entry.envs.readState();
+    return entry.envs.resolveSecretKeys(state.activeEnvironment);
+  }
+
   async listRecents(): Promise<RecentWorkspace[]> {
     const file = join(app.getPath('userData'), RECENT_FILE);
     try {

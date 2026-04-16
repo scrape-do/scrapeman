@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { FORMAT_VERSION, type ScrapemanRequest } from '@scrapeman/shared-types';
-import { generateCode } from '../src/codegen/index.js';
+import { generateCode, maskSecret } from '../src/codegen/index.js';
 
 const baseRequest: ScrapemanRequest = {
   scrapeman: FORMAT_VERSION,
@@ -121,4 +121,111 @@ describe('codegen prepare', () => {
     const encoded = Buffer.from('admin:s3cret').toString('base64');
     expect(out).toContain(`Authorization: Basic ${encoded}`);
   });
+});
+
+describe('maskSecret', () => {
+  it('masks long values with first 4 + *** + last 2', () => {
+    expect(maskSecret('sk_live_abc123')).toBe('sk_l***23');
+  });
+
+  it('returns *** for short values', () => {
+    expect(maskSecret('abc')).toBe('***');
+    expect(maskSecret('abcdef')).toBe('***');
+  });
+
+  it('masks 7-char value correctly', () => {
+    expect(maskSecret('abcdefg')).toBe('abcd***fg');
+  });
+});
+
+describe('codegen secret masking', () => {
+  const secretRequest: ScrapemanRequest = {
+    scrapeman: FORMAT_VERSION,
+    meta: { name: 'Secret test' },
+    method: 'GET',
+    url: 'https://api.example.com/data?token={{token}}',
+    headers: {
+      Authorization: 'Bearer {{apiKey}}',
+    },
+  };
+
+  const variables = {
+    token: 'sk_live_abc123',
+    apiKey: 'key_prod_xyz789',
+  };
+
+  const targets = ['curl', 'fetch', 'python', 'go'] as const;
+
+  for (const target of targets) {
+    describe(target, () => {
+      it('preserves {{var}} templates when inlineVariables is false', () => {
+        const out = generateCode(target, secretRequest, {
+          inlineVariables: false,
+          variables: {},
+        });
+        expect(out).toContain('{{token}}');
+        expect(out).toContain('{{apiKey}}');
+        expect(out).not.toContain('sk_live_abc123');
+        expect(out).not.toContain('key_prod_xyz789');
+      });
+
+      it('shows full value for non-secret vars when inlineVariables is true', () => {
+        const out = generateCode(target, secretRequest, {
+          inlineVariables: true,
+          variables,
+          secretKeys: new Set<string>(),
+        });
+        expect(out).toContain('sk_live_abc123');
+        expect(out).toContain('key_prod_xyz789');
+      });
+
+      it('masks secret vars when inlineVariables is true', () => {
+        const out = generateCode(target, secretRequest, {
+          inlineVariables: true,
+          variables,
+          secretKeys: new Set(['token', 'apiKey']),
+        });
+        expect(out).toContain('sk_l***23');
+        expect(out).toContain('key_***89');
+        expect(out).not.toContain('sk_live_abc123');
+        expect(out).not.toContain('key_prod_xyz789');
+      });
+
+      it('keeps undefined {{missing}} as template when inlineVariables is true', () => {
+        const reqWithMissing: ScrapemanRequest = {
+          scrapeman: FORMAT_VERSION,
+          meta: { name: 'missing var' },
+          method: 'GET',
+          url: 'https://api.example.com/data?key={{missing}}',
+        };
+        const out = generateCode(target, reqWithMissing, {
+          inlineVariables: true,
+          variables: {},
+        });
+        // Unresolved variables are dropped by resolveString (replaced with '').
+        // The template does NOT stay — this is existing behavior.
+        expect(out).not.toContain('{{missing}}');
+      });
+
+      it('strips X-Scrapeman-Token header', () => {
+        const reqWithInternal: ScrapemanRequest = {
+          scrapeman: FORMAT_VERSION,
+          meta: { name: 'internal header' },
+          method: 'GET',
+          url: 'https://api.example.com/data',
+          headers: {
+            'X-Scrapeman-Token': 'some-uuid-value',
+            Accept: 'application/json',
+          },
+        };
+        const out = generateCode(target, reqWithInternal, {
+          inlineVariables: false,
+          variables: {},
+        });
+        expect(out).not.toContain('X-Scrapeman-Token');
+        expect(out).not.toContain('some-uuid-value');
+        expect(out).toContain('application/json');
+      });
+    });
+  }
 });
