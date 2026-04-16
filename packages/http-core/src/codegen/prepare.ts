@@ -1,6 +1,9 @@
 import type { KeyValue, ScrapemanRequest } from '@scrapeman/shared-types';
 import { resolveRequest } from '../variables/resolve.js';
+import { maskSecret } from './mask.js';
 import type { CodegenOptions } from './types.js';
+
+const VAR_PATTERN = /\{\{\s*([\w.-]+)\s*\}\}/g;
 
 export interface PreparedRequest {
   method: string;
@@ -18,11 +21,28 @@ export function prepareRequest(
   request: ScrapemanRequest,
   options: CodegenOptions,
 ): PreparedRequest {
-  const resolved = options.inlineVariables
-    ? resolveRequest(request, { variables: options.variables }).request
-    : request;
+  let resolved: ScrapemanRequest;
+
+  if (options.inlineVariables) {
+    const secretKeys = options.secretKeys ?? new Set<string>();
+    // Build a variables map where secret values are masked.
+    const maskedVars: Record<string, string> = {};
+    for (const [key, value] of Object.entries(options.variables)) {
+      maskedVars[key] = secretKeys.has(key) ? maskSecret(value) : value;
+    }
+    resolved = resolveRequest(request, { variables: maskedVars }).request;
+  } else {
+    resolved = request;
+  }
 
   const headers: KeyValue = { ...(resolved.headers ?? {}) };
+
+  // Strip internal header that is not useful in exported code.
+  for (const key of Object.keys(headers)) {
+    if (key.toLowerCase() === 'x-scrapeman-token') {
+      delete headers[key];
+    }
+  }
 
   // Apply params into URL query string if not already present.
   let url = resolved.url;
