@@ -33,6 +33,7 @@ export function App(): JSX.Element {
   const setUpdateInfo = useAppStore((s) => s.setUpdateInfo);
   const saveOrPrompt = useAppStore((s) => s.saveOrPrompt);
   const focusUrl = useAppStore((s) => s.focusUrl);
+  const focusSearch = useAppStore((s) => s.focusSearch);
   const toggleHiddenRequest = useAppStore((s) => s.toggleHiddenRequest);
   const tabs = useAppStore((s) => s.tabs);
   const isRepo = useAppStore((s) => s.gitStatus?.isRepo === true);
@@ -89,6 +90,17 @@ export function App(): JSX.Element {
             },
             { combo: 'mod+l', description: 'Focus URL bar', handler: () => focusUrl() },
             {
+              combo: 'mod+f',
+              description: 'Find in response',
+              handler: () => {
+                const state = useAppStore.getState();
+                const tab = state.tabs.find((t) => t.id === state.activeTabId);
+                if (tab?.execution.status === 'success') {
+                  focusSearch();
+                }
+              },
+            },
+            {
               combo: 'mod+enter',
               description: 'Send / cancel request',
               handler: () => {
@@ -137,6 +149,7 @@ export function App(): JSX.Element {
       activeTabId,
       saveOrPrompt,
       focusUrl,
+      focusSearch,
       toggleHiddenRequest,
       tabs,
       isRepo,

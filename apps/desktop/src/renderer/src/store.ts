@@ -128,6 +128,10 @@ interface AppState {
   focusUrlTick: number;
   focusUrl: () => void;
 
+  // Bumped by ⌘F; ResponseViewer watches and focuses+selects the search input.
+  focusSearchTick: number;
+  focusSearch: () => void;
+
   // Ticks bumped by the command palette to open dialogs owned by RequestBuilder.
   importCurlTick: number;
   openImportCurl: () => void;
@@ -537,6 +541,7 @@ export const useAppStore = create<AppState>((set, get) => {
     setSidebarView: (view) => set({ sidebarView: view }),
     saveDialogOpen: false,
     focusUrlTick: 0,
+    focusSearchTick: 0,
     importCurlTick: 0,
     loadTestTick: 0,
     revealInSidebarTick: 0,
@@ -582,6 +587,7 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     focusUrl: () => set({ focusUrlTick: get().focusUrlTick + 1 }),
+    focusSearch: () => set({ focusSearchTick: get().focusSearchTick + 1 }),
     openImportCurl: () => set({ importCurlTick: get().importCurlTick + 1 }),
     openLoadTest: () => set({ loadTestTick: get().loadTestTick + 1 }),
 
