@@ -20,7 +20,7 @@ export function CodePanel(): JSX.Element {
   const workspace = useAppStore((s) => s.workspace);
 
   const [target, setTarget] = useState<CodegenTarget>('curl');
-  const [inlineVars, setInlineVars] = useState(true);
+  const [inlineVars, setInlineVars] = useState(false);
   const [code, setCode] = useState<string>('');
   const [copied, setCopied] = useState(false);
   const preRef = useRef<HTMLPreElement>(null);
