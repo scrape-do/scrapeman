@@ -281,51 +281,34 @@ export function App(): JSX.Element {
         commands={commands}
       />
       <div className="min-h-0 flex-1 overflow-hidden">
-        {sidebarVisible ? (
-          <SplitPane
-            orientation="horizontal"
-            initialSize={20}
-            minSize={12}
-            maxSize={45}
-            storageKey="app/sidebar"
-            first={
-              <aside className="h-full border-r border-line bg-bg-subtle">
-                <Sidebar />
-              </aside>
-            }
-            second={
-              <div className="flex h-full flex-col overflow-hidden">
-                <UpdateBanner />
-                <TabBar guard={guard} />
-                <div className="flex-1 overflow-hidden">
-                  {hideResponsePanel ? (
-                    <RequestBuilder />
-                  ) : (
-                    <SplitPane
-                      orientation={splitOrientation}
-                      storageKey="builder/response"
-                      first={<RequestBuilder />}
-                      second={<ResponseViewer />}
-                    />
-                  )}
-                </div>
+        <SplitPane
+          orientation="horizontal"
+          initialSize={20}
+          minSize={12}
+          maxSize={45}
+          storageKey="app/sidebar"
+          firstCollapsed={!sidebarVisible}
+          first={
+            <aside className="h-full border-r border-line bg-bg-subtle">
+              <Sidebar />
+            </aside>
+          }
+          second={
+            <div className="flex h-full flex-col overflow-hidden">
+              <UpdateBanner />
+              <TabBar guard={guard} />
+              <div className="flex-1 overflow-hidden">
+                <SplitPane
+                  orientation={splitOrientation}
+                  storageKey="builder/response"
+                  secondCollapsed={hideResponsePanel}
+                  first={<RequestBuilder />}
+                  second={<ResponseViewer />}
+                />
               </div>
-            }
-          />
-        ) : (
-          <div className="flex h-full flex-col overflow-hidden">
-            <UpdateBanner />
-            <TabBar guard={guard} />
-            <div className="flex-1 overflow-hidden">
-              <SplitPane
-                orientation={splitOrientation}
-                storageKey="builder/response"
-                first={<RequestBuilder />}
-                second={<ResponseViewer />}
-              />
             </div>
-          </div>
-        )}
+          }
+        />
       </div>
       <GitStatusBar
         sidebarVisible={sidebarVisible}

@@ -10,6 +10,8 @@ export function SplitPane({
   storageKey,
   first,
   second,
+  firstCollapsed = false,
+  secondCollapsed = false,
 }: {
   orientation: SplitOrientation;
   initialSize?: number;
@@ -18,6 +20,8 @@ export function SplitPane({
   storageKey?: string;
   first: ReactNode;
   second: ReactNode;
+  firstCollapsed?: boolean;
+  secondCollapsed?: boolean;
 }): JSX.Element {
   const [size, setSize] = useState<number>(() => {
     if (typeof window === 'undefined' || !storageKey) return initialSize;
@@ -85,9 +89,13 @@ export function SplitPane({
       <div
         className="overflow-hidden"
         style={
-          isHorizontal
-            ? { width: `${size}%`, minWidth: 0 }
-            : { height: `${size}%`, minHeight: 0 }
+          firstCollapsed
+            ? { display: 'none' }
+            : secondCollapsed
+              ? { flex: 1, minWidth: 0, minHeight: 0 }
+              : isHorizontal
+                ? { width: `${size}%`, minWidth: 0 }
+                : { height: `${size}%`, minHeight: 0 }
         }
       >
         {first}
@@ -96,6 +104,7 @@ export function SplitPane({
         onMouseDown={onMouseDown}
         onDoubleClick={() => setSize(initialSize)}
         title="Drag to resize · double-click to reset"
+        style={firstCollapsed || secondCollapsed ? { display: 'none' } : undefined}
         className={`group relative flex flex-shrink-0 items-center justify-center bg-line transition-colors hover:bg-accent ${
           isHorizontal ? 'w-px cursor-col-resize' : 'h-px cursor-row-resize'
         }`}
@@ -108,7 +117,13 @@ export function SplitPane({
       </div>
       <div
         className="flex-1 overflow-hidden"
-        style={isHorizontal ? { minWidth: 0 } : { minHeight: 0 }}
+        style={
+          secondCollapsed
+            ? { display: 'none' }
+            : isHorizontal
+              ? { minWidth: 0 }
+              : { minHeight: 0 }
+        }
       >
         {second}
       </div>
