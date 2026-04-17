@@ -77,7 +77,7 @@ export function ImportCurlDialog({
               --user-agent, --cookie, -L, -k
             </div>
             <div className="flex items-center gap-2">
-              <button type="button" className="btn-secondary" onClick={onClose}>
+              <button type="button" className="btn-secondary" onClick={onClose} title="Cancel import">
                 Cancel
               </button>
               <button
@@ -85,6 +85,7 @@ export function ImportCurlDialog({
                 className="btn-primary"
                 onClick={() => void submit()}
                 disabled={!value.trim() || importing}
+                title="Import curl command"
               >
                 {importing ? 'Importing…' : 'Import'}
                 <span className="ml-1.5 font-mono text-[10px] opacity-60">

@@ -96,6 +96,7 @@ export function Sidebar(): JSX.Element {
         <button
           onClick={() => void pickAndOpenWorkspace()}
           className="btn-primary"
+          title="Open workspace folder"
         >
           Open folder…
         </button>
@@ -117,6 +118,7 @@ export function Sidebar(): JSX.Element {
               ? 'border-accent text-ink-1'
               : 'border-transparent text-ink-3 hover:text-ink-1'
           }`}
+          title="File explorer"
         >
           Files
         </button>
@@ -358,19 +360,19 @@ function FilesView({
         <div className="flex-1 truncate px-1.5 text-xs font-semibold text-ink-1">
           {workspaceName}
         </div>
-        <button title="New request" onClick={onNewRequest} className="icon-btn">
+        <button title="New request" onClick={onNewRequest} className="icon-btn text-lg">
           +
         </button>
-        <button title="New folder" onClick={onNewFolder} className="icon-btn">
+        <button title="New folder" onClick={onNewFolder} className="icon-btn text-lg">
           ⌸
         </button>
-        <button title="Switch workspace" onClick={onPick} className="icon-btn">
+        <button title="Switch workspace" onClick={onPick} className="icon-btn text-lg">
           ⇄
         </button>
       </div>
       {/* Search input */}
       <div className="flex items-center gap-1 border-b border-line px-2 py-1.5">
-        <span className="text-ink-3 text-base leading-none select-none" aria-hidden="true">
+        <span className="text-ink-3 text-lg leading-none select-none" aria-hidden="true">
           ⌕
         </span>
         <input
@@ -396,6 +398,7 @@ function FilesView({
               treeRef.current?.focus();
             }}
             aria-label="Clear filter"
+            title="Clear filter"
             className="text-ink-3 hover:text-ink-1 leading-none text-xs"
           >
             ✕
@@ -438,6 +441,7 @@ function FilesView({
                   <button
                     onClick={() => setDialog({ kind: 'newRequest', parent: '' })}
                     className="btn-ghost text-accent hover:text-accent-hover"
+                    title="Create new request"
                   >
                     Create your first request
                   </button>
@@ -450,6 +454,7 @@ function FilesView({
                   <button
                     onClick={() => setQuery('')}
                     className="btn-ghost text-accent hover:text-accent-hover text-xs"
+                    title="Clear filter"
                   >
                     Clear filter
                   </button>
@@ -612,6 +617,7 @@ function TreeNode({
                 onRequestExpand(node.relPath);
               }}
               style={{ paddingLeft: `${indent}px` }}
+              title={node.relPath || node.name}
               className={`group relative flex h-7 w-full items-center gap-1.5 pr-3 text-left text-xs text-ink-2 ${
                 dragOver
                   ? 'bg-accent-soft ring-1 ring-inset ring-accent'
@@ -620,7 +626,7 @@ function TreeNode({
                     : 'hover:bg-bg-hover'
               }`}
             >
-              <span className="w-4 text-center text-base leading-none text-ink-3">
+              <span className="w-4 text-center text-lg leading-none text-ink-3">
                 {isExpanded ? '▾' : '▸'}
               </span>
               <span className="truncate font-medium">{node.name}</span>
@@ -688,6 +694,7 @@ function TreeNode({
           }}
           onClick={() => void openRequest(node.relPath)}
           style={{ paddingLeft: `${indent + 16}px` }}
+          title={node.relPath}
           className={`group relative flex h-7 w-full items-center gap-2 pr-3 text-left text-xs ${
             active
               ? 'bg-accent-soft text-ink-1'

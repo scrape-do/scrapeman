@@ -257,6 +257,7 @@ const TabItem = forwardRef<HTMLDivElement, TabItemProps>(
           }}
           className="flex h-4 w-4 items-center justify-center rounded text-ink-4 opacity-0 transition-opacity hover:bg-bg-active hover:text-ink-1 group-hover:opacity-100"
           aria-label="Close tab"
+          title="Close tab"
         >
           ×
         </button>

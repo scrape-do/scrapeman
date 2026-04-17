@@ -41,6 +41,7 @@ export function MethodPicker({
           <button
             type="button"
             className="flex h-8 w-[108px] items-center justify-between rounded-md border border-line bg-bg-canvas px-2.5 hover:bg-bg-hover focus:border-accent focus:shadow-focus"
+            title="Select HTTP method"
           >
             <span className={`font-mono text-xs font-semibold ${color}`}>
               {value}

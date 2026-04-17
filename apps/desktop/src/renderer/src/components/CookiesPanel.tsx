@@ -84,6 +84,7 @@ export function CookiesPanel({
                 onClick={() => setConfirmAll(true)}
                 disabled={totalCount === 0}
                 className="btn-ghost text-method-delete hover:text-method-delete disabled:text-ink-5"
+                title="Clear all cookies"
               >
                 Clear all
               </button>
@@ -116,6 +117,7 @@ export function CookiesPanel({
                       <button
                         onClick={() => setConfirmDomain(domain)}
                         className="rounded px-1.5 py-0.5 text-[10px] font-medium text-ink-4 hover:bg-bg-active hover:text-method-delete"
+                        title="Clear domain cookies"
                       >
                         clear domain
                       </button>
@@ -145,6 +147,7 @@ export function CookiesPanel({
                             onClick={() => void deleteCookie(cookie)}
                             className="opacity-0 group-hover:opacity-100 icon-btn"
                             aria-label="Delete cookie"
+                            title="Delete cookie"
                           >
                             ×
                           </button>
@@ -156,7 +159,7 @@ export function CookiesPanel({
             </div>
 
             <div className="flex items-center justify-end gap-2 border-t border-line bg-bg-subtle px-5 py-3">
-              <button onClick={onClose} className="btn-secondary">
+              <button onClick={onClose} className="btn-secondary" title="Close cookies panel">
                 Close
               </button>
             </div>

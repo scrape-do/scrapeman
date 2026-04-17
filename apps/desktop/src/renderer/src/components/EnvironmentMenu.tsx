@@ -26,12 +26,13 @@ export function EnvironmentMenu(): JSX.Element {
           <button
             type="button"
             className="app-no-drag flex h-8 items-center gap-1.5 rounded-md border border-line bg-bg-canvas px-3 text-xs font-medium text-ink-2 hover:bg-bg-hover hover:text-ink-1"
+            title="Select environment"
           >
             <span className={activeEnvironment ? 'h-1.5 w-1.5 rounded-full bg-accent' : 'h-1.5 w-1.5 rounded-full bg-ink-5'} />
             <span className="font-medium">
               {activeEnvironment ?? 'No environment'}
             </span>
-            <span className="text-ink-4">▾</span>
+            <span className="text-ink-4 text-lg leading-none">▾</span>
           </button>
         </DropdownMenu.Trigger>
         <DropdownMenu.Portal>
@@ -46,7 +47,7 @@ export function EnvironmentMenu(): JSX.Element {
             >
               <span className="h-1.5 w-1.5 rounded-full bg-ink-5" />
               <span className="flex-1">No environment</span>
-              {activeEnvironment === null && <span className="text-accent">✓</span>}
+              {activeEnvironment === null && <span className="text-accent text-lg leading-none">✓</span>}
             </DropdownMenu.Item>
             {environments.length > 0 && (
               <DropdownMenu.Separator className="my-1 h-px bg-line-subtle" />
@@ -63,7 +64,7 @@ export function EnvironmentMenu(): JSX.Element {
                   {env.variables.filter((v) => v.enabled).length} vars
                 </span>
                 {activeEnvironment === env.name && (
-                  <span className="text-accent">✓</span>
+                  <span className="text-accent text-lg leading-none">✓</span>
                 )}
                 <button
                   onClick={(e) => {
@@ -71,7 +72,7 @@ export function EnvironmentMenu(): JSX.Element {
                     e.preventDefault();
                     openVariables(env.name);
                   }}
-                  className="ml-1 rounded px-1 text-ink-4 hover:bg-bg-active hover:text-ink-1"
+                  className="ml-1 rounded px-1 text-lg leading-none text-ink-4 hover:bg-bg-active hover:text-ink-1"
                   title="Edit variables"
                 >
                   ⚙

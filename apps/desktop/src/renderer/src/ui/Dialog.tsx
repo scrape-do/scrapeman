@@ -59,7 +59,7 @@ export function PromptDialog({
             className="field mt-4 w-full"
           />
           <div className="mt-5 flex items-center justify-end gap-2">
-            <button type="button" className="btn-secondary" onClick={onClose}>
+            <button type="button" className="btn-secondary" onClick={onClose} title="Cancel">
               Cancel
             </button>
             <button
@@ -67,6 +67,7 @@ export function PromptDialog({
               className="btn-primary"
               onClick={submit}
               disabled={!value.trim()}
+              title="Confirm"
             >
               {confirmLabel}
             </button>
@@ -127,7 +128,7 @@ export function ConfirmDialog({
               <span />
             )}
             <div className="flex items-center gap-2">
-              <button type="button" className="btn-secondary" onClick={onClose}>
+              <button type="button" className="btn-secondary" onClick={onClose} title="Cancel">
                 Cancel
               </button>
               <button
@@ -136,6 +137,7 @@ export function ConfirmDialog({
                   onConfirm();
                   onClose();
                 }}
+                title="Confirm action"
                 className={
                   destructive
                     ? 'inline-flex h-8 items-center justify-center rounded-md bg-method-delete px-3.5 text-xs font-semibold text-white hover:bg-[#B6383D] active:bg-[#9D3034]'

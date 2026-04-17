@@ -146,6 +146,7 @@ export function LoadTestDialog({
                   onClick={() => void start()}
                   disabled={starting || !activeTab}
                   className="btn-primary"
+                  title="Start load test"
                 >
                   {starting ? 'Starting…' : 'Start'}
                 </button>
@@ -154,16 +155,17 @@ export function LoadTestDialog({
                 <button
                   onClick={() => void stop()}
                   className="inline-flex h-8 items-center justify-center rounded-md bg-method-delete px-3.5 text-xs font-semibold text-white hover:bg-[#B6383D]"
+                  title="Stop load test"
                 >
                   Stop
                 </button>
               )}
               {finished && (
-                <button onClick={reset} className="btn-secondary">
+                <button onClick={reset} className="btn-secondary" title="Reset load test">
                   Reset
                 </button>
               )}
-              <button onClick={onClose} className="btn-ghost">
+              <button onClick={onClose} className="btn-ghost" title="Close dialog">
                 Close
               </button>
             </div>

@@ -50,8 +50,9 @@ export function HistoryPanel(): JSX.Element {
       <button
         onClick={() => setExpanded(!expanded)}
         className="flex h-9 flex-shrink-0 items-center gap-1.5 px-3 text-left text-[10px] font-semibold uppercase tracking-wider text-ink-3 hover:bg-bg-hover hover:text-ink-1"
+        title="Toggle history panel"
       >
-        <span className="w-3 text-center text-[9px]">{expanded ? '▾' : '▸'}</span>
+        <span className="w-4 text-center text-lg leading-none">{expanded ? '▾' : '▸'}</span>
         <span className="flex-1">History</span>
         <span className="text-ink-4">{history.length}</span>
         {history.length > 0 && (
@@ -102,9 +103,10 @@ export function HistoryPanel(): JSX.Element {
                           [group.label]: !(prev[group.label] ?? false),
                         }))
                       }
+                      title="Toggle date group"
                       className="sticky top-0 z-[5] flex w-full items-center gap-1.5 bg-bg-canvas/95 px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-wider text-ink-3 backdrop-blur hover:text-ink-1"
                     >
-                      <span className="w-3 text-center text-[9px]">
+                      <span className="w-4 text-center text-lg leading-none">
                         {collapsed ? '▸' : '▾'}
                       </span>
                       <span className="flex-1">{group.label}</span>
@@ -170,6 +172,7 @@ function HistoryRow({
         <button
           onClick={onRestore}
           className="group flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-bg-hover"
+          title="Restore this request"
         >
           <span className={`w-11 font-mono text-[10px] font-semibold uppercase ${color}`}>
             {entry.method.slice(0, 6)}

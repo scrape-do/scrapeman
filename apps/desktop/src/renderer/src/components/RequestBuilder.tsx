@@ -75,7 +75,7 @@ export function RequestBuilder(): JSX.Element {
           <div className="mt-1 text-xs text-ink-3">
             Open a request from the sidebar, or start a new tab.
           </div>
-          <button onClick={newTab} className="btn-primary mt-4">
+          <button onClick={newTab} className="btn-primary mt-4" title="Open new tab">
             New tab
           </button>
         </div>
@@ -146,6 +146,7 @@ export function RequestBuilder(): JSX.Element {
           onClick={() => void saveOrPrompt()}
           disabled={activeTab.kind === 'file' && !activeTab.dirty}
           className="btn-ghost"
+          title="Save request (⌘S)"
         >
           {activeTab.kind === 'file' ? 'Save' : 'Save as…'}
           <span className="ml-1.5 font-mono text-[10px] text-ink-4">
@@ -182,6 +183,7 @@ export function RequestBuilder(): JSX.Element {
             onClick={() => void send()}
             disabled={!builder.url.trim()}
             className="btn-primary min-w-[86px]"
+            title="Send request (⌘↵)"
           >
             Send
           </button>
@@ -262,6 +264,7 @@ export function RequestBuilder(): JSX.Element {
                 <button
                   key={type}
                   onClick={() => setBodyType(type)}
+                  title={`Set body type to ${type}`}
                   className={`rounded px-2 py-0.5 text-xs font-medium ${
                     builder.bodyType === type
                       ? 'bg-accent-soft text-accent'

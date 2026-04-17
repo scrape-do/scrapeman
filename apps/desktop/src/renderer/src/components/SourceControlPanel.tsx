@@ -110,6 +110,7 @@ export function SourceControlPanel(): JSX.Element {
         <button
           onClick={() => void loadGitStatus()}
           className="btn-ghost text-accent hover:text-accent-hover"
+          title="Retry loading git status"
         >
           Retry
         </button>
@@ -130,6 +131,7 @@ export function SourceControlPanel(): JSX.Element {
         <button
           onClick={() => void loadGitStatus()}
           className="btn-ghost text-accent hover:text-accent-hover"
+          title="Refresh git status"
         >
           Refresh
         </button>
@@ -159,6 +161,7 @@ export function SourceControlPanel(): JSX.Element {
             disabled={!canCommit}
             onClick={() => void commitChanges(message).then(() => setMessage(''))}
             className="btn-primary mt-2 w-full text-xs disabled:cursor-not-allowed disabled:opacity-40"
+            title="Commit staged changes (⌘↵)"
           >
             Commit {staged.length > 0 ? `(${staged.length})` : ''}
           </button>
@@ -173,7 +176,7 @@ export function SourceControlPanel(): JSX.Element {
                   title="Unstage all"
                   disabled={staged.length === 0}
                   onClick={() => void unstageAll()}
-                  className="icon-btn disabled:opacity-40"
+                  className="icon-btn text-lg disabled:opacity-40"
                 >
                   −
                 </button>
@@ -194,7 +197,7 @@ export function SourceControlPanel(): JSX.Element {
                         e.stopPropagation();
                         void unstageFile(c.path);
                       }}
-                      className="icon-btn"
+                      className="icon-btn text-lg"
                     >
                       −
                     </button>
@@ -212,7 +215,7 @@ export function SourceControlPanel(): JSX.Element {
                   title="Stage all"
                   disabled={unstaged.length === 0}
                   onClick={() => void stageAll()}
-                  className="icon-btn disabled:opacity-40"
+                  className="icon-btn text-lg disabled:opacity-40"
                 >
                   +
                 </button>
@@ -234,7 +237,7 @@ export function SourceControlPanel(): JSX.Element {
                           e.stopPropagation();
                           setConfirmDiscard(c.path);
                         }}
-                        className="icon-btn"
+                        className="icon-btn text-lg"
                       >
                         ⟲
                       </button>
@@ -244,7 +247,7 @@ export function SourceControlPanel(): JSX.Element {
                           e.stopPropagation();
                           void stageFile(c.path);
                         }}
-                        className="icon-btn"
+                        className="icon-btn text-lg"
                       >
                         +
                       </button>
@@ -316,7 +319,7 @@ export function SourceControlPanel(): JSX.Element {
         <Tooltip label="Refresh git status">
           <button
             onClick={() => void loadGitStatus()}
-            className="icon-btn"
+            className="icon-btn text-lg"
           >
             ↻
           </button>
@@ -404,6 +407,7 @@ function FileRow({
   return (
     <button
       onClick={onClick}
+      title={change.path}
       className={`group flex h-7 w-full items-center gap-2 pr-2 pl-3 text-left text-xs ${
         active ? 'bg-accent-soft text-ink-1' : 'text-ink-2 hover:bg-bg-hover'
       }`}

@@ -117,6 +117,7 @@ export function SettingsDialog({
                         className="btn-secondary"
                         onClick={() => stats?.path && void bridge.openInShell(stats.path)}
                         disabled={!stats?.path}
+                        title="Reveal in file manager"
                       >
                         {revealLabel}
                       </button>
@@ -144,6 +145,7 @@ export function SettingsDialog({
                       onClick={() => setConfirmClearOne(true)}
                       className="inline-flex h-8 items-center justify-center rounded-md bg-method-delete px-3.5 text-xs font-semibold text-white hover:bg-[#B6383D] active:bg-[#9D3034]"
                       disabled={!stats || stats.count === 0}
+                      title="Clear this workspace history"
                     >
                       Clear this workspace
                     </button>
@@ -164,6 +166,7 @@ export function SettingsDialog({
                   type="button"
                   onClick={() => setConfirmClearAll(true)}
                   className="inline-flex h-8 items-center justify-center rounded-md bg-method-delete px-3.5 text-xs font-semibold text-white hover:bg-[#B6383D] active:bg-[#9D3034]"
+                  title="Clear all workspace history"
                 >
                   Clear all history
                 </button>
@@ -171,7 +174,7 @@ export function SettingsDialog({
             </section>
 
             <div className="mt-6 flex items-center justify-end">
-              <button type="button" className="btn-secondary" onClick={onClose}>
+              <button type="button" className="btn-secondary" onClick={onClose} title="Close settings">
                 Close
               </button>
             </div>

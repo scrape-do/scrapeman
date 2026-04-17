@@ -65,6 +65,7 @@ export function CodePanel(): JSX.Element {
             <button
               key={t.target}
               onClick={() => setTarget(t.target)}
+              title={`Generate ${t.label} snippet`}
               className={`rounded px-2 py-1 text-xs font-medium ${
                 target === t.target
                   ? 'bg-accent-soft text-accent'
@@ -84,7 +85,7 @@ export function CodePanel(): JSX.Element {
           />
           Inline variables
         </label>
-        <button onClick={copy} className="btn-ghost">
+        <button onClick={copy} className="btn-ghost" title="Copy to clipboard">
           {copied ? 'Copied!' : 'Copy'}
         </button>
       </div>

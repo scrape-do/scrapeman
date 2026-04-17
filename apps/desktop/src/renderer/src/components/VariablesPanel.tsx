@@ -106,6 +106,7 @@ export function VariablesPanel({
                 }
               }}
               className="btn-ghost text-method-delete hover:text-method-delete"
+              title="Delete environment"
             >
               Delete env
             </button>
@@ -159,6 +160,7 @@ export function VariablesPanel({
                   onClick={() => remove(row.id)}
                   className="opacity-0 group-hover:opacity-100 icon-btn"
                   aria-label="Remove variable"
+                  title="Remove variable"
                 >
                   ×
                 </button>
@@ -167,19 +169,21 @@ export function VariablesPanel({
             <button
               onClick={add}
               className="flex h-9 items-center px-5 text-xs text-ink-3 transition-colors hover:bg-bg-subtle hover:text-accent"
+              title="Add variable"
             >
               + Add variable
             </button>
           </div>
 
           <div className="flex items-center justify-end gap-2 border-t border-line bg-bg-subtle px-5 py-3">
-            <button onClick={onClose} className="btn-secondary">
+            <button onClick={onClose} className="btn-secondary" title="Cancel">
               Cancel
             </button>
             <button
               onClick={() => void save()}
               disabled={saving}
               className="btn-primary"
+              title="Save variables"
             >
               {saving ? 'Saving…' : 'Save'}
             </button>

@@ -113,6 +113,7 @@ export function ParamsEditor({
             onClick={() => onRemove(row.id)}
             className="opacity-0 group-hover:opacity-100 icon-btn"
             aria-label="Remove parameter"
+            title="Remove parameter"
           >
             ×
           </button>
@@ -121,6 +122,7 @@ export function ParamsEditor({
       <button
         onClick={onAdd}
         className="flex h-8 items-center px-3 text-xs text-ink-3 transition-colors hover:bg-bg-subtle hover:text-accent"
+        title="Add parameter"
       >
         + Add parameter
       </button>

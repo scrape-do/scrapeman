@@ -171,6 +171,7 @@ function DiffHeader({ filePath, onClose }: { filePath: string; onClose: () => vo
       <button
         onClick={onClose}
         aria-label="Close diff view"
+        title="Close diff view"
         className="icon-btn -mr-1"
       >
         ×

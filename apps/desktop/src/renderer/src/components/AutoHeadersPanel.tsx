@@ -156,6 +156,7 @@ export function AutoHeadersPanel({
         onClick={() => setOpen(!open)}
         className="flex w-full items-center justify-between px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-ink-4 hover:text-ink-2"
         aria-expanded={open}
+        title="Toggle auto headers"
       >
         <span>
           Auto Headers{autoCount > 0 ? ` (${autoCount})` : ''}
