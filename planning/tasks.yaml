@@ -1088,6 +1088,51 @@ tasks:
       - HAR: entries[] with request + response
       - Integration test round-trip
 
+  # ================= M9b: .sman collection bundle format =================
+
+  - id: T097
+    title: ".sman collection bundle: export workspace as ZIP"
+    milestone: M9
+    owner: developer-core
+    estimate_hours: 8
+    depends_on: [T020]
+    tags: [core, file-format]
+    acceptance:
+      - Right-click folder in sidebar → "Export as .sman" creates a ZIP file with .sman extension
+      - ZIP contains manifest.yaml (format, version, name, request_count, scrapeman_version), requests/ with .req.yaml files preserving folder hierarchy, environments/ with .env.yaml, files/ with body sidecars
+      - Secret env values are stripped by default (replaced with empty string + comment)
+      - Export of entire workspace via File menu → "Export collection..."
+      - spec at planning/issues/sman-bundle-format.md
+      - Unit test: create temp workspace, export .sman, verify ZIP structure + manifest + file count
+
+  - id: T098
+    title: ".sman collection bundle: import .sman into workspace"
+    milestone: M9
+    owner: developer-core
+    estimate_hours: 6
+    depends_on: [T097]
+    tags: [core, file-format]
+    acceptance:
+      - "Import from..." menu gains .sman entry alongside Postman/Bruno/Insomnia/HAR
+      - Drag-and-drop .sman file onto Scrapeman window triggers import
+      - Preview dialog shows request count, environment count, folder tree before extracting
+      - Extracts .req.yaml into workspace, .env.yaml into .scrapeman/environments/, sidecars into files/
+      - File watcher picks up new files, sidebar updates without manual refresh
+      - Integration test: export → import round-trip, verify all requests match
+
+  - id: T099
+    title: ".sman OS file association (macOS + Windows + Linux)"
+    milestone: M10
+    owner: developer-core
+    estimate_hours: 4
+    depends_on: [T098, T100]
+    tags: [infra, file-format]
+    acceptance:
+      - macOS Info.plist declares UTI for .sman, double-click opens Scrapeman with import dialog
+      - Windows NSIS installer registers .sman file extension
+      - Linux .desktop file includes .sman MimeType
+      - If Scrapeman is already running, the file opens in the existing instance (single-instance check)
+
   # ================= M12: Competitive gaps from Hoppscotch / Yaak research =================
 
   - id: T1200
@@ -1266,8 +1311,8 @@ tasks:
       - The dialog text clearly shows which tab is about to be closed (request name or "Untitled")
 
 totals:
-  task_count: 105
-  total_estimate_hours: 637
+  task_count: 108
+  total_estimate_hours: 655
   working_days_at_6h_focus: 106
   calendar_weeks_2_devs: 12
   notes: |
@@ -1289,6 +1334,10 @@ totals:
 
     Adds 8 new tasks (+40h) for:
       - M13 UX polish + docs (T1300-T1307, 40h)
+
+    Adds 3 new tasks (+18h) for:
+      - M9b .sman bundle format (T097-T098, 14h export+import)
+      - M10 .sman OS file association (T099, 4h)
 
     Calendar: ~12 weeks with 2 devs to M10 internal release.
     M11 load runner is +1.5 weeks post-M10, or parallelized with M10 polish.
