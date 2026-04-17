@@ -8,13 +8,13 @@ import { SettingsTab as SettingsTabPanel } from './SettingsTab.js';
 import { AuthTab } from './AuthTab.js';
 import { CodePanel } from './CodePanel.js';
 import { ImportCurlDialog } from './ImportCurlDialog.js';
-import { LoadTestDialog } from './LoadTestDialog.js';
+import { LoadTestPanel } from './LoadTestPanel.js';
 import { HighlightedInput } from '../ui/HighlightedInput.js';
 import { CellContextMenu } from '../ui/CellContextMenu.js';
 import { PromptDialog } from '../ui/Dialog.js';
 import { shortcutLabel } from '../hooks/useShortcuts.js';
 
-type Tab = 'params' | 'headers' | 'auth' | 'body' | 'settings' | 'code';
+type Tab = 'params' | 'headers' | 'auth' | 'body' | 'settings' | 'code' | 'load';
 
 export function RequestBuilder(): JSX.Element {
   const activeTab = useAppStore((s) => s.tabs.find((t) => t.id === s.activeTabId) ?? null);
@@ -42,7 +42,6 @@ export function RequestBuilder(): JSX.Element {
 
   const [tab, setTab] = useState<Tab>('params');
   const [importOpen, setImportOpen] = useState(false);
-  const [loadTestOpen, setLoadTestOpen] = useState(false);
 
   const urlInputRef = useRef<HTMLInputElement | null>(null);
   const focusUrlTick = useAppStore((s) => s.focusUrlTick);
@@ -61,7 +60,7 @@ export function RequestBuilder(): JSX.Element {
   const loadTestTick = useAppStore((s) => s.loadTestTick);
   useEffect(() => {
     if (loadTestTick === 0) return;
-    setLoadTestOpen(true);
+    setTab('load');
   }, [loadTestTick]);
 
   if (!activeTab) {
@@ -128,7 +127,7 @@ export function RequestBuilder(): JSX.Element {
           )}
         </div>
         <button
-          onClick={() => setLoadTestOpen(true)}
+          onClick={() => setTab('load')}
           disabled={!builder.url.trim()}
           className="btn-ghost"
           title="Run load test"
@@ -224,6 +223,9 @@ export function RequestBuilder(): JSX.Element {
         <TabButton active={tab === 'code'} onClick={() => setTab('code')}>
           Code
         </TabButton>
+        <TabButton active={tab === 'load'} onClick={() => setTab('load')}>
+          Load Test
+        </TabButton>
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -291,17 +293,16 @@ export function RequestBuilder(): JSX.Element {
             />
           </div>
         )}
+        {/* Load test panel uses display:none to preserve run state across tab switches */}
+        <div className={tab === 'load' ? 'flex h-full flex-col' : 'hidden'}>
+          <LoadTestPanel />
+        </div>
       </div>
 
       <ImportCurlDialog
         open={importOpen}
         onClose={() => setImportOpen(false)}
         onImport={importCurl}
-      />
-
-      <LoadTestDialog
-        open={loadTestOpen}
-        onClose={() => setLoadTestOpen(false)}
       />
 
       <PromptDialog
