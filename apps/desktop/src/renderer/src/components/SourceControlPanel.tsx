@@ -5,6 +5,7 @@ import { bridge } from '../bridge.js';
 import { ConfirmDialog } from '../ui/Dialog.js';
 import { Tooltip } from '../ui/Tooltip.js';
 import { DiffViewer } from './DiffViewer.js';
+import { SplitPane } from './SplitPane.js';
 
 const STATUS_BADGE: Record<GitFileChange['status'], string> = {
   modified: 'M',
@@ -136,88 +137,12 @@ export function SourceControlPanel(): JSX.Element {
     );
   }
 
-  // Full-panel diff view — replaces the file list when a file is selected.
-  // DiffViewer provides its own header with the file path and close button.
-  if (selected) {
-    return (
-      <DiffViewer
-        filePath={(selected.staged ? 'Staged — ' : '') + selected.relPath}
-        diff={diff}
-        onClose={() => setSelected(null)}
-      />
-    );
-  }
-
   const canCommit = staged.length > 0 && message.trim().length > 0;
 
-  return (
-    <div className="flex h-full flex-col">
-      <div className="flex h-10 items-center gap-1 border-b border-line px-2">
-        <div className="flex-1 truncate px-1.5 text-xs font-semibold text-ink-1">
-          ⎇ {gitStatus.branch ?? '(detached)'}
-          {gitStatus.changes.length > 0 && (
-            <span className="ml-1.5 text-ink-3">
-              ●{gitStatus.changes.length}
-            </span>
-          )}
-        </div>
-        <Tooltip
-          label={
-            gitStatus.behind > 0
-              ? `Pull ${gitStatus.behind} commit${gitStatus.behind === 1 ? '' : 's'} from upstream`
-              : 'Pull from upstream (git pull)'
-          }
-        >
-          <button
-            disabled={gitBusy}
-            onClick={() => void gitPull()}
-            className="icon-btn disabled:opacity-50"
-          >
-            {gitBusy ? (
-              <span className="inline-block animate-spin">↻</span>
-            ) : (
-              <>↓{gitStatus.behind > 0 ? gitStatus.behind : ''}</>
-            )}
-          </button>
-        </Tooltip>
-        <Tooltip
-          label={
-            gitStatus.ahead > 0
-              ? `Push ${gitStatus.ahead} commit${gitStatus.ahead === 1 ? '' : 's'} to upstream`
-              : 'Push to upstream (git push)'
-          }
-        >
-          <button
-            disabled={gitBusy}
-            onClick={() => void gitPush()}
-            className="icon-btn disabled:opacity-50"
-          >
-            {gitBusy ? (
-              <span className="inline-block animate-spin">↻</span>
-            ) : (
-              <>↑{gitStatus.ahead > 0 ? gitStatus.ahead : ''}</>
-            )}
-          </button>
-        </Tooltip>
-        <Tooltip label="Refresh git status">
-          <button
-            onClick={() => void loadGitStatus()}
-            className="icon-btn"
-          >
-            ↻
-          </button>
-        </Tooltip>
-      </div>
-
-      {gitError && (
-        <div className="border-b border-line bg-bg-hover px-3 py-2 text-[11px] text-method-delete">
-          {gitError}
-        </div>
-      )}
-
-      <div className="flex min-h-0 flex-1 flex-col">
-        <div className="border-b border-line p-2">
-          <textarea
+  const fileListContent = (
+    <div className="flex h-full flex-col overflow-hidden">
+      <div className="border-b border-line p-2">
+        <textarea
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             placeholder="Commit message (⌘Enter to commit)"
@@ -336,7 +261,94 @@ export function SourceControlPanel(): JSX.Element {
             </div>
           )}
         </div>
+    </div>
+  );
 
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex h-10 items-center gap-1 border-b border-line px-2">
+        <div className="flex-1 truncate px-1.5 text-xs font-semibold text-ink-1">
+          ⎇ {gitStatus.branch ?? '(detached)'}
+          {gitStatus.changes.length > 0 && (
+            <span className="ml-1.5 text-ink-3">
+              ●{gitStatus.changes.length}
+            </span>
+          )}
+        </div>
+        <Tooltip
+          label={
+            gitStatus.behind > 0
+              ? `Pull ${gitStatus.behind} commit${gitStatus.behind === 1 ? '' : 's'} from upstream`
+              : 'Pull from upstream (git pull)'
+          }
+        >
+          <button
+            disabled={gitBusy}
+            onClick={() => void gitPull()}
+            className="icon-btn disabled:opacity-50"
+          >
+            {gitBusy ? (
+              <span className="inline-block animate-spin">↻</span>
+            ) : (
+              <>↓{gitStatus.behind > 0 ? gitStatus.behind : ''}</>
+            )}
+          </button>
+        </Tooltip>
+        <Tooltip
+          label={
+            gitStatus.ahead > 0
+              ? `Push ${gitStatus.ahead} commit${gitStatus.ahead === 1 ? '' : 's'} to upstream`
+              : 'Push to upstream (git push)'
+          }
+        >
+          <button
+            disabled={gitBusy}
+            onClick={() => void gitPush()}
+            className="icon-btn disabled:opacity-50"
+          >
+            {gitBusy ? (
+              <span className="inline-block animate-spin">↻</span>
+            ) : (
+              <>↑{gitStatus.ahead > 0 ? gitStatus.ahead : ''}</>
+            )}
+          </button>
+        </Tooltip>
+        <Tooltip label="Refresh git status">
+          <button
+            onClick={() => void loadGitStatus()}
+            className="icon-btn"
+          >
+            ↻
+          </button>
+        </Tooltip>
+      </div>
+
+      {gitError && (
+        <div className="border-b border-line bg-bg-hover px-3 py-2 text-[11px] text-method-delete">
+          {gitError}
+        </div>
+      )}
+
+      <div className="min-h-0 flex-1 overflow-hidden">
+        {selected ? (
+          <SplitPane
+            orientation="vertical"
+            initialSize={50}
+            minSize={20}
+            maxSize={80}
+            storageKey="git/diff"
+            first={fileListContent}
+            second={
+              <DiffViewer
+                filePath={(selected.staged ? 'Staged — ' : '') + selected.relPath}
+                diff={diff}
+                onClose={() => setSelected(null)}
+              />
+            }
+          />
+        ) : (
+          fileListContent
+        )}
       </div>
 
       <ConfirmDialog

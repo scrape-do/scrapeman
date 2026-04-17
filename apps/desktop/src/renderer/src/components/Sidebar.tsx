@@ -370,7 +370,7 @@ function FilesView({
       </div>
       {/* Search input */}
       <div className="flex items-center gap-1 border-b border-line px-2 py-1.5">
-        <span className="text-ink-3 text-xs leading-none select-none" aria-hidden="true">
+        <span className="text-ink-3 text-base leading-none select-none" aria-hidden="true">
           ⌕
         </span>
         <input
@@ -620,7 +620,7 @@ function TreeNode({
                     : 'hover:bg-bg-hover'
               }`}
             >
-              <span className="w-6 text-center text-xl leading-none text-ink-3">
+              <span className="w-4 text-center text-base leading-none text-ink-3">
                 {isExpanded ? '▾' : '▸'}
               </span>
               <span className="truncate font-medium">{node.name}</span>
