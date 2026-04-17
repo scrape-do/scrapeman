@@ -20,5 +20,6 @@ export * from './load/index.js';
 export * from './auto-headers.js';
 export * from './sse-reader.js';
 export * from './git/index.js';
+export * from './import/index.js';
 
 export type { ScrapemanRequest, ExecutedResponse };

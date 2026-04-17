@@ -341,6 +341,19 @@ export type ImportCurlResult =
   | { ok: true; request: ScrapemanRequest }
   | { ok: false; message: string };
 
+export interface ImportFolder {
+  name: string;
+  requests: ScrapemanRequest[];
+  folders: ImportFolder[];
+}
+
+export interface ImportResult {
+  requests: ScrapemanRequest[];
+  folders: ImportFolder[];
+  environments: Environment[];
+  warnings: string[];
+}
+
 export type CodegenTarget = 'curl' | 'fetch' | 'python' | 'go';
 
 export type GitFileChangeStatus =
