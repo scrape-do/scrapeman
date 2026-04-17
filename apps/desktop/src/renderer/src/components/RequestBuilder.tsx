@@ -40,13 +40,17 @@ export function RequestBuilder(): JSX.Element {
   const importCurl = useAppStore((s) => s.importCurlIntoActive);
   const newTab = useAppStore((s) => s.newTab);
 
-  const [tab, setTab] = useState<Tab>('params');
+  const tab = useAppStore((s) => s.requestBuilderTab);
+  const setTab = useAppStore((s) => s.setRequestBuilderTab);
   const [importOpen, setImportOpen] = useState(false);
 
   const urlInputRef = useRef<HTMLInputElement | null>(null);
   const focusUrlTick = useAppStore((s) => s.focusUrlTick);
+  const focusUrlTickRef = useRef(focusUrlTick);
   useEffect(() => {
-    if (focusUrlTick === 0) return;
+    // Skip on mount — only fire when the tick actually changes via ⌘L.
+    if (focusUrlTick === focusUrlTickRef.current) return;
+    focusUrlTickRef.current = focusUrlTick;
     urlInputRef.current?.focus();
     urlInputRef.current?.select();
   }, [focusUrlTick]);

@@ -132,6 +132,11 @@ interface AppState {
   focusSearchTick: number;
   focusSearch: () => void;
 
+  // Request builder active tab — stored here so it survives component remounts
+  // when the layout changes (e.g. response panel hides for load test).
+  requestBuilderTab: 'params' | 'headers' | 'auth' | 'body' | 'settings' | 'code' | 'load';
+  setRequestBuilderTab: (tab: AppState['requestBuilderTab']) => void;
+
   // Bumped by ⌘⇧F (global) or ⌘F (sidebar focused); Sidebar watches and focuses its search input.
   focusSidebarSearchTick: number;
   focusSidebarSearch: () => void;
@@ -550,6 +555,8 @@ export const useAppStore = create<AppState>((set, get) => {
     saveDialogOpen: false,
     focusUrlTick: 0,
     focusSearchTick: 0,
+    requestBuilderTab: 'params',
+    setRequestBuilderTab: (tab) => set({ requestBuilderTab: tab }),
     focusSidebarSearchTick: 0,
     importCurlTick: 0,
     loadTestTick: 0,

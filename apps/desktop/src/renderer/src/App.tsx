@@ -38,6 +38,7 @@ export function App(): JSX.Element {
   const toggleHiddenRequest = useAppStore((s) => s.toggleHiddenRequest);
   const tabs = useAppStore((s) => s.tabs);
   const isRepo = useAppStore((s) => s.gitStatus?.isRepo === true);
+  const hideResponsePanel = useAppStore((s) => s.requestBuilderTab === 'load');
 
   const guard = useDirtyTabGuard();
 
@@ -247,37 +248,6 @@ export function App(): JSX.Element {
         </div>
         <div className="ml-auto flex items-center gap-2">
           <button
-            onClick={() => setSidebarVisible((v) => !v)}
-            title={`${sidebarVisible ? 'Hide' : 'Show'} sidebar (⌘B)`}
-            className="app-no-drag flex h-8 w-8 items-center justify-center rounded-md border border-line bg-bg-canvas text-ink-2 hover:bg-bg-hover hover:text-ink-1"
-          >
-            <svg viewBox="0 0 16 16" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="1.2">
-              <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" />
-              <line x1="5.5" y1="2.5" x2="5.5" y2="13.5" />
-            </svg>
-          </button>
-          <button
-            onClick={() =>
-              setSplitOrientation((o) =>
-                o === 'horizontal' ? 'vertical' : 'horizontal',
-              )
-            }
-            title={`Switch to ${splitOrientation === 'horizontal' ? 'top/bottom' : 'side-by-side'} layout`}
-            className="app-no-drag flex h-8 w-8 items-center justify-center rounded-md border border-line bg-bg-canvas text-ink-2 hover:bg-bg-hover hover:text-ink-1"
-          >
-            {splitOrientation === 'horizontal' ? (
-              <svg viewBox="0 0 16 16" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="1.2">
-                <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" />
-                <line x1="8" y1="2.5" x2="8" y2="13.5" />
-              </svg>
-            ) : (
-              <svg viewBox="0 0 16 16" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="1.2">
-                <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" />
-                <line x1="1.5" y1="8" x2="14.5" y2="8" />
-              </svg>
-            )}
-          </button>
-          <button
             onClick={toggleTheme}
             title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
             className="app-no-drag flex h-8 w-8 items-center justify-center rounded-md border border-line bg-bg-canvas text-base text-ink-2 hover:bg-bg-hover hover:text-ink-1"
@@ -328,12 +298,16 @@ export function App(): JSX.Element {
                 <UpdateBanner />
                 <TabBar guard={guard} />
                 <div className="flex-1 overflow-hidden">
-                  <SplitPane
-                    orientation={splitOrientation}
-                    storageKey="builder/response"
-                    first={<RequestBuilder />}
-                    second={<ResponseViewer />}
-                  />
+                  {hideResponsePanel ? (
+                    <RequestBuilder />
+                  ) : (
+                    <SplitPane
+                      orientation={splitOrientation}
+                      storageKey="builder/response"
+                      first={<RequestBuilder />}
+                      second={<ResponseViewer />}
+                    />
+                  )}
                 </div>
               </div>
             }
@@ -353,7 +327,14 @@ export function App(): JSX.Element {
           </div>
         )}
       </div>
-      <GitStatusBar />
+      <GitStatusBar
+        sidebarVisible={sidebarVisible}
+        onToggleSidebar={() => setSidebarVisible((v) => !v)}
+        splitOrientation={splitOrientation}
+        onToggleSplit={() =>
+          setSplitOrientation((o) => (o === 'horizontal' ? 'vertical' : 'horizontal'))
+        }
+      />
     </div>
   );
 }

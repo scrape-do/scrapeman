@@ -55,9 +55,12 @@ export function LoadTestPanel(): JSX.Element {
     }
   }, [events.length]);
 
+  const [startError, setStartError] = useState<string | null>(null);
+
   const start = async (): Promise<void> => {
     if (!activeTab) return;
     setStarting(true);
+    setStartError(null);
     setEvents([]);
     setProgress(null);
     try {
@@ -81,6 +84,8 @@ export function LoadTestPanel(): JSX.Element {
         },
       });
       setRunId(id);
+    } catch (err) {
+      setStartError(err instanceof Error ? err.message : String(err));
     } finally {
       setStarting(false);
     }
@@ -92,12 +97,13 @@ export function LoadTestPanel(): JSX.Element {
 
   const reset = (): void => {
     setRunId(null);
+    setStartError(null);
     setProgress(null);
     setEvents([]);
   };
 
-  const running = runId !== null && progress !== null && !progress.done;
-  const finished = progress !== null && progress.done;
+  const running = runId !== null && (progress === null || !progress.done);
+  const finished = runId !== null && progress !== null && progress.done;
 
   const successRate =
     progress && progress.sent > 0
@@ -138,14 +144,20 @@ export function LoadTestPanel(): JSX.Element {
         </div>
         <div className="flex items-center gap-2">
           {!running && !finished && (
-            <button
-              onClick={() => void start()}
-              disabled={starting || !activeTab}
-              className="btn-primary"
-              title="Start load test"
-            >
-              {starting ? 'Starting…' : 'Start'}
-            </button>
+            <>
+              <button
+                onClick={() => void start()}
+                disabled={starting || !activeTab}
+                className="btn-primary gap-1.5"
+                title="Start load test"
+              >
+                {starting && <span className="spinner" aria-hidden="true" />}
+                {starting ? 'Preparing…' : 'Start'}
+              </button>
+              {startError && (
+                <span className="text-xs text-method-delete">{startError}</span>
+              )}
+            </>
           )}
           {running && (
             <button
@@ -225,6 +237,15 @@ export function LoadTestPanel(): JSX.Element {
               />
             </Field>
           </div>
+        </div>
+      )}
+
+      {/* Waiting for first response */}
+      {running && !progress && (
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+          <span className="spinner h-5 w-5" aria-hidden="true" />
+          <div className="text-sm font-medium text-ink-2">Sending requests…</div>
+          <div className="text-xs text-ink-3">Waiting for the first response.</div>
         </div>
       )}
 
