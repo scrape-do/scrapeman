@@ -29,6 +29,8 @@
 
 Apache 2.0, runs offline on macOS, Windows, and Linux. No account. No cloud sync. No paywall.
 
+**[Full documentation](DOCS.md)** — every feature, every shortcut, every config option in one file.
+
 ## Useful resources
 
 The full marketing site lives at **[scrapeman.app](https://scrapeman.app)** and breaks the project down by what it replaces and how:
@@ -130,12 +132,13 @@ The full marketing site lives at **[scrapeman.app](https://scrapeman.app)** and 
 - Status histogram + error kind breakdown
 - Stop mid-run with AbortSignal, partial results preserved
 
-### Import/export (in progress)
-- curl command (paste or file) — done
-- Postman Collection v2.1 — planned (M9)
-- Bruno `.bru` folder trees — planned
-- Insomnia v4 JSON — planned
-- HAR import/export — planned
+### Import/export
+- curl command (paste or file)
+- Postman Collection v2.1 (folder hierarchy, auth, variables, body modes)
+- Bruno `.bru` folder trees (INI-like format, auth, body, params)
+- Insomnia v4 JSON (resources, folder tree, auth, environments)
+- HAR 1.2 import + export (Chrome DevTools format, round-trip tested)
+- `.sman` collection bundle (ZIP-based portable format) — planned
 
 ### UX essentials
 - Tabs with method badges, dirty indicator, middle-click close
