@@ -104,6 +104,22 @@ jobs:
           prerelease: false
           generate_release_notes: true
           files: release/*
+          body: |
+            ## Install / Upgrade
+
+            **Homebrew (macOS)** — refresh the tap cache first, otherwise `brew` keeps serving the old cask:
+
+            ```sh
+            brew update && brew upgrade scrapeman
+            ```
+
+            First time installing:
+
+            ```sh
+            brew install --cask scrape-do/scrapeman/scrapeman
+            ```
+
+            **Other platforms** — grab the installer from the Assets below.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
