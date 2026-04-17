@@ -1,6 +1,6 @@
 {
   "name": "@scrapeman/desktop",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "description": "Scrapeman — Postman-grade API client for every developer",
   "author": {
