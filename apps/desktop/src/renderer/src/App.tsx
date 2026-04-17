@@ -68,6 +68,13 @@ export function App(): JSX.Element {
   }, [setUpdateInfo]);
 
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [sidebarVisible, setSidebarVisible] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    return localStorage.getItem('sidebar:visible') !== 'false';
+  });
+  useEffect(() => {
+    localStorage.setItem('sidebar:visible', String(sidebarVisible));
+  }, [sidebarVisible]);
 
   const shortcuts = useMemo<Shortcut[]>(
     () => [
@@ -97,6 +104,11 @@ export function App(): JSX.Element {
               handler: () => activeTabId && duplicateTab(activeTabId),
             },
             { combo: 'mod+l', description: 'Focus URL bar', handler: () => focusUrl() },
+            {
+              combo: 'mod+b',
+              description: 'Toggle sidebar',
+              handler: () => setSidebarVisible((v) => !v),
+            },
             {
               combo: 'mod+shift+f',
               description: 'Focus collection search',
@@ -168,6 +180,7 @@ export function App(): JSX.Element {
       tabs,
       isRepo,
       paletteOpen,
+      sidebarVisible,
     ],
   );
   useShortcuts(shortcuts);
@@ -234,11 +247,14 @@ export function App(): JSX.Element {
         </div>
         <div className="ml-auto flex items-center gap-2">
           <button
-            onClick={toggleTheme}
-            title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
-            className="app-no-drag flex h-8 w-8 items-center justify-center rounded-md border border-line bg-bg-canvas text-base text-ink-2 hover:bg-bg-hover hover:text-ink-1"
+            onClick={() => setSidebarVisible((v) => !v)}
+            title={`${sidebarVisible ? 'Hide' : 'Show'} sidebar (⌘B)`}
+            className="app-no-drag flex h-8 w-8 items-center justify-center rounded-md border border-line bg-bg-canvas text-ink-2 hover:bg-bg-hover hover:text-ink-1"
           >
-            {theme === 'dark' ? '☀' : '☾'}
+            <svg viewBox="0 0 16 16" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="1.2">
+              <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" />
+              <line x1="5.5" y1="2.5" x2="5.5" y2="13.5" />
+            </svg>
           </button>
           <button
             onClick={() =>
@@ -247,9 +263,26 @@ export function App(): JSX.Element {
               )
             }
             title={`Switch to ${splitOrientation === 'horizontal' ? 'top/bottom' : 'side-by-side'} layout`}
+            className="app-no-drag flex h-8 w-8 items-center justify-center rounded-md border border-line bg-bg-canvas text-ink-2 hover:bg-bg-hover hover:text-ink-1"
+          >
+            {splitOrientation === 'horizontal' ? (
+              <svg viewBox="0 0 16 16" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="1.2">
+                <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" />
+                <line x1="8" y1="2.5" x2="8" y2="13.5" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 16 16" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="1.2">
+                <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" />
+                <line x1="1.5" y1="8" x2="14.5" y2="8" />
+              </svg>
+            )}
+          </button>
+          <button
+            onClick={toggleTheme}
+            title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
             className="app-no-drag flex h-8 w-8 items-center justify-center rounded-md border border-line bg-bg-canvas text-base text-ink-2 hover:bg-bg-hover hover:text-ink-1"
           >
-            {splitOrientation === 'horizontal' ? '⇅' : '⇆'}
+            {theme === 'dark' ? '☀' : '☾'}
           </button>
           {workspace && (
             <button
@@ -278,32 +311,47 @@ export function App(): JSX.Element {
         commands={commands}
       />
       <div className="min-h-0 flex-1 overflow-hidden">
-        <SplitPane
-          orientation="horizontal"
-          initialSize={20}
-          minSize={12}
-          maxSize={45}
-          storageKey="app/sidebar"
-          first={
-            <aside className="h-full border-r border-line bg-bg-subtle">
-              <Sidebar />
-            </aside>
-          }
-          second={
-            <div className="flex h-full flex-col overflow-hidden">
-              <UpdateBanner />
-              <TabBar guard={guard} />
-              <div className="flex-1 overflow-hidden">
-                <SplitPane
-                  orientation={splitOrientation}
-                  storageKey="builder/response"
-                  first={<RequestBuilder />}
-                  second={<ResponseViewer />}
-                />
+        {sidebarVisible ? (
+          <SplitPane
+            orientation="horizontal"
+            initialSize={20}
+            minSize={12}
+            maxSize={45}
+            storageKey="app/sidebar"
+            first={
+              <aside className="h-full border-r border-line bg-bg-subtle">
+                <Sidebar />
+              </aside>
+            }
+            second={
+              <div className="flex h-full flex-col overflow-hidden">
+                <UpdateBanner />
+                <TabBar guard={guard} />
+                <div className="flex-1 overflow-hidden">
+                  <SplitPane
+                    orientation={splitOrientation}
+                    storageKey="builder/response"
+                    first={<RequestBuilder />}
+                    second={<ResponseViewer />}
+                  />
+                </div>
               </div>
+            }
+          />
+        ) : (
+          <div className="flex h-full flex-col overflow-hidden">
+            <UpdateBanner />
+            <TabBar guard={guard} />
+            <div className="flex-1 overflow-hidden">
+              <SplitPane
+                orientation={splitOrientation}
+                storageKey="builder/response"
+                first={<RequestBuilder />}
+                second={<ResponseViewer />}
+              />
             </div>
-          }
-        />
+          </div>
+        )}
       </div>
       <GitStatusBar />
     </div>
