@@ -68,6 +68,14 @@ export function App(): JSX.Element {
     return bridge.onUpdateAvailable((info) => setUpdateInfo(info));
   }, [setUpdateInfo]);
 
+  // Global load-progress listener — registered once so it survives tab
+  // switches. Routes each progress event to the correct tab by runId.
+  useEffect(() => {
+    return bridge.onLoadProgress((p) => {
+      useAppStore.getState().handleLoadProgress(p);
+    });
+  }, []);
+
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [sidebarVisible, setSidebarVisible] = useState(() => {
     if (typeof window === 'undefined') return true;

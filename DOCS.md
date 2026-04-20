@@ -299,6 +299,8 @@ Stress-test any request with bounded concurrency.
 
 Each iteration re-resolves `{{random}}`, `{{timestamp}}`, and other dynamics, so every request is unique.
 
+**Config is per-tab.** Each request tab has its own load test configuration. Switching tabs does not reset another tab's settings.
+
 ### Live metrics
 
 While running, you see:
@@ -307,6 +309,12 @@ While running, you see:
 - Success rate
 - Status histogram (200, 201, 400, 500, ...)
 - Error kind breakdown (timeout, connection refused, etc.)
+
+Hover any metric to see a description of what it measures.
+
+### Tab isolation
+
+Load test state (config, progress, event log) is stored per tab in the application state. A test started in Tab A continues running when you switch to Tab B — progress is preserved and visible when you return to Tab A.
 
 ### Response validator
 

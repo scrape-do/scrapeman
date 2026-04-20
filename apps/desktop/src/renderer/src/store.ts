@@ -10,6 +10,8 @@ import type {
   HistoryEntry,
   HttpMethod,
   HttpVersion,
+  LoadEvent,
+  LoadProgress,
   ProxyConfig,
   RecentWorkspace,
   RequestOptions,
@@ -86,6 +88,21 @@ export type TabKind = 'file' | 'draft';
 
 export type ResponseBodyMode = 'raw' | 'pretty' | 'tree' | 'preview';
 
+export interface LoadTestState {
+  config: {
+    total: number;
+    concurrency: number;
+    delay: number;
+    expectStatus: string;
+    expectBody: string;
+  };
+  runId: string | null;
+  progress: LoadProgress | null;
+  events: LoadEvent[];
+  starting: boolean;
+  startError: string | null;
+}
+
 export interface Tab {
   id: string;
   kind: TabKind;
@@ -95,6 +112,7 @@ export interface Tab {
   builder: BuilderState;
   dirty: boolean;
   execution: ExecutionState;
+  loadTest: LoadTestState;
   responseSearch: string;
   responseMode: ResponseBodyMode | null;
   sourceHistoryId?: string;
@@ -193,6 +211,15 @@ interface AppState {
   setResponseSearch: (search: string) => void;
   setResponseMode: (mode: ResponseBodyMode) => void;
   importCurlIntoActive: (input: string) => Promise<string | null>;
+
+  // Load test — per-tab state management
+  updateLoadTestConfig: (tabId: string, patch: Partial<LoadTestState['config']>) => void;
+  setLoadTestRun: (tabId: string, update: { runId: string | null; starting: boolean; startError: string | null }) => void;
+  appendLoadEvent: (tabId: string, event: LoadEvent) => void;
+  updateLoadProgress: (tabId: string, progress: LoadProgress) => void;
+  clearLoadTest: (tabId: string) => void;
+  /** Called by the global onLoadProgress listener; routes the event to the correct tab. */
+  handleLoadProgress: (p: LoadProgress) => void;
 
   loadEnvironments: () => Promise<void>;
   setActiveEnvironment: (name: string | null) => Promise<void>;
@@ -322,6 +349,23 @@ function freshExecution(): ExecutionState {
     error: null,
     startedAt: null,
     finishedAt: null,
+  };
+}
+
+function freshLoadTest(): LoadTestState {
+  return {
+    config: {
+      total: 100,
+      concurrency: 10,
+      delay: 0,
+      expectStatus: '200',
+      expectBody: '',
+    },
+    runId: null,
+    progress: null,
+    events: [],
+    starting: false,
+    startError: null,
   };
 }
 
@@ -483,6 +527,7 @@ function emptyDraftTab(): Tab {
     },
     dirty: false,
     execution: freshExecution(),
+    loadTest: freshLoadTest(),
     responseSearch: '',
     responseMode: null,
   };
@@ -498,6 +543,7 @@ function fileBackedTab(relPath: string, request: ScrapemanRequest): Tab {
     builder: builderFromRequest(request),
     dirty: false,
     execution: freshExecution(),
+    loadTest: freshLoadTest(),
     responseSearch: '',
     responseMode: null,
   };
@@ -510,6 +556,15 @@ export const useAppStore = create<AppState>((set, get) => {
     set({
       tabs: tabs.map((tab) => (tab.id === activeTabId ? fn(tab) : tab)),
     });
+  };
+
+  // Update a tab by explicit id, regardless of which tab is currently active.
+  // Use this in async callbacks where activeTabId may have changed since the
+  // operation was started.
+  const mutateById = (tabId: string, fn: (tab: Tab) => Tab): void => {
+    set((state) => ({
+      tabs: state.tabs.map((tab) => (tab.id === tabId ? fn(tab) : tab)),
+    }));
   };
 
   const patchBuilder = (patch: Partial<BuilderState>): void => {
@@ -771,6 +826,7 @@ export const useAppStore = create<AppState>((set, get) => {
         builder: builderCopy,
         dirty: false,
         execution: freshExecution(),
+        loadTest: freshLoadTest(),
         responseSearch: '',
         responseMode: null,
       };
@@ -1015,7 +1071,12 @@ export const useAppStore = create<AppState>((set, get) => {
       const tab = tabs.find((t) => t.id === activeTabId);
       if (!tab || !tab.builder.url.trim()) return;
 
-      mutateActive((t) => ({
+      // Capture the tab id at call time. The user may switch tabs before the
+      // async response arrives, so we must update the originating tab — not
+      // whatever tab happens to be active when the callback fires.
+      const targetTabId = tab.id;
+
+      mutateById(targetTabId, (t) => ({
         ...t,
         execution: {
           status: 'sending',
@@ -1033,16 +1094,16 @@ export const useAppStore = create<AppState>((set, get) => {
       const request = buildRequest(normalizedBuilder, { name: tab.name });
       const workspace = get().workspace;
       const requestId = crypto.randomUUID();
-      inflightRequestIds.set(tab.id, requestId);
+      inflightRequestIds.set(targetTabId, requestId);
       const result = await bridge.executeRequest(
         request,
         workspace?.path ?? undefined,
         requestId,
       );
-      inflightRequestIds.delete(tab.id);
+      inflightRequestIds.delete(targetTabId);
       const finishedAt = Date.now();
 
-      mutateActive((t) => ({
+      mutateById(targetTabId, (t) => ({
         ...t,
         execution: result.ok
           ? {
@@ -1100,6 +1161,57 @@ export const useAppStore = create<AppState>((set, get) => {
         dirty: true,
       }));
       return null;
+    },
+
+    // ------------------------------------------------------------------ //
+    // Load test — per-tab state                                           //
+    // ------------------------------------------------------------------ //
+
+    updateLoadTestConfig: (tabId, patch) => {
+      mutateById(tabId, (tab) => ({
+        ...tab,
+        loadTest: { ...tab.loadTest, config: { ...tab.loadTest.config, ...patch } },
+      }));
+    },
+
+    setLoadTestRun: (tabId, update) => {
+      mutateById(tabId, (tab) => ({
+        ...tab,
+        loadTest: { ...tab.loadTest, ...update },
+      }));
+    },
+
+    appendLoadEvent: (tabId, event) => {
+      mutateById(tabId, (tab) => {
+        const prev = tab.loadTest.events;
+        const next = prev.length >= 500 ? [...prev.slice(-499), event] : [...prev, event];
+        return { ...tab, loadTest: { ...tab.loadTest, events: next } };
+      });
+    },
+
+    updateLoadProgress: (tabId, progress) => {
+      mutateById(tabId, (tab) => ({
+        ...tab,
+        loadTest: { ...tab.loadTest, progress },
+      }));
+    },
+
+    clearLoadTest: (tabId) => {
+      mutateById(tabId, (tab) => ({
+        ...tab,
+        loadTest: { ...freshLoadTest(), config: tab.loadTest.config },
+      }));
+    },
+
+    handleLoadProgress: (p) => {
+      // Find which tab owns this runId and dispatch to it.
+      const { tabs } = get();
+      const target = tabs.find((t) => t.loadTest.runId === p.runId);
+      if (!target) return;
+      get().updateLoadProgress(target.id, p);
+      if (p.lastEvent) {
+        get().appendLoadEvent(target.id, p.lastEvent);
+      }
     },
 
     createRequest: async (parentRelPath: string, name: string) => {
@@ -1318,6 +1430,7 @@ export const useAppStore = create<AppState>((set, get) => {
         },
         dirty: false,
         execution,
+        loadTest: freshLoadTest(),
         responseSearch: '',
         responseMode: null,
         sourceHistoryId: entry.id,

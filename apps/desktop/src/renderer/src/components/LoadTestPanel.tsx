@@ -1,93 +1,81 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef } from 'react';
 import { FORMAT_VERSION } from '@scrapeman/shared-types';
-import type { LoadEvent, LoadProgress } from '@scrapeman/shared-types';
 import { bridge } from '../bridge.js';
 import { useAppStore, type BuilderState } from '../store.js';
+import { Tooltip } from '../ui/Tooltip.js';
 
 /**
  * Inline load test panel rendered inside the Request Builder tab bar.
- * Replaces the former modal LoadTestDialog — all IPC logic is identical.
+ * State lives in the Zustand store (per-tab) so tab switches do not reset
+ * config or running test progress. The global onLoadProgress listener is
+ * registered in App.tsx and routes events here via handleLoadProgress().
  */
 export function LoadTestPanel(): JSX.Element {
   const activeTab = useAppStore((s) => s.tabs.find((t) => t.id === s.activeTabId) ?? null);
   const workspace = useAppStore((s) => s.workspace);
+  const updateLoadTestConfig = useAppStore((s) => s.updateLoadTestConfig);
+  const setLoadTestRun = useAppStore((s) => s.setLoadTestRun);
+  const clearLoadTest = useAppStore((s) => s.clearLoadTest);
 
-  const [total, setTotal] = useState(100);
-  const [concurrency, setConcurrency] = useState(10);
-  const [delay, setDelay] = useState(0);
-  const [expectStatus, setExpectStatus] = useState('200');
-  const [expectBody, setExpectBody] = useState('');
-
-  const [runId, setRunId] = useState<string | null>(null);
-  const [progress, setProgress] = useState<LoadProgress | null>(null);
-  const [events, setEvents] = useState<LoadEvent[]>([]);
-  const [starting, setStarting] = useState(false);
+  // Read load test state directly from the active tab.
+  const loadTest = activeTab?.loadTest ?? null;
+  const config = loadTest?.config;
+  const { runId, progress, events, starting, startError } = loadTest ?? {
+    runId: null,
+    progress: null,
+    events: [],
+    starting: false,
+    startError: null,
+  };
 
   const consoleRef = useRef<HTMLDivElement | null>(null);
 
-  // Reset run state when the active request tab changes so stale load
-  // test data from a previous request doesn't bleed through.
-  const activeTabId = activeTab?.id ?? null;
-  useEffect(() => {
-    setRunId(null);
-    setProgress(null);
-    setEvents([]);
-    setStarting(false);
-  }, [activeTabId]);
-
-  useEffect(() => {
-    return bridge.onLoadProgress((p) => {
-      if (!runId || p.runId !== runId) return;
-      setProgress(p);
-      if (p.lastEvent) {
-        setEvents((prev) => {
-          const next = [...prev, p.lastEvent!];
-          return next.length > 500 ? next.slice(-500) : next;
-        });
-      }
-    });
-  }, [runId]);
-
   // Auto-scroll console to bottom on new events.
-  useEffect(() => {
-    if (consoleRef.current) {
-      consoleRef.current.scrollTop = consoleRef.current.scrollHeight;
-    }
-  }, [events.length]);
-
-  const [startError, setStartError] = useState<string | null>(null);
+  const eventsLen = events.length;
+  // We cannot call useEffect here conditionally, but eventsLen is stable enough
+  // to drive a ref-based scroll without a useEffect. We use a callback ref
+  // pattern instead so it runs synchronously after render.
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const setScrollRef = (el: HTMLDivElement | null): void => {
+    scrollRef.current = el;
+    if (el) el.scrollTop = el.scrollHeight;
+  };
 
   const start = async (): Promise<void> => {
     if (!activeTab) return;
-    setStarting(true);
-    setStartError(null);
-    setEvents([]);
-    setProgress(null);
+    const tabId = activeTab.id;
+    const cfg = activeTab.loadTest.config;
+    setLoadTestRun(tabId, { runId: null, starting: true, startError: null });
+    // Clear previous events and progress for a fresh run.
+    clearLoadTest(tabId);
+    setLoadTestRun(tabId, { runId: null, starting: true, startError: null });
     try {
       const request = buildRequestFromBuilder(activeTab.builder, activeTab.name);
       const id = await bridge.loadStart({
         request,
         ...(workspace?.path ? { workspacePath: workspace.path } : {}),
-        total,
-        concurrency,
-        ...(delay > 0 ? { perIterDelayMs: delay } : {}),
+        total: cfg.total,
+        concurrency: cfg.concurrency,
+        ...(cfg.delay > 0 ? { perIterDelayMs: cfg.delay } : {}),
         validator: {
-          ...(expectStatus.trim()
+          ...(cfg.expectStatus.trim()
             ? {
-                expectStatus: expectStatus
+                expectStatus: cfg.expectStatus
                   .split(',')
                   .map((s) => parseInt(s.trim(), 10))
                   .filter((n) => !Number.isNaN(n)),
               }
             : {}),
-          ...(expectBody.trim() ? { expectBodyContains: expectBody } : {}),
+          ...(cfg.expectBody.trim() ? { expectBodyContains: cfg.expectBody } : {}),
         },
       });
-      setRunId(id);
+      setLoadTestRun(tabId, { runId: id, starting: false, startError: null });
     } catch (err) {
-      setStartError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setStarting(false);
+      setLoadTestRun(tabId, {
+        runId: null,
+        starting: false,
+        startError: err instanceof Error ? err.message : String(err),
+      });
     }
   };
 
@@ -96,10 +84,8 @@ export function LoadTestPanel(): JSX.Element {
   };
 
   const reset = (): void => {
-    setRunId(null);
-    setStartError(null);
-    setProgress(null);
-    setEvents([]);
+    if (!activeTab) return;
+    clearLoadTest(activeTab.id);
   };
 
   const running = runId !== null && (progress === null || !progress.done);
@@ -128,6 +114,9 @@ export function LoadTestPanel(): JSX.Element {
     () => (progress ? Object.entries(progress.errorKinds) : []),
     [progress],
   );
+
+  // Suppress unused warning for eventsLen — it drives the key on the scroll container.
+  void eventsLen;
 
   return (
     <div className="flex h-full flex-col">
@@ -177,15 +166,18 @@ export function LoadTestPanel(): JSX.Element {
       </div>
 
       {/* Config form — hidden once run is in flight */}
-      {!running && !finished && (
+      {!running && !finished && config && (
         <div className="grid grid-cols-2 gap-4 border-b border-line px-5 py-4">
           <Field label="Total requests" hint="Total number of iterations">
             <input
               type="number"
               min={1}
-              value={total}
+              value={config.total}
               onChange={(e) =>
-                setTotal(Math.max(1, parseInt(e.target.value, 10) || 1))
+                activeTab &&
+                updateLoadTestConfig(activeTab.id, {
+                  total: Math.max(1, parseInt(e.target.value, 10) || 1),
+                })
               }
               className="field w-full"
             />
@@ -194,11 +186,12 @@ export function LoadTestPanel(): JSX.Element {
             <input
               type="number"
               min={1}
-              value={concurrency}
+              value={config.concurrency}
               onChange={(e) =>
-                setConcurrency(
-                  Math.max(1, parseInt(e.target.value, 10) || 1),
-                )
+                activeTab &&
+                updateLoadTestConfig(activeTab.id, {
+                  concurrency: Math.max(1, parseInt(e.target.value, 10) || 1),
+                })
               }
               className="field w-full"
             />
@@ -207,9 +200,12 @@ export function LoadTestPanel(): JSX.Element {
             <input
               type="number"
               min={0}
-              value={delay}
+              value={config.delay}
               onChange={(e) =>
-                setDelay(Math.max(0, parseInt(e.target.value, 10) || 0))
+                activeTab &&
+                updateLoadTestConfig(activeTab.id, {
+                  delay: Math.max(0, parseInt(e.target.value, 10) || 0),
+                })
               }
               className="field w-full"
             />
@@ -217,8 +213,11 @@ export function LoadTestPanel(): JSX.Element {
           <Field label="Expected status codes" hint="Comma-separated, e.g. 200,201">
             <input
               type="text"
-              value={expectStatus}
-              onChange={(e) => setExpectStatus(e.target.value)}
+              value={config.expectStatus}
+              onChange={(e) =>
+                activeTab &&
+                updateLoadTestConfig(activeTab.id, { expectStatus: e.target.value })
+              }
               placeholder="200"
               className="field w-full font-mono"
             />
@@ -230,8 +229,11 @@ export function LoadTestPanel(): JSX.Element {
             >
               <input
                 type="text"
-                value={expectBody}
-                onChange={(e) => setExpectBody(e.target.value)}
+                value={config.expectBody}
+                onChange={(e) =>
+                  activeTab &&
+                  updateLoadTestConfig(activeTab.id, { expectBody: e.target.value })
+                }
                 placeholder='{"success":true}'
                 className="field w-full font-mono"
               />
@@ -270,20 +272,55 @@ export function LoadTestPanel(): JSX.Element {
                     ? 'warn'
                     : 'err'
               }
+              description="Percentage of requests that passed validation"
             />
-            <Metric label="RPS" value={progress.currentRps.toFixed(1)} />
-            <Metric label="Inflight" value={String(progress.inflight)} />
-            <Metric label="Failed" value={String(progress.failed)} tone="err" />
+            <Metric
+              label="RPS"
+              value={progress.currentRps.toFixed(1)}
+              description="Requests completed per second (current rate)"
+            />
+            <Metric
+              label="Inflight"
+              value={String(progress.inflight)}
+              description="Number of requests currently in-flight"
+            />
+            <Metric
+              label="Failed"
+              value={String(progress.failed)}
+              tone="err"
+              description="Requests that received no response (network error / timeout)"
+            />
             <Metric
               label="Validation fail"
               value={String(progress.validationFailures)}
               tone="warn"
+              description="Requests that got a response but failed status/body validation"
             />
-            <Metric label="p50" value={`${progress.latencyP50.toFixed(0)}ms`} />
-            <Metric label="p95" value={`${progress.latencyP95.toFixed(0)}ms`} />
-            <Metric label="p99" value={`${progress.latencyP99.toFixed(0)}ms`} />
-            <Metric label="min" value={`${progress.latencyMin.toFixed(0)}ms`} />
-            <Metric label="max" value={`${progress.latencyMax.toFixed(0)}ms`} />
+            <Metric
+              label="p50"
+              value={`${progress.latencyP50.toFixed(0)}ms`}
+              description="50% of completed requests finished at or below this latency"
+            />
+            <Metric
+              label="p95"
+              value={`${progress.latencyP95.toFixed(0)}ms`}
+              description="95% of completed requests finished at or below this latency"
+            />
+            <Metric
+              label="p99"
+              value={`${progress.latencyP99.toFixed(0)}ms`}
+              description="99% of completed requests finished at or below this latency"
+            />
+            <Metric
+              label="min"
+              value={`${progress.latencyMin.toFixed(0)}ms`}
+              description="Minimum observed latency"
+            />
+            <Metric
+              label="max"
+              value={`${progress.latencyMax.toFixed(0)}ms`}
+              description="Maximum observed latency"
+            />
             <Metric
               label="Elapsed"
               value={`${(progress.elapsedMs / 1000).toFixed(1)}s`}
@@ -313,9 +350,10 @@ export function LoadTestPanel(): JSX.Element {
         </div>
       )}
 
-      {/* Console */}
+      {/* Console — key on eventsLen so the ref callback fires on every new event */}
       <div
-        ref={consoleRef}
+        key={eventsLen}
+        ref={setScrollRef}
         className="flex-1 overflow-y-auto bg-bg-subtle p-4 font-mono text-[11px] leading-[18px]"
       >
         {events.length === 0 && !progress && (
@@ -337,6 +375,8 @@ export function LoadTestPanel(): JSX.Element {
     </div>
   );
 }
+
+import type { LoadEvent } from '@scrapeman/shared-types';
 
 function EventLine({ event }: { event: LoadEvent }): JSX.Element {
   const prefix = event.valid
@@ -391,10 +431,12 @@ function Metric({
   label,
   value,
   tone,
+  description,
 }: {
   label: string;
   value: string;
   tone?: 'ok' | 'warn' | 'err';
+  description?: string;
 }): JSX.Element {
   const color =
     tone === 'ok'
@@ -404,11 +446,20 @@ function Metric({
         : tone === 'err'
           ? 'text-method-delete'
           : 'text-ink-1';
-  return (
+
+  const inner = (
     <div>
       <div className="text-[10px] uppercase tracking-wider text-ink-4">{label}</div>
       <div className={`mt-0.5 font-mono text-sm font-semibold ${color}`}>{value}</div>
     </div>
+  );
+
+  if (!description) return inner;
+
+  return (
+    <Tooltip label={description} side="top">
+      {inner}
+    </Tooltip>
   );
 }
 
