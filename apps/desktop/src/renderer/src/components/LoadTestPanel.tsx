@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { FORMAT_VERSION } from '@scrapeman/shared-types';
 import { bridge } from '../bridge.js';
 import { useAppStore, type BuilderState } from '../store.js';
@@ -16,6 +16,7 @@ export function LoadTestPanel(): JSX.Element {
   const updateLoadTestConfig = useAppStore((s) => s.updateLoadTestConfig);
   const setLoadTestRun = useAppStore((s) => s.setLoadTestRun);
   const clearLoadTest = useAppStore((s) => s.clearLoadTest);
+  const resetLoadTestForStart = useAppStore((s) => s.resetLoadTestForStart);
 
   // Read load test state directly from the active tab.
   const loadTest = activeTab?.loadTest ?? null;
@@ -28,35 +29,31 @@ export function LoadTestPanel(): JSX.Element {
     startError: null,
   };
 
-  const consoleRef = useRef<HTMLDivElement | null>(null);
-
-  // Auto-scroll console to bottom on new events.
-  const eventsLen = events.length;
-  // We cannot call useEffect here conditionally, but eventsLen is stable enough
-  // to drive a ref-based scroll without a useEffect. We use a callback ref
-  // pattern instead so it runs synchronously after render.
+  // Auto-scroll the console to the bottom whenever a new event is appended.
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const setScrollRef = (el: HTMLDivElement | null): void => {
-    scrollRef.current = el;
+  useEffect(() => {
+    const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  };
+  }, [events.length]);
 
   const start = async (): Promise<void> => {
     if (!activeTab) return;
     const tabId = activeTab.id;
     const cfg = activeTab.loadTest.config;
-    setLoadTestRun(tabId, { runId: null, starting: true, startError: null });
-    // Clear previous events and progress for a fresh run.
-    clearLoadTest(tabId);
-    setLoadTestRun(tabId, { runId: null, starting: true, startError: null });
+    // Generate runId client-side so load:progress events that arrive before the
+    // IPC call resolves are still routable in the store.
+    const newRunId = crypto.randomUUID();
+    // Atomic reset: clears events/progress, sets starting:true, stores runId.
+    resetLoadTestForStart(tabId, newRunId);
     try {
       const request = buildRequestFromBuilder(activeTab.builder, activeTab.name);
-      const id = await bridge.loadStart({
+      await bridge.loadStart({
         request,
         ...(workspace?.path ? { workspacePath: workspace.path } : {}),
         total: cfg.total,
         concurrency: cfg.concurrency,
         ...(cfg.delay > 0 ? { perIterDelayMs: cfg.delay } : {}),
+        runId: newRunId,
         validator: {
           ...(cfg.expectStatus.trim()
             ? {
@@ -69,7 +66,7 @@ export function LoadTestPanel(): JSX.Element {
           ...(cfg.expectBody.trim() ? { expectBodyContains: cfg.expectBody } : {}),
         },
       });
-      setLoadTestRun(tabId, { runId: id, starting: false, startError: null });
+      setLoadTestRun(tabId, { starting: false });
     } catch (err) {
       setLoadTestRun(tabId, {
         runId: null,
@@ -114,9 +111,6 @@ export function LoadTestPanel(): JSX.Element {
     () => (progress ? Object.entries(progress.errorKinds) : []),
     [progress],
   );
-
-  // Suppress unused warning for eventsLen — it drives the key on the scroll container.
-  void eventsLen;
 
   return (
     <div className="flex h-full flex-col">
@@ -350,10 +344,9 @@ export function LoadTestPanel(): JSX.Element {
         </div>
       )}
 
-      {/* Console — key on eventsLen so the ref callback fires on every new event */}
+      {/* Console */}
       <div
-        key={eventsLen}
-        ref={setScrollRef}
+        ref={scrollRef}
         className="flex-1 overflow-y-auto bg-bg-subtle p-4 font-mono text-[11px] leading-[18px]"
       >
         {events.length === 0 && !progress && (

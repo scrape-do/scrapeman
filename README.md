@@ -131,6 +131,7 @@ The full marketing site lives at **[scrapeman.app](https://scrapeman.app)** and 
 - Console log with success/validation-fail/network-error color coding
 - Status histogram + error kind breakdown
 - Stop mid-run with AbortSignal, partial results preserved
+- **Per-tab isolation** — start a load test in one tab, switch to another, come back — your config and progress are preserved. Hover any metric for a description.
 
 ### Import/export
 - curl command (paste or file)

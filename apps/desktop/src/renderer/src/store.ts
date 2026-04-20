@@ -32,6 +32,23 @@ const inflightRequestIds = new Map<string, string>();
 const CLOSED_TAB_STACK_LIMIT = 10;
 const closedTabStack: Array<{ tab: Tab; index: number }> = [];
 
+/**
+ * Abort any running load test and clean up the inflight-request entry for a tab
+ * that is about to be closed. Must be called before removing the tab from state
+ * so that orphaned load:progress events don't silently pile up in the main process.
+ *
+ * If the tab is later reopened via ⌘⇧T the snapshot will have a stale runId;
+ * the user would need to click Start again, which is correct — old run is dead.
+ */
+function disposeTabRuntime(tab: Tab): void {
+  const { runId } = tab.loadTest;
+  if (runId !== null && (tab.loadTest.progress === null || !tab.loadTest.progress.done)) {
+    // Fire-and-forget — we don't need to await the IPC call.
+    void bridge.loadStop(runId);
+  }
+  inflightRequestIds.delete(tab.id);
+}
+
 export interface HeaderRow {
   id: string;
   key: string;
@@ -214,10 +231,14 @@ interface AppState {
 
   // Load test — per-tab state management
   updateLoadTestConfig: (tabId: string, patch: Partial<LoadTestState['config']>) => void;
-  setLoadTestRun: (tabId: string, update: { runId: string | null; starting: boolean; startError: string | null }) => void;
+  /** Partial patch on the load test run fields (runId, starting, startError). */
+  setLoadTestRun: (tabId: string, update: Partial<Pick<LoadTestState, 'runId' | 'starting' | 'startError'>>) => void;
   appendLoadEvent: (tabId: string, event: LoadEvent) => void;
   updateLoadProgress: (tabId: string, progress: LoadProgress) => void;
   clearLoadTest: (tabId: string) => void;
+  /** Atomically reset run state for a fresh start. Clears events/progress,
+   *  sets starting:true, stores the pre-generated runId, preserves config. */
+  resetLoadTestForStart: (tabId: string, runId: string) => void;
   /** Called by the global onLoadProgress listener; routes the event to the correct tab. */
   handleLoadProgress: (p: LoadProgress) => void;
 
@@ -680,6 +701,7 @@ export const useAppStore = create<AppState>((set, get) => {
       const { tabs, activeTabId } = get();
       const idx = tabs.findIndex((t) => t.id === id);
       if (idx < 0) return;
+      disposeTabRuntime(tabs[idx]!);
       closedTabStack.push({ tab: tabs[idx]!, index: idx });
       if (closedTabStack.length > CLOSED_TAB_STACK_LIMIT) closedTabStack.shift();
       const next = tabs.filter((t) => t.id !== id);
@@ -702,6 +724,7 @@ export const useAppStore = create<AppState>((set, get) => {
       for (let i = tabs.length - 1; i >= 0; i -= 1) {
         const tab = tabs[i]!;
         if (tab.id === keepId) continue;
+        disposeTabRuntime(tab);
         closedTabStack.push({ tab, index: i });
         if (closedTabStack.length > CLOSED_TAB_STACK_LIMIT) closedTabStack.shift();
       }
@@ -713,6 +736,7 @@ export const useAppStore = create<AppState>((set, get) => {
       const idx = tabs.findIndex((t) => t.id === fromId);
       if (idx < 0 || idx === tabs.length - 1) return;
       for (let i = tabs.length - 1; i > idx; i -= 1) {
+        disposeTabRuntime(tabs[i]!);
         closedTabStack.push({ tab: tabs[i]!, index: i });
         if (closedTabStack.length > CLOSED_TAB_STACK_LIMIT) closedTabStack.shift();
       }
@@ -737,6 +761,7 @@ export const useAppStore = create<AppState>((set, get) => {
       });
       if (removed.length === 0) return;
       for (let i = removed.length - 1; i >= 0; i -= 1) {
+        disposeTabRuntime(removed[i]!.tab);
         closedTabStack.push(removed[i]!);
         if (closedTabStack.length > CLOSED_TAB_STACK_LIMIT) closedTabStack.shift();
       }
@@ -751,6 +776,7 @@ export const useAppStore = create<AppState>((set, get) => {
       const { tabs } = get();
       if (tabs.length === 0) return;
       for (let i = tabs.length - 1; i >= 0; i -= 1) {
+        disposeTabRuntime(tabs[i]!);
         closedTabStack.push({ tab: tabs[i]!, index: i });
         if (closedTabStack.length > CLOSED_TAB_STACK_LIMIT) closedTabStack.shift();
       }
@@ -1178,6 +1204,21 @@ export const useAppStore = create<AppState>((set, get) => {
       mutateById(tabId, (tab) => ({
         ...tab,
         loadTest: { ...tab.loadTest, ...update },
+      }));
+    },
+
+    resetLoadTestForStart: (tabId, runId) => {
+      mutateById(tabId, (tab) => ({
+        ...tab,
+        loadTest: {
+          // Preserve user config across runs.
+          config: tab.loadTest.config,
+          runId,
+          progress: null,
+          events: [],
+          starting: true,
+          startError: null,
+        },
       }));
     },
 

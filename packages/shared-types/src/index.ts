@@ -305,6 +305,10 @@ export interface LoadRunStartInput {
   concurrency: number;
   perIterDelayMs?: number;
   validator: LoadValidator;
+  /** Client-generated runId. When provided the main process uses it instead of
+   *  generating a new one, eliminating the race where load:progress events arrive
+   *  before the Promise resolves and the store has stored the runId. */
+  runId?: string;
 }
 
 export interface LoadEvent {

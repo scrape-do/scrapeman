@@ -503,7 +503,9 @@ app.whenReady().then(() => {
   ipcMain.handle(
     'load:start',
     async (_e, input: LoadRunStartInput): Promise<string> => {
-      const runId = randomUUID();
+      // Use client-supplied runId when provided so load:progress events emitted
+      // before this Promise resolves are still routable in the renderer store.
+      const runId = input.runId ?? randomUUID();
       const controller = new AbortController();
       loadRuns.set(runId, controller);
 
