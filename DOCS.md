@@ -415,7 +415,7 @@ A VS Code-style git panel built on simple-git:
 - **Source Control panel**: staged/unstaged file list in the sidebar.
 - **Stage/unstage**: individual files or all at once.
 - **Commit**: write a message and commit from the UI.
-- **Push/Pull**: uses OS credential store (no SSH key management UI).
+- **Push/Pull**: uses OS credential store (no SSH key management UI). Pull defaults to fast-forward; if branches have diverged a dialog prompts you to choose **Rebase** or **Merge commit**.
 - **Diff viewer**: click a changed file to see a line-by-line diff (green/red, VS Code style).
 - **Per-request sync toggle**: `Cmd+Shift+H` to exclude a request from git tracking.
 

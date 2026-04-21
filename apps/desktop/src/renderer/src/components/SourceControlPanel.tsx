@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { GitFileChange } from '@scrapeman/shared-types';
 import { useAppStore } from '../store.js';
 import { bridge } from '../bridge.js';
-import { ConfirmDialog } from '../ui/Dialog.js';
+import { ConfirmDialog, PullStrategyDialog } from '../ui/Dialog.js';
 import { Tooltip } from '../ui/Tooltip.js';
 import { DiffViewer } from './DiffViewer.js';
 import { SplitPane } from './SplitPane.js';
@@ -48,6 +48,16 @@ export function SourceControlPanel(): JSX.Element {
   const [selected, setSelected] = useState<SelectedFile | null>(null);
   const [diff, setDiff] = useState<string>('');
   const [confirmDiscard, setConfirmDiscard] = useState<string | null>(null);
+  const [showPullStrategyDialog, setShowPullStrategyDialog] = useState(false);
+  // Inline pull success message — auto-clears after 3 s.
+  const [pullSuccessMsg, setPullSuccessMsg] = useState<string | null>(null);
+  const pullSuccessTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function showPullSuccess(msg: string): void {
+    if (pullSuccessTimer.current !== null) clearTimeout(pullSuccessTimer.current);
+    setPullSuccessMsg(msg);
+    pullSuccessTimer.current = setTimeout(() => setPullSuccessMsg(null), 3000);
+  }
 
   useEffect(() => {
     if (workspace) void loadGitStatus();
@@ -287,7 +297,15 @@ export function SourceControlPanel(): JSX.Element {
         >
           <button
             disabled={gitBusy}
-            onClick={() => void gitPull()}
+            onClick={() => {
+              void gitPull().then((result) => {
+                if (result.diverged) {
+                  setShowPullStrategyDialog(true);
+                } else {
+                  showPullSuccess('Pulled from remote');
+                }
+              });
+            }}
             className="icon-btn disabled:opacity-50"
           >
             {gitBusy ? (
@@ -331,6 +349,11 @@ export function SourceControlPanel(): JSX.Element {
           {gitError}
         </div>
       )}
+      {pullSuccessMsg && (
+        <div className="border-b border-line bg-bg-hover px-3 py-2 text-[11px] text-method-post">
+          {pullSuccessMsg}
+        </div>
+      )}
 
       <div className="min-h-0 flex-1 overflow-hidden">
         {selected ? (
@@ -368,6 +391,21 @@ export function SourceControlPanel(): JSX.Element {
           if (confirmDiscard) void discardFile(confirmDiscard);
         }}
         onClose={() => setConfirmDiscard(null)}
+      />
+      <PullStrategyDialog
+        open={showPullStrategyDialog}
+        onConfirm={(strategy) => {
+          void gitPull(strategy).then((result) => {
+            if (!result.diverged) {
+              showPullSuccess(
+                strategy === 'rebase'
+                  ? 'Pulled with rebase'
+                  : 'Pulled with merge commit',
+              );
+            }
+          });
+        }}
+        onClose={() => setShowPullStrategyDialog(false)}
       />
     </div>
   );

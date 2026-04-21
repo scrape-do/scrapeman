@@ -46,6 +46,7 @@ import {
   gitCommit,
   gitPush,
   gitPull,
+  type GitPullStrategy,
   gitLocalHiddenList,
   gitLocalHide,
   gitLocalUnhide,
@@ -747,8 +748,10 @@ app.whenReady().then(() => {
       }
     },
   );
-  ipcMain.handle('git:pull', (_e, workspacePath: string) =>
-    gitPull(workspacePath),
+  ipcMain.handle(
+    'git:pull',
+    (_e, workspacePath: string, strategy?: GitPullStrategy) =>
+      gitPull(workspacePath, strategy),
   );
 
   ipcMain.handle('env:list', (_e, workspacePath: string) =>

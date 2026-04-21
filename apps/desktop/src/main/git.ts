@@ -380,6 +380,25 @@ export async function gitLocalUnhide(
   await fsp.writeFile(path, serializeExcludeFile(before, next, after), 'utf8');
 }
 
+// Converts raw git stderr/stdout into a user-friendly message. Called after
+// any divergence check so raw text is preserved for regex matching first.
+function humanizeGitError(raw: string): string {
+  const lower = raw.toLowerCase();
+  if (/authentication failed|could not read username|permission denied/.test(lower))
+    return 'Authentication failed. Check your git credentials.';
+  if (/could not resolve host|network|connection refused|timed out/.test(lower))
+    return 'Network error. Check your connection.';
+  if (/merge conflict|conflict/.test(lower))
+    return 'Merge conflict. Resolve conflicts in your git client, then try again.';
+  if (/not possible to fast[- ]forward|diverging branches/.test(lower))
+    return 'Branches have diverged.';
+  // Fallback: first non-hint line from git output
+  const first = raw
+    .split('\n')
+    .find((l) => l.trim() && !l.startsWith('hint:'));
+  return first?.trim() || raw.trim();
+}
+
 export async function gitPush(
   workspacePath: string,
 ): Promise<{ ok: boolean; message?: string }> {
@@ -387,24 +406,36 @@ export async function gitPush(
     const { stdout, stderr } = await run(workspacePath, ['push']);
     return { ok: true, message: (stderr || stdout).trim() };
   } catch (err) {
-    const message =
-      err instanceof GitError ? err.message : (err as Error).message;
-    return { ok: false, message };
+    const raw = err instanceof GitError ? err.message : (err as Error).message;
+    return { ok: false, message: humanizeGitError(raw) };
   }
 }
 
+export type GitPullStrategy = 'ff-only' | 'rebase' | 'merge';
+
 export async function gitPull(
   workspacePath: string,
-): Promise<{ ok: boolean; message?: string }> {
+  strategy: GitPullStrategy = 'ff-only',
+): Promise<{ ok: boolean; message?: string; diverged?: boolean }> {
+  const args =
+    strategy === 'rebase'
+      ? ['pull', '--rebase']
+      : strategy === 'merge'
+        ? ['pull', '--no-rebase', '--no-ff']
+        : ['pull', '--ff-only'];
   try {
-    const { stdout, stderr } = await run(workspacePath, [
-      'pull',
-      '--ff-only',
-    ]);
+    const { stdout, stderr } = await run(workspacePath, args);
     return { ok: true, message: (stderr || stdout).trim() };
   } catch (err) {
-    const message =
-      err instanceof GitError ? err.message : (err as Error).message;
-    return { ok: false, message };
+    const raw = err instanceof GitError ? err.message : (err as Error).message;
+    // Check for divergence against the raw message before humanizing.
+    const diverged =
+      strategy === 'ff-only' &&
+      /not possible to fast[- ]forward|diverging branches/i.test(raw);
+    return {
+      ok: false,
+      message: humanizeGitError(raw),
+      ...(diverged ? { diverged: true } : {}),
+    };
   }
 }

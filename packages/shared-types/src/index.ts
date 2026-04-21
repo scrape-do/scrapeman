@@ -385,7 +385,11 @@ export interface GitStatus {
 export interface GitOpResult {
   ok: boolean;
   message?: string;
+  /** True when pull failed because branches have diverged (ff-only mode only). */
+  diverged?: boolean;
 }
+
+export type GitPullStrategy = 'ff-only' | 'rebase' | 'merge';
 
 export interface GitCommit {
   hash: string;
@@ -530,7 +534,7 @@ export interface ScrapemanBridge {
   gitDiscard: (workspacePath: string, relPath: string) => Promise<void>;
   gitCommit: (workspacePath: string, message: string) => Promise<void>;
   gitPush: (workspacePath: string) => Promise<GitOpResult>;
-  gitPull: (workspacePath: string) => Promise<GitOpResult>;
+  gitPull: (workspacePath: string, strategy?: GitPullStrategy) => Promise<GitOpResult>;
   gitLocalHiddenList: (workspacePath: string) => Promise<string[]>;
   gitLocalHide: (workspacePath: string, relPath: string) => Promise<void>;
   gitLocalUnhide: (workspacePath: string, relPath: string) => Promise<void>;

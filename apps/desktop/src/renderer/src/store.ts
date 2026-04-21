@@ -279,7 +279,7 @@ interface AppState {
   discardFile: (relPath: string) => Promise<void>;
   commitChanges: (message: string) => Promise<void>;
   gitPush: () => Promise<void>;
-  gitPull: () => Promise<void>;
+  gitPull: (strategy?: import('@scrapeman/shared-types').GitPullStrategy) => Promise<{ diverged?: boolean }>;
 
   // Local-hide (issue #42): requests the user has hidden from git sync via
   // .git/info/exclude. Scoped per workspace; reloaded whenever the tree or
@@ -1582,19 +1582,27 @@ export const useAppStore = create<AppState>((set, get) => {
       set({ gitBusy: false, gitError: actionError });
     },
 
-    gitPull: async () => {
+    gitPull: async (strategy) => {
       const workspace = get().workspace;
-      if (!workspace) return;
+      if (!workspace) return {};
       set({ gitBusy: true, gitError: null });
       let actionError: string | null = null;
+      let diverged = false;
       try {
-        const res = await bridge.gitPull(workspace.path);
-        if (!res.ok) actionError = res.message ?? 'git pull failed';
+        const res = await bridge.gitPull(workspace.path, strategy);
+        if (!res.ok) {
+          if (res.diverged) {
+            diverged = true;
+          } else {
+            actionError = res.message ?? 'git pull failed';
+          }
+        }
       } catch (err) {
         actionError = err instanceof Error ? err.message : String(err);
       }
       await get().loadGitStatus();
       set({ gitBusy: false, gitError: actionError });
+      return diverged ? { diverged: true } : {};
     },
 
     loadHiddenRequests: async () => {
