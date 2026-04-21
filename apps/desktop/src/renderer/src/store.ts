@@ -213,6 +213,8 @@ interface AppState {
   insertHeaderAfter: (afterId: string) => string;
   updateHeader: (id: string, patch: Partial<HeaderRow>) => void;
   removeHeader: (id: string) => void;
+  /** Replace the entire headers array atomically (used by bulk-edit mode). */
+  replaceHeaders: (next: HeaderRow[]) => void;
   addParam: () => void;
   /** Insert a fresh param row immediately after the row with the given id. Returns the new row id. */
   insertParamAfter: (afterId: string) => string;
@@ -1002,6 +1004,9 @@ export const useAppStore = create<AppState>((set, get) => {
       patchBuilder({
         headers: active.builder.headers.filter((row) => row.id !== id),
       });
+    },
+    replaceHeaders: (next) => {
+      patchBuilder({ headers: next });
     },
 
     addParam: () => {

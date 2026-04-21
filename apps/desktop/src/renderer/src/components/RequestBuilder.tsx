@@ -26,6 +26,7 @@ export function RequestBuilder(): JSX.Element {
   const insertHeaderAfter = useAppStore((s) => s.insertHeaderAfter);
   const updateHeader = useAppStore((s) => s.updateHeader);
   const removeHeader = useAppStore((s) => s.removeHeader);
+  const replaceHeaders = useAppStore((s) => s.replaceHeaders);
   const setDisabledAutoHeaders = useAppStore((s) => s.setDisabledAutoHeaders);
   const addParam = useAppStore((s) => s.addParam);
   const insertParamAfter = useAppStore((s) => s.insertParamAfter);
@@ -254,6 +255,7 @@ export function RequestBuilder(): JSX.Element {
               onInsertAfter={insertHeaderAfter}
               onUpdate={updateHeader}
               onRemove={removeHeader}
+              onReplace={replaceHeaders}
             />
           </div>
         )}
