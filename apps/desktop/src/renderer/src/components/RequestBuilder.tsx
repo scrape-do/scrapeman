@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAppStore } from '../store.js';
 import { MethodPicker } from './MethodPicker.js';
 import { HeadersEditor } from './HeadersEditor.js';
@@ -13,6 +13,7 @@ import { HighlightedInput } from '../ui/HighlightedInput.js';
 import { CellContextMenu } from '../ui/CellContextMenu.js';
 import { PromptDialog } from '../ui/Dialog.js';
 import { shortcutLabel } from '../hooks/useShortcuts.js';
+import { formatJson } from '../utils/json-format.js';
 
 type Tab = 'params' | 'headers' | 'auth' | 'body' | 'settings' | 'code' | 'load';
 
@@ -44,6 +45,31 @@ export function RequestBuilder(): JSX.Element {
   const tab = useAppStore((s) => s.requestBuilderTab);
   const setTab = useAppStore((s) => s.setRequestBuilderTab);
   const [importOpen, setImportOpen] = useState(false);
+
+  // Ephemeral toast message shown in the body bar. Auto-clears after 3s.
+  const [bodyToast, setBodyToast] = useState<string | null>(null);
+  const bodyToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showBodyToast = useCallback((msg: string): void => {
+    if (bodyToastTimerRef.current !== null) clearTimeout(bodyToastTimerRef.current);
+    setBodyToast(msg);
+    bodyToastTimerRef.current = setTimeout(() => setBodyToast(null), 3000);
+  }, []);
+
+  const handleBeautify = useCallback((): void => {
+    const body = useAppStore.getState().tabs.find(
+      (t) => t.id === useAppStore.getState().activeTabId,
+    )?.builder.body ?? '';
+
+    const result = formatJson(body);
+    if (result.ok) {
+      setBody(result.text);
+    } else if (result.error === 'unresolved-variables') {
+      showBodyToast('Cannot format: body contains unresolved {{variables}}');
+    } else {
+      showBodyToast(`Invalid JSON: ${result.error}`);
+    }
+  }, [setBody, showBodyToast]);
 
   const urlInputRef = useRef<HTMLInputElement | null>(null);
   const focusUrlTick = useAppStore((s) => s.focusUrlTick);
@@ -282,7 +308,30 @@ export function RequestBuilder(): JSX.Element {
                   {type}
                 </button>
               ))}
+              {/* Beautify button — only visible when body mode is JSON */}
+              {builder.bodyType === 'json' && (
+                <button
+                  onClick={handleBeautify}
+                  title="Beautify JSON (⇧⌘F while editor is focused)"
+                  className="ml-auto rounded px-2 py-0.5 text-xs font-medium text-ink-3 hover:bg-bg-hover hover:text-ink-1"
+                >
+                  Beautify
+                </button>
+              )}
             </div>
+            {/* Inline toast — shown below the type bar, above the editor */}
+            {bodyToast !== null && (
+              <div
+                role="status"
+                aria-live="polite"
+                className="flex items-center gap-2 border-b border-line bg-bg-muted px-4 py-1.5 text-xs text-ink-2"
+              >
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-3">
+                  Notice
+                </span>
+                {bodyToast}
+              </div>
+            )}
             <textarea
               value={builder.body}
               onChange={(e) => setBody(e.target.value)}
@@ -295,6 +344,19 @@ export function RequestBuilder(): JSX.Element {
                     : ''
               }
               spellCheck={false}
+              onKeyDown={(e) => {
+                // Shift+Cmd/Ctrl+F beautifies when the body editor is focused.
+                // stopPropagation prevents the global "focus sidebar search" handler
+                // (also bound to mod+shift+f) from firing simultaneously.
+                const isMod = e.metaKey || e.ctrlKey;
+                if (isMod && e.shiftKey && e.key.toLowerCase() === 'f') {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (builder.bodyType === 'json') {
+                    handleBeautify();
+                  }
+                }
+              }}
               className="flex-1 resize-none border-0 bg-bg-canvas p-4 font-mono text-xs text-ink-1 outline-none placeholder:text-ink-4 disabled:bg-bg-subtle disabled:text-ink-4"
             />
           </div>
