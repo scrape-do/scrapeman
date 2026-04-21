@@ -28,6 +28,10 @@
     "dist:linux": "electron-vite build && electron-builder --linux"
   },
   "dependencies": {
+    "@codemirror/lang-html": "^6.4.11",
+    "@codemirror/state": "^6.6.0",
+    "@codemirror/theme-one-dark": "^6.1.3",
+    "@codemirror/view": "^6.41.1",
     "@fontsource/geist-mono": "^5.2.7",
     "@fontsource/inter": "^5.1.0",
     "@radix-ui/react-context-menu": "^2.2.0",
@@ -36,7 +40,9 @@
     "@radix-ui/react-tooltip": "^1.1.0",
     "@scrapeman/http-core": "workspace:*",
     "@scrapeman/shared-types": "workspace:*",
+    "@tanstack/react-virtual": "^3.13.24",
     "clsx": "^2.1.0",
+    "codemirror": "^6.0.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "zustand": "^5.0.0"

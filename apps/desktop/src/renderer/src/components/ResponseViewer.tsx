@@ -1,8 +1,17 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import type { ExecutedResponse } from '@scrapeman/shared-types';
 import { bridge } from '../bridge.js';
 import { useAppStore } from '../store.js';
 import { JsonTree } from './JsonTree.js';
+import { HtmlEditor } from './HtmlEditor.js';
 
 type Tab = 'body' | 'headers';
 
@@ -15,6 +24,9 @@ const MODE_LABEL: Record<BodyMode, string> = {
   tree: 'Tree',
   preview: 'Preview',
 };
+
+// 500 KB threshold for large-body warning in Pretty HTML mode.
+const LARGE_BODY_BYTES = 500 * 1024;
 
 function modesForKind(kind: ContentKind): BodyMode[] {
   switch (kind) {
@@ -149,7 +161,7 @@ export function ResponseViewer(): JSX.Element {
         </TabButton>
       </div>
 
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-hidden">
         {tab === 'body' && <BodyPanel response={response} />}
         {tab === 'headers' && <HeadersPanel response={response} />}
       </div>
@@ -157,8 +169,69 @@ export function ResponseViewer(): JSX.Element {
   );
 }
 
+// ─── Match type ─────────────────────────────────────────────────────────────
+
+interface LineMatch {
+  /** 0-based line index in the split lines array */
+  lineIndex: number;
+  /** start offset within the line string */
+  start: number;
+  /** end offset (exclusive) within the line string */
+  end: number;
+  /** global match index across all lines, used for active highlight */
+  globalIndex: number;
+}
+
+// ─── Search match computation ────────────────────────────────────────────────
+
+/**
+ * Finds all matches of `needle` in `text` and maps them to per-line offsets.
+ * Returns both a flat global list and a Map from lineIndex to its matches.
+ * Runs in O(n) on text length — safe for 5 MB bodies.
+ */
+function computeMatches(
+  lines: string[],
+  needle: string,
+): { all: LineMatch[]; byLine: Map<number, LineMatch[]> } {
+  const all: LineMatch[] = [];
+  const byLine = new Map<number, LineMatch[]>();
+  if (!needle) return { all, byLine };
+
+  const needleLower = needle.toLowerCase();
+  let globalIndex = 0;
+
+  for (let li = 0; li < lines.length; li++) {
+    const line = lines[li]!;
+    const lineLower = line.toLowerCase();
+    let from = 0;
+    while (true) {
+      const idx = lineLower.indexOf(needleLower, from);
+      if (idx < 0) break;
+      const m: LineMatch = {
+        lineIndex: li,
+        start: idx,
+        end: idx + needle.length,
+        globalIndex,
+      };
+      all.push(m);
+      let bucket = byLine.get(li);
+      if (!bucket) {
+        bucket = [];
+        byLine.set(li, bucket);
+      }
+      bucket.push(m);
+      globalIndex++;
+      from = idx + Math.max(1, needle.length);
+    }
+  }
+
+  return { all, byLine };
+}
+
+// ─── BodyPanel ───────────────────────────────────────────────────────────────
+
 function BodyPanel({ response }: { response: ExecutedResponse }): JSX.Element {
-  const search = useAppStore((s) => {
+  const searchRaw = useAppStore((s) => {
     const active = s.tabs.find((t) => t.id === s.activeTabId);
     return active?.responseSearch ?? '';
   });
@@ -169,6 +242,14 @@ function BodyPanel({ response }: { response: ExecutedResponse }): JSX.Element {
   const setSearch = useAppStore((s) => s.setResponseSearch);
   const setPersistedMode = useAppStore((s) => s.setResponseMode);
   const [activeMatchIndex, setActiveMatchIndex] = useState(0);
+
+  // Debounced search value — 150 ms delay prevents per-keystroke full-text scan
+  // on large bodies while keeping the input feel instant.
+  const [debouncedSearch, setDebouncedSearch] = useState(searchRaw);
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedSearch(searchRaw), 150);
+    return () => clearTimeout(id);
+  }, [searchRaw]);
 
   const bytes = useMemo<Uint8Array>(() => {
     try {
@@ -190,10 +271,7 @@ function BodyPanel({ response }: { response: ExecutedResponse }): JSX.Element {
 
   const availableModes = useMemo(() => modesForKind(kind), [kind]);
 
-  // Effective mode: persisted choice if it is still valid for the new
-  // content kind, otherwise the default for the kind. Persisting in tab
-  // state means new sends keep the user's last choice (Tree, Pretty,
-  // etc.) instead of snapping back to Raw on every response.
+  // Effective mode: persisted choice if still valid, otherwise first available.
   const mode: BodyMode =
     persistedMode && availableModes.includes(persistedMode)
       ? persistedMode
@@ -203,7 +281,7 @@ function BodyPanel({ response }: { response: ExecutedResponse }): JSX.Element {
     setPersistedMode(next);
   };
 
-  // Lazy JSON parse — only when Tree or Pretty for json kind.
+  // Lazy JSON parse — only needed for Tree/Pretty JSON.
   const parsed = useMemo<{ ok: boolean; value: unknown }>(() => {
     if (kind !== 'json') return { ok: false, value: null };
     if (mode !== 'tree' && mode !== 'pretty') return { ok: false, value: null };
@@ -221,8 +299,11 @@ function BodyPanel({ response }: { response: ExecutedResponse }): JSX.Element {
     if (kind === 'json' && parsed.ok) {
       return JSON.stringify(parsed.value, null, 2);
     }
-    if (kind === 'html' || kind === 'xml') {
-      return formatXmlOrHtml(text);
+    // HTML pretty is handled by CodeMirror — return raw text here so it is
+    // available for plain-text search when the editor is not shown.
+    if (kind === 'html') return text;
+    if (kind === 'xml') {
+      return formatXml(text);
     }
     return text;
   }, [mode, kind, parsed, text]);
@@ -232,37 +313,36 @@ function BodyPanel({ response }: { response: ExecutedResponse }): JSX.Element {
     response.contentType,
   ]);
 
-  // Which string are we searching over — depends on mode.
+  // The string we search over depends on mode.
+  // HTML pretty is handled by CodeMirror (no DOM highlight), so we search raw text.
   const searchable =
-    mode === 'pretty' ? pretty : mode === 'raw' ? text : null;
+    mode === 'raw' ? text :
+    mode === 'pretty' ? pretty :
+    null;
 
-  const matches = useMemo<number[]>(() => {
-    if (!search || !searchable) return [];
-    const needle = search.toLowerCase();
-    const haystack = searchable.toLowerCase();
-    const out: number[] = [];
-    let from = 0;
-    while (true) {
-      const idx = haystack.indexOf(needle, from);
-      if (idx < 0) break;
-      out.push(idx);
-      from = idx + Math.max(1, needle.length);
-    }
-    return out;
-  }, [search, searchable]);
+  // Split searchable text into lines once — reused by virtualizer and match logic.
+  const lines = useMemo<string[]>(() => {
+    if (!searchable) return [];
+    return searchable.split('\n');
+  }, [searchable]);
 
-  // Clamp active match when match count shrinks (new response, fewer hits).
+  // Compute all match positions across lines using the debounced needle.
+  const { matchAll, matchByLine } = useMemo(() => {
+    const { all, byLine } = computeMatches(lines, debouncedSearch);
+    return { matchAll: all, matchByLine: byLine };
+  }, [lines, debouncedSearch]);
+
+  // Clamp active match when match count shrinks.
   useEffect(() => {
-    if (matches.length === 0) {
+    if (matchAll.length === 0) {
       setActiveMatchIndex(0);
-    } else if (activeMatchIndex >= matches.length) {
+    } else if (activeMatchIndex >= matchAll.length) {
       setActiveMatchIndex(0);
     }
-  }, [matches.length]);
+  }, [matchAll.length]);
 
   const searchable_supported = mode === 'raw' || mode === 'pretty';
   const searchInputRef = useRef<HTMLInputElement | null>(null);
-  const activeMatchRef = useRef<HTMLElement | null>(null);
 
   const focusSearchTick = useAppStore((s) => s.focusSearchTick);
   useEffect(() => {
@@ -271,14 +351,17 @@ function BodyPanel({ response }: { response: ExecutedResponse }): JSX.Element {
     searchInputRef.current?.select();
   }, [focusSearchTick]);
 
+  // Ref to virtualizer row scroller — used to jump to active match.
+  const scrollToLineRef = useRef<((lineIndex: number) => void) | null>(null);
+
   useEffect(() => {
-    if (activeMatchRef.current) {
-      activeMatchRef.current.scrollIntoView({
-        block: 'center',
-        behavior: 'smooth',
-      });
-    }
-  }, [activeMatchIndex, matches.length, response.bodyBase64]);
+    if (matchAll.length === 0) return;
+    const active = matchAll[activeMatchIndex];
+    if (!active) return;
+    scrollToLineRef.current?.(active.lineIndex);
+  }, [activeMatchIndex, matchAll]);
+
+  const isLargeHtmlBody = kind === 'html' && response.sizeBytes > LARGE_BODY_BYTES;
 
   return (
     <div className="flex h-full flex-col">
@@ -295,20 +378,20 @@ function BodyPanel({ response }: { response: ExecutedResponse }): JSX.Element {
         {searchable_supported && (
           <SearchBox
             inputRef={searchInputRef}
-            value={search}
+            value={searchRaw}
             onChange={setSearch}
-            matchCount={matches.length}
+            matchCount={matchAll.length}
             activeIndex={activeMatchIndex}
             onPrev={() =>
               setActiveMatchIndex((i) =>
-                matches.length === 0
+                matchAll.length === 0
                   ? 0
-                  : (i - 1 + matches.length) % matches.length,
+                  : (i - 1 + matchAll.length) % matchAll.length,
               )
             }
             onNext={() =>
               setActiveMatchIndex((i) =>
-                matches.length === 0 ? 0 : (i + 1) % matches.length,
+                matchAll.length === 0 ? 0 : (i + 1) % matchAll.length,
               )
             }
           />
@@ -321,7 +404,18 @@ function BodyPanel({ response }: { response: ExecutedResponse }): JSX.Element {
           · {formatBytes(response.sizeBytes)}
         </span>
       </div>
-      <div className="flex-1 overflow-auto">
+
+      {/* Large HTML warning banner shown above CodeMirror pretty view */}
+      {isLargeHtmlBody && mode === 'pretty' && (
+        <div className="flex items-center gap-2 border-b border-line bg-method-post/10 px-4 py-1.5 text-[11px] text-method-post">
+          <span className="font-semibold">Large body</span>
+          <span className="text-method-post/80">
+            {formatBytes(response.sizeBytes)} — syntax highlighting may be slow. Switch to Raw for best performance.
+          </span>
+        </div>
+      )}
+
+      <div className="flex-1 overflow-hidden">
         {renderBody({
           kind,
           mode,
@@ -330,15 +424,20 @@ function BodyPanel({ response }: { response: ExecutedResponse }): JSX.Element {
           parsed,
           bodyBase64: response.bodyBase64,
           mimeType,
-          search,
-          matches,
+          search: debouncedSearch,
+          searchRaw,
+          matchAll,
+          matchByLine,
           activeMatchIndex,
-          activeMatchRef,
+          lines,
+          scrollToLineRef,
         })}
       </div>
     </div>
   );
 }
+
+// ─── SearchBox ───────────────────────────────────────────────────────────────
 
 function SearchBox({
   inputRef,
@@ -412,6 +511,135 @@ function SearchBox({
   );
 }
 
+// ─── Virtual text body ───────────────────────────────────────────────────────
+
+// Line height in px — must match the font-mono text-xs leading in the pre.
+const LINE_HEIGHT_PX = 18;
+
+/**
+ * Virtualized pre block. Renders only the visible lines using @tanstack/react-virtual.
+ * Highlights search matches within each visible line without touching invisible DOM.
+ */
+function VirtualTextBody({
+  lines,
+  matchByLine,
+  activeMatchIndex,
+  scrollToLineRef,
+}: {
+  lines: string[];
+  matchByLine: Map<number, LineMatch[]>;
+  activeMatchIndex: number;
+  scrollToLineRef: React.MutableRefObject<((lineIndex: number) => void) | null>;
+}): JSX.Element {
+  const parentRef = useRef<HTMLDivElement | null>(null);
+
+  const virtualizer = useVirtualizer({
+    count: lines.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => LINE_HEIGHT_PX,
+    overscan: 20,
+  });
+
+  // Expose a scroll-to callback so BodyPanel can jump to active match line.
+  useEffect(() => {
+    scrollToLineRef.current = (lineIndex: number) => {
+      virtualizer.scrollToIndex(lineIndex, { align: 'center', behavior: 'smooth' });
+    };
+    return () => {
+      scrollToLineRef.current = null;
+    };
+  }, [virtualizer, scrollToLineRef]);
+
+  const items = virtualizer.getVirtualItems();
+
+  return (
+    <div
+      ref={parentRef}
+      className="h-full overflow-auto"
+      style={{ contain: 'strict' }}
+    >
+      {/* Total height placeholder so the scrollbar is correctly sized */}
+      <div
+        style={{
+          height: virtualizer.getTotalSize(),
+          position: 'relative',
+        }}
+      >
+        {/* Positioned slab shifted to the current render window */}
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            transform: `translateY(${items[0]?.start ?? 0}px)`,
+          }}
+        >
+          {items.map((vRow) => {
+            const line = lines[vRow.index] ?? '';
+            const lineMatches = matchByLine.get(vRow.index);
+            return (
+              <div
+                key={vRow.key}
+                data-index={vRow.index}
+                ref={virtualizer.measureElement}
+                style={{ height: LINE_HEIGHT_PX, display: 'flex', alignItems: 'center' }}
+              >
+                <pre
+                  className="w-full whitespace-pre-wrap break-words px-4 font-mono text-xs leading-[18px] text-ink-1"
+                  style={{ margin: 0, padding: '0 16px' }}
+                >
+                  {lineMatches
+                    ? renderLineWithMatches(line, lineMatches, activeMatchIndex)
+                    : line || ' '}
+                </pre>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Renders a single line string with match highlights applied only to the
+ * segments that are visible — no work done on non-visible lines.
+ */
+function renderLineWithMatches(
+  line: string,
+  matches: LineMatch[],
+  activeMatchIndex: number,
+): ReactNode[] {
+  const nodes: ReactNode[] = [];
+  let cursor = 0;
+  for (const m of matches) {
+    if (m.start > cursor) {
+      nodes.push(line.slice(cursor, m.start));
+    }
+    const isActive = m.globalIndex === activeMatchIndex;
+    nodes.push(
+      <mark
+        key={`m-${m.globalIndex}`}
+        className={
+          isActive
+            ? 'rounded-sm bg-accent px-0.5 text-white'
+            : 'rounded-sm bg-accent-soft px-0.5 text-accent'
+        }
+      >
+        {line.slice(m.start, m.end)}
+      </mark>,
+    );
+    cursor = m.end;
+  }
+  if (cursor < line.length) {
+    nodes.push(line.slice(cursor));
+  }
+  return nodes;
+}
+
+// ─── renderBody ──────────────────────────────────────────────────────────────
+
 function renderBody({
   kind,
   mode,
@@ -421,9 +649,12 @@ function renderBody({
   bodyBase64,
   mimeType,
   search,
-  matches,
+  searchRaw,
+  matchAll,
+  matchByLine,
   activeMatchIndex,
-  activeMatchRef,
+  lines,
+  scrollToLineRef,
 }: {
   kind: ContentKind;
   mode: BodyMode;
@@ -433,13 +664,16 @@ function renderBody({
   bodyBase64: string;
   mimeType: string;
   search: string;
-  matches: number[];
+  searchRaw: string;
+  matchAll: LineMatch[];
+  matchByLine: Map<number, LineMatch[]>;
   activeMatchIndex: number;
-  activeMatchRef: React.MutableRefObject<HTMLElement | null>;
+  lines: string[];
+  scrollToLineRef: React.MutableRefObject<((lineIndex: number) => void) | null>;
 }): JSX.Element {
   if (kind === 'json' && mode === 'tree' && parsed.ok) {
     return (
-      <div className="p-4">
+      <div className="h-full overflow-auto p-4">
         <JsonTree value={parsed.value} />
       </div>
     );
@@ -478,6 +712,15 @@ function renderBody({
     );
   }
 
+  // HTML pretty mode — use CodeMirror for syntax-highlighted rendering.
+  // Search is NOT highlighted inside the editor (CodeMirror has its own search
+  // decorations which would require full editor integration; plain text search
+  // via the SearchBox still counts matches against the raw text).
+  if (kind === 'html' && mode === 'pretty') {
+    return <HtmlEditor content={text} />;
+  }
+
+  // Raw / pretty for all other kinds — virtualized text view.
   const content = mode === 'pretty' ? pretty : text;
   if (!content) {
     return (
@@ -487,65 +730,19 @@ function renderBody({
     );
   }
 
-  if (search && matches.length > 0) {
-    return (
-      <pre className="whitespace-pre-wrap break-words p-4 font-mono text-xs text-ink-1">
-        {renderHighlightedText(
-          content,
-          search.length,
-          matches,
-          activeMatchIndex,
-          activeMatchRef,
-        )}
-      </pre>
-    );
-  }
-
+  // For non-empty searchable content use the virtual renderer regardless of
+  // whether there is an active search — it handles large bodies efficiently.
   return (
-    <pre className="whitespace-pre-wrap break-words p-4 font-mono text-xs text-ink-1">
-      {content}
-    </pre>
+    <VirtualTextBody
+      lines={lines}
+      matchByLine={search && matchAll.length > 0 ? matchByLine : new Map()}
+      activeMatchIndex={activeMatchIndex}
+      scrollToLineRef={scrollToLineRef}
+    />
   );
 }
 
-function renderHighlightedText(
-  text: string,
-  needleLen: number,
-  matches: number[],
-  activeIndex: number,
-  activeMatchRef: React.MutableRefObject<HTMLElement | null>,
-): ReactNode[] {
-  const nodes: ReactNode[] = [];
-  let cursor = 0;
-  for (let i = 0; i < matches.length; i++) {
-    const start = matches[i]!;
-    const end = start + needleLen;
-    if (start > cursor) nodes.push(text.slice(cursor, start));
-    const isActive = i === activeIndex;
-    nodes.push(
-      <mark
-        key={`m-${i}`}
-        ref={
-          isActive
-            ? (el: HTMLElement | null) => {
-                activeMatchRef.current = el;
-              }
-            : undefined
-        }
-        className={
-          isActive
-            ? 'rounded-sm bg-accent px-0.5 text-white'
-            : 'rounded-sm bg-accent-soft px-0.5 text-accent'
-        }
-      >
-        {text.slice(start, end)}
-      </mark>,
-    );
-    cursor = end;
-  }
-  if (cursor < text.length) nodes.push(text.slice(cursor));
-  return nodes;
-}
+// ─── detectKind ──────────────────────────────────────────────────────────────
 
 function detectKind(
   contentType: string | undefined,
@@ -634,8 +831,8 @@ function mimeFor(kind: ContentKind, contentType: string | undefined): string {
   }
 }
 
-function formatXmlOrHtml(input: string): string {
-  // Lightweight pretty-printer: insert newlines between adjacent tags and
+function formatXml(input: string): string {
+  // Lightweight XML pretty-printer: insert newlines between adjacent tags and
   // indent. Not a full parser — handles typical responses well enough.
   if (!input.trim()) return input;
   let output = '';
@@ -654,6 +851,8 @@ function formatXmlOrHtml(input: string): string {
   }
   return output.trim();
 }
+
+// ─── UI primitives ───────────────────────────────────────────────────────────
 
 function ModeButton({
   active,
@@ -678,7 +877,7 @@ function ModeButton({
 
 function HeadersPanel({ response }: { response: ExecutedResponse }): JSX.Element {
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col overflow-auto">
       <div className="grid grid-cols-[240px_1fr] border-b border-line bg-bg-subtle px-4 text-[10px] font-semibold uppercase tracking-wider text-ink-4">
         <div className="py-2">Name</div>
         <div className="py-2">Value</div>

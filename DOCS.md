@@ -250,7 +250,7 @@ Scrapeman auto-detects the response content type: JSON, HTML, XML, image, PDF, t
 | Content type | Available modes |
 |---|---|
 | JSON | Raw, Pretty (formatted), Tree (collapsible with JSONPath copy) |
-| HTML | Raw, Pretty, Preview (sandboxed iframe) |
+| HTML | Raw, Pretty (CodeMirror syntax-highlighted), Preview (sandboxed iframe) |
 | XML | Raw, Pretty |
 | Image | Raw (hex), Preview (rendered) |
 | PDF | Raw, Preview (Chromium PDF viewer) |
@@ -261,6 +261,11 @@ Scrapeman auto-detects the response content type: JSON, HTML, XML, image, PDF, t
 ### Response body search
 
 Search within the response body with highlight, previous/next navigation. The search persists across sends and auto-re-runs when a new response arrives.
+
+- **Debounced input**: the match scan runs 150 ms after you stop typing so keystrokes feel instant even on large bodies.
+- **Virtualized rendering**: Raw and Pretty views render only the visible lines — 5 MB bodies scroll and search without jank.
+- **Enter / Shift+Enter**: jump to next / previous match; the viewport scrolls to the active match automatically.
+- **Large HTML warning**: switching to Pretty HTML mode on a body over 500 KB shows a banner suggesting Raw for better performance.
 
 ### Metrics
 
