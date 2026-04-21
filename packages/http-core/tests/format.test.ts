@@ -165,6 +165,23 @@ describe('serialize + parse', () => {
     expect(scrapeDoIdx).toBeLessThan(optionsIdx);
   });
 
+  it('round-trips params with disabled entries', async () => {
+    const original: ScrapemanRequest = {
+      scrapeman: FORMAT_VERSION,
+      meta: { name: 'Param toggle test' },
+      method: 'GET',
+      url: 'https://api.example.com/search?q=hello',
+      params: { q: 'hello', debug: '1', secret: 'abc' },
+      // 'debug' and 'secret' are disabled; 'q' is enabled (present in URL)
+      disabledParams: ['debug', 'secret'],
+    };
+    const parsed = await roundTrip(original);
+    expect(parsed).toEqual(original);
+    // Verify disabled keys are preserved in the parsed result
+    expect(parsed.disabledParams).toEqual(['debug', 'secret']);
+    expect(parsed.params).toEqual({ q: 'hello', debug: '1', secret: 'abc' });
+  });
+
   it('rejects invalid version', async () => {
     const yaml = `scrapeman: "0.9"\nmeta:\n  name: bad\nmethod: GET\nurl: https://example.com\n`;
     await expect(parseRequest(yaml)).rejects.toBeInstanceOf(FormatParseError);

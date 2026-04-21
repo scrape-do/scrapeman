@@ -119,6 +119,8 @@ export interface ScrapemanRequest {
   method: HttpMethod;
   url: string;
   params?: KeyValue;
+  /** Keys of params that should not be included in the request URL. */
+  disabledParams?: string[];
   headers?: KeyValue;
   auth?: AuthConfig;
   body?: BodyConfig;

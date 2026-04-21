@@ -38,6 +38,10 @@ export function serializeRequest(
     writeMap(lines, request.params, '  ');
   }
 
+  if (request.disabledParams && request.disabledParams.length > 0) {
+    lines.push(`disabledParams: [${request.disabledParams.map(yamlString).join(', ')}]`);
+  }
+
   if (request.headers && Object.keys(request.headers).length > 0) {
     lines.push('headers:');
     writeMap(lines, request.headers, '  ');

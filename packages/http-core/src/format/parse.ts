@@ -82,6 +82,10 @@ export async function parseRequest(
   if (isObject(raw['params'])) {
     request.params = normalizeStringMap(raw['params']);
   }
+  if (Array.isArray(raw['disabledParams'])) {
+    const keys = raw['disabledParams'].filter((k): k is string => typeof k === 'string');
+    if (keys.length > 0) request.disabledParams = keys;
+  }
   if (isObject(raw['headers'])) {
     request.headers = normalizeStringMap(raw['headers']);
   }

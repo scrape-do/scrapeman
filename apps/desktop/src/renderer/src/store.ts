@@ -399,10 +399,21 @@ function builderFromRequest(request: ScrapemanRequest): BuilderState {
   if (headers.length === 0) headers.push(freshHeader());
 
   // params can come from request.params OR from the URL query string.
+  // request.params holds ALL params (enabled and disabled); disabledParams
+  // lists the keys that are turned off so we can restore the enabled flag.
+  const disabledSet = new Set(request.disabledParams ?? []);
   const fromParamsField: ParamRow[] = Object.entries(request.params ?? {}).map(
-    ([key, value]) => ({ id: crypto.randomUUID(), key, value, enabled: true }),
+    ([key, value]) => ({
+      id: crypto.randomUUID(),
+      key,
+      value,
+      enabled: !disabledSet.has(key),
+    }),
   );
-  const fromUrl = paramsFromUrl(request.url);
+  // Only parse URL query params that are not already present in request.params.
+  // This avoids duplicating enabled params that were also encoded in the URL.
+  const paramsFieldKeys = new Set(Object.keys(request.params ?? {}));
+  const fromUrl = paramsFromUrl(request.url).filter((p) => !paramsFieldKeys.has(p.key));
   const params = [...fromParamsField, ...fromUrl];
   if (params.length === 0) params.push(freshParam());
 
@@ -480,12 +491,24 @@ function buildRequest(
   for (const row of builder.headers) {
     if (row.enabled && row.key.trim()) headers[row.key.trim()] = row.value;
   }
+  // Collect all params (key/value) regardless of enabled state.
+  // The URL field already reflects only the enabled ones via urlFromParams.
+  const allParams: Record<string, string> = {};
+  const disabledParamKeys: string[] = [];
+  for (const row of builder.params) {
+    if (!row.key.trim()) continue;
+    allParams[row.key.trim()] = row.value;
+    if (!row.enabled) disabledParamKeys.push(row.key.trim());
+  }
+
   const request: ScrapemanRequest = {
     scrapeman: FORMAT_VERSION,
     meta: { name: meta.name },
     method: builder.method,
     url: builder.url,
   };
+  if (Object.keys(allParams).length > 0) request.params = allParams;
+  if (disabledParamKeys.length > 0) request.disabledParams = disabledParamKeys;
   if (Object.keys(headers).length > 0) request.headers = headers;
   if (builder.bodyType !== 'none' && builder.body.trim().length > 0) {
     const contentType: 'json' | 'text' = builder.bodyType;
@@ -978,14 +1001,23 @@ export const useAppStore = create<AppState>((set, get) => {
     setUrl: (url) => {
       mutateActive((tab) => {
         // Re-parse params from the new URL whenever it contains a query string.
-        // If the user typed a URL without ?, keep the existing params editor rows.
+        // If the URL has no ?, keep the existing params editor rows as-is.
+        // When the URL does have a ?, we merge: disabled rows are always
+        // preserved; enabled rows come from the freshly parsed URL query string.
         const urlHasQuery = url.includes('?');
-        const newParams = urlHasQuery
-          ? (() => {
-              const parsed = paramsFromUrl(url);
-              return parsed.length > 0 ? parsed : [freshParam()];
-            })()
-          : tab.builder.params;
+        let newParams: ParamRow[];
+        if (urlHasQuery) {
+          const disabledRows = tab.builder.params.filter((p) => !p.enabled);
+          const fromUrl = paramsFromUrl(url);
+          // Build a set of keys that are already captured as disabled so we
+          // don't create duplicate rows if the user typed the same key.
+          const disabledKeys = new Set(disabledRows.map((p) => p.key));
+          const enabledFromUrl = fromUrl.filter((p) => !disabledKeys.has(p.key));
+          const merged = [...disabledRows, ...enabledFromUrl];
+          newParams = merged.length > 0 ? merged : [freshParam()];
+        } else {
+          newParams = tab.builder.params;
+        }
         return {
           ...tab,
           builder: { ...tab.builder, url, params: newParams },
