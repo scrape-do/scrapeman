@@ -21,6 +21,7 @@ import type { RequestExecutor } from '../executor.js';
 import { ExecutorError } from '../errors.js';
 import { buildAutoHeaders, mergeHeaders } from '../auto-headers.js';
 import { readSseStream, type SseEvent } from '../sse-reader.js';
+import { normalizeUrl } from '../url/normalize.js';
 
 const DEFAULT_MAX_REDIRECTS = 10;
 const DEFAULT_TOTAL_TIMEOUT_MS = 120_000;
@@ -172,10 +173,12 @@ export class UndiciExecutor implements RequestExecutor {
 }
 
 function buildUrl(request: ScrapemanRequest): string {
+  // Normalize first so that scheme-less / port-only inputs are valid for `new URL()`.
+  const normalized = normalizeUrl(request.url);
   if (!request.params || Object.keys(request.params).length === 0) {
-    return request.url;
+    return normalized;
   }
-  const url = new URL(request.url);
+  const url = new URL(normalized);
   for (const [key, value] of Object.entries(request.params)) {
     url.searchParams.append(key, value);
   }
