@@ -94,7 +94,7 @@ const api: ScrapemanBridge = {
       workspacePath,
       relPath,
       request,
-    ) as Promise<void>,
+    ) as Promise<string>,
   workspaceCreateFolder: (workspacePath: string, parent: string, name: string) =>
     ipcRenderer.invoke(
       'workspace:createFolder',

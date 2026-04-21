@@ -890,8 +890,31 @@ export const useAppStore = create<AppState>((set, get) => {
       const tab = tabs.find((t) => t.id === activeTabId);
       if (!tab || tab.kind !== 'file' || !tab.relPath) return;
       const request = buildRequest(tab.builder, { name: tab.name });
-      await bridge.workspaceWriteRequest(workspace.path, tab.relPath, request);
-      mutateActive((t) => ({ ...t, dirty: false, method: t.builder.method }));
+      const oldRelPath = tab.relPath;
+      // writeRequest may migrate `.req.yaml` → `.sman` and return the new
+      // path. When that happens we rewrite the open tab's id + relPath so
+      // subsequent saves hit the new file and git status attributes lines
+      // to the right path.
+      const newRelPath = await bridge.workspaceWriteRequest(
+        workspace.path,
+        oldRelPath,
+        request,
+      );
+      if (newRelPath !== oldRelPath) {
+        const oldId = `file:${oldRelPath}`;
+        const newId = `file:${newRelPath}`;
+        set({
+          tabs: get().tabs.map((t) =>
+            t.id === oldId
+              ? { ...t, id: newId, relPath: newRelPath, dirty: false, method: t.builder.method }
+              : t,
+          ),
+          activeTabId:
+            get().activeTabId === oldId ? newId : get().activeTabId,
+        });
+      } else {
+        mutateActive((t) => ({ ...t, dirty: false, method: t.builder.method }));
+      }
       await get().refreshTree();
       void get().loadGitStatus();
     },

@@ -1,6 +1,7 @@
 import { parse as parseYaml } from 'yaml';
 import {
   FORMAT_VERSION,
+  FORMAT_VERSION_ACCEPTED,
   type AuthConfig,
   type BodyConfig,
   type MultipartPart,
@@ -39,9 +40,12 @@ export async function parseRequest(
   }
 
   const version = raw['scrapeman'];
-  if (version !== FORMAT_VERSION) {
+  if (
+    typeof version !== 'string' ||
+    !(FORMAT_VERSION_ACCEPTED as readonly string[]).includes(version)
+  ) {
     throw new FormatParseError(
-      `unsupported scrapeman version: ${String(version)} (expected ${FORMAT_VERSION})`,
+      `unsupported scrapeman version: ${String(version)} (accepted: ${FORMAT_VERSION_ACCEPTED.join(', ')})`,
     );
   }
 
@@ -58,6 +62,9 @@ export async function parseRequest(
   }
 
   const request: ScrapemanRequest = {
+    // Normalize to the current writer version on read. This means an in-memory
+    // request always reports the latest version, and any round-trip through
+    // writeRequest re-stamps the file to FORMAT_VERSION.
     scrapeman: FORMAT_VERSION,
     meta: {
       name: meta['name'],

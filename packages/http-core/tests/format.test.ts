@@ -170,6 +170,21 @@ describe('serialize + parse', () => {
     await expect(parseRequest(yaml)).rejects.toBeInstanceOf(FormatParseError);
   });
 
+  it('accepts legacy version 1.0 (pre-`.sman` files) and normalizes to current version', async () => {
+    const yaml = `scrapeman: "1.0"\nmeta:\n  name: Legacy\nmethod: GET\nurl: https://example.com\n`;
+    const parsed = await parseRequest(yaml);
+    expect(parsed.meta.name).toBe('Legacy');
+    // Reader always hands out the current writer version so round-trips
+    // migrate the on-disk stamp to 2.0 transparently.
+    expect(parsed.scrapeman).toBe(FORMAT_VERSION);
+  });
+
+  it('accepts current version 2.0', async () => {
+    const yaml = `scrapeman: "2.0"\nmeta:\n  name: Current\nmethod: GET\nurl: https://example.com\n`;
+    const parsed = await parseRequest(yaml);
+    expect(parsed.scrapeman).toBe(FORMAT_VERSION);
+  });
+
   it('accepts custom HTTP methods through the format', async () => {
     const original: ScrapemanRequest = {
       scrapeman: FORMAT_VERSION,

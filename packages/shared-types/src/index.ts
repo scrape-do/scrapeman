@@ -1,7 +1,16 @@
 // Public types shared across @scrapeman packages.
 // Keep this file dependency-free so both Node and renderer can consume it.
 
-export const FORMAT_VERSION = '1.0' as const;
+// Writer version. New files (`.sman`) are tagged with this. Older `.req.yaml`
+// files tagged `1.0` remain readable — see FORMAT_VERSION_ACCEPTED.
+export const FORMAT_VERSION = '2.0' as const;
+
+// Versions the parser accepts. `1.0` is legacy `.req.yaml` from pre-`.sman`
+// workspaces; `2.0` is the current `.sman` format. Both are structurally
+// identical YAML — the version bump accompanies the extension rename so git
+// history can tell them apart.
+export const FORMAT_VERSION_ACCEPTED = ['1.0', '2.0'] as const;
+export type AcceptedFormatVersion = (typeof FORMAT_VERSION_ACCEPTED)[number];
 
 export type HttpMethod =
   | 'GET'
@@ -102,7 +111,10 @@ export interface RequestOptions {
 }
 
 export interface ScrapemanRequest {
-  scrapeman: typeof FORMAT_VERSION;
+  // Accepts any version the parser understands; writers always emit
+  // FORMAT_VERSION. Kept wide so a request read from a `.req.yaml` file
+  // (version `1.0`) typechecks before normalization.
+  scrapeman: AcceptedFormatVersion;
   meta: RequestMeta;
   method: HttpMethod;
   url: string;
@@ -457,11 +469,14 @@ export interface ScrapemanBridge {
     workspacePath: string,
     relPath: string,
   ) => Promise<ScrapemanRequest>;
+  // Returns the final relPath the request was written to. When the input
+  // path ends with `.req.yaml`, the file is migrated to `.sman` on write;
+  // callers must use the returned path to update tab state.
   workspaceWriteRequest: (
     workspacePath: string,
     relPath: string,
     request: ScrapemanRequest,
-  ) => Promise<void>;
+  ) => Promise<string>;
   workspaceCreateFolder: (
     workspacePath: string,
     parentRelPath: string,

@@ -595,6 +595,9 @@ app.whenReady().then(() => {
     (_e, path: string, relPath: string, request: ScrapemanRequest) =>
       workspaceManager.writeRequest(path, relPath, request),
   );
+  // Returned value (the final relPath after possible `.req.yaml` → `.sman`
+  // migration) crosses the IPC seam as a plain string — typed via
+  // ScrapemanBridge.workspaceWriteRequest.
   ipcMain.handle(
     'workspace:createFolder',
     (_e, path: string, parent: string, name: string) =>

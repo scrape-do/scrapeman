@@ -91,7 +91,7 @@ The full marketing site lives at **[scrapeman.app](https://scrapeman.app)** and 
 - Built-in dynamic variables fresh per send: `{{random}}`, `{{uuid}}`, `{{timestamp}}`, `{{timestampSec}}`, `{{isoDate}}`, `{{randomInt}}`
 
 ### Collections & file format
-- Custom YAML format (`*.req.yaml`), one file per request, stable key order → clean git diffs
+- Custom YAML format (`*.sman`), one file per request, stable key order → clean git diffs (legacy `*.req.yaml` files remain readable and are migrated to `.sman` on next save)
 - Body sidecar: payloads >= 4KB auto-promoted to `files/<slug>.body.<ext>`
 - Variable + collection tree lives in a user-chosen workspace folder — scrapeman never writes outside it
 - Live file-watcher (chokidar) reloads external edits with self-write suppression

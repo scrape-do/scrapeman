@@ -34,4 +34,5 @@ out/** linguist-generated=true
 # Language detection for GitHub Linguist
 *.yaml linguist-language=YAML
 *.req.yaml linguist-language=YAML
+*.sman linguist-language=YAML
 planning/** linguist-documentation

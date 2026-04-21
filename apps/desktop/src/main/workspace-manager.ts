@@ -135,10 +135,19 @@ export class WorkspaceManager {
     workspacePath: string,
     relPath: string,
     request: ScrapemanRequest,
-  ): Promise<void> {
+  ): Promise<string> {
     const entry = this.openWorkspaces.get(workspacePath);
-    if (entry) entry.watcher.suppressNext(relPath);
-    await this.getFs(workspacePath).writeRequest(relPath, request);
+    if (entry) {
+      // Suppress the target path. When migrating `.req.yaml` → `.sman`,
+      // also suppress the `.sman` target + the legacy unlink event so the
+      // watcher doesn't fire a spurious tree refresh from our own write.
+      entry.watcher.suppressNext(relPath);
+      if (relPath.endsWith('.req.yaml')) {
+        const smanPath = relPath.slice(0, -'.req.yaml'.length) + '.sman';
+        entry.watcher.suppressNext(smanPath);
+      }
+    }
+    return this.getFs(workspacePath).writeRequest(relPath, request);
   }
 
   createFolder(workspacePath: string, parentRelPath: string, name: string): Promise<string> {

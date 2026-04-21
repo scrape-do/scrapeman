@@ -54,7 +54,7 @@ Download from [github.com/scrape-do/scrapeman/releases](https://github.com/scrap
 ### Save to collection
 
 1. Press `Cmd+S`. If the request has never been saved, a dialog asks for a name and folder.
-2. The file is written to your workspace folder as a `.req.yaml` file.
+2. The file is written to your workspace folder as a `.sman` file.
 3. The request appears in the sidebar collection tree.
 
 ---
@@ -185,16 +185,17 @@ Scrapeman signs the request using the `aws4` library. The signature covers metho
 
 ### File structure
 
-Every request is one `.req.yaml` file:
+Every request is one `.sman` file (YAML content, custom extension):
 
 ```yaml
-# products/list.req.yaml
+# products/list.sman
+scrapeman: "2.0"
+meta:
+  name: List products
 method: GET
 url: "https://api.example.com/products?page={{page}}"
 headers:
-  - key: Accept
-    value: application/json
-    enabled: true
+  Accept: application/json
 auth:
   type: bearer
   token: "{{token}}"
@@ -202,9 +203,13 @@ auth:
 
 Key order is stable (deterministic serializer), so git diffs are clean and human-readable.
 
+#### `.req.yaml` compatibility (pre-0.4 workspaces)
+
+Files saved by earlier versions used `.req.yaml` with `scrapeman: "1.0"`. Scrapeman still reads those files transparently; when you save one, it is rewritten as `.sman` next to the old file and the `.req.yaml` is removed. If both extensions happen to exist with the same stem, the `.sman` wins and the `.req.yaml` is hidden from the sidebar.
+
 ### Body sidecars
 
-Payloads 4KB or larger are automatically promoted to a sidecar file under `files/<slug>.body.<ext>`. The `.req.yaml` references the sidecar by path. This keeps YAML files small and diffs focused on metadata changes.
+Payloads 4KB or larger are automatically promoted to a sidecar file under `files/<slug>.body.<ext>`. The `.sman` file references the sidecar by path. This keeps the main file small and diffs focused on metadata changes.
 
 ### Workspace folder
 
@@ -373,7 +378,7 @@ Scrapeman reads collections from four formats:
 
 **Postman v2.1 exporter** — planned (T093)
 
-**`.sman` bundle** — planned (T097/T098): ZIP-based portable bundle containing `.req.yaml` files, environments, and body sidecars. See [planning/issues/sman-bundle-format.md](planning/issues/sman-bundle-format.md).
+**`.sman` bundle** — planned (T097/T098): ZIP-based portable bundle containing `.sman` files, environments, and body sidecars. See [planning/issues/sman-bundle-format.md](planning/issues/sman-bundle-format.md).
 
 ---
 

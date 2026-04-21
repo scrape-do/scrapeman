@@ -12,8 +12,37 @@ import type {
 import { parseRequest, type SidecarLoader } from '../format/parse.js';
 import { serializeRequest } from '../format/serialize.js';
 
-const REQUEST_EXT = '.req.yaml';
+// Canonical extension for new files. Every write produces a `.sman`.
+const REQUEST_EXT = '.sman';
+// Legacy extension kept for read-only back-compat. Saving a `.req.yaml`
+// migrates it to `.sman` (lazy per-file migration). Longest match first so
+// `basename.req.yaml` is matched before `basename.sman`.
+const LEGACY_REQUEST_EXT = '.req.yaml';
+const REQUEST_EXTS = [REQUEST_EXT, LEGACY_REQUEST_EXT] as const;
 const IGNORED_DIRS = new Set(['.git', 'node_modules', '.scrapeman']);
+
+/**
+ * If `name` ends with any request extension, returns the extension that
+ * matched and the extension-less stem. Falls back to null when the file is
+ * not a request file.
+ */
+function matchRequestExt(
+  name: string,
+): { ext: string; stem: string } | null {
+  // Check legacy first because `.req.yaml` is longer than `.sman` and we
+  // want the longest match to win (defence against exotic names like
+  // `foo.req.yaml.sman`, unlikely but cheap to handle).
+  if (name.endsWith(LEGACY_REQUEST_EXT)) {
+    return {
+      ext: LEGACY_REQUEST_EXT,
+      stem: name.slice(0, -LEGACY_REQUEST_EXT.length),
+    };
+  }
+  if (name.endsWith(REQUEST_EXT)) {
+    return { ext: REQUEST_EXT, stem: name.slice(0, -REQUEST_EXT.length) };
+  }
+  return null;
+}
 
 export class WorkspaceFs {
   constructor(private readonly root: string) {}
@@ -41,9 +70,30 @@ export class WorkspaceFs {
     return parseRequest(text, loader);
   }
 
-  async writeRequest(relPath: string, request: ScrapemanRequest): Promise<void> {
-    const absPath = this.resolveSafe(relPath);
-    const slug = slugify(basename(relPath, REQUEST_EXT));
+  /**
+   * Writes a request to disk in the `.sman` format.
+   *
+   * When `relPath` points at a legacy `.req.yaml` file, the new `.sman` file
+   * is written first and the legacy file is unlinked afterwards (lazy
+   * per-file migration). Returns the final `.sman` relPath so callers can
+   * update tab / tree state.
+   */
+  async writeRequest(relPath: string, request: ScrapemanRequest): Promise<string> {
+    const absPathIn = this.resolveSafe(relPath);
+    const baseName = basename(absPathIn);
+    const match = matchRequestExt(baseName);
+
+    // Determine the target `.sman` path. If we got a legacy `.req.yaml`
+    // input, swap the extension; otherwise keep the path as-is (already
+    // `.sman` or some other name we will overwrite verbatim).
+    let absPath = absPathIn;
+    let migratedFromLegacy: string | null = null;
+    if (match && match.ext === LEGACY_REQUEST_EXT) {
+      absPath = join(dirname(absPathIn), match.stem + REQUEST_EXT);
+      migratedFromLegacy = absPathIn;
+    }
+
+    const slug = slugify(match ? match.stem : basename(absPath, REQUEST_EXT));
     const { yaml, sidecars } = serializeRequest(request, slug);
     await fsp.mkdir(dirname(absPath), { recursive: true });
     await atomicWrite(absPath, yaml);
@@ -57,6 +107,24 @@ export class WorkspaceFs {
           : Buffer.from(sidecar.content);
       await atomicWrite(sidecarAbs, bytes);
     }
+
+    // Remove the legacy file only after the new `.sman` is safely on disk.
+    // A failure here leaves both files; the next tree read resolves the
+    // collision in favour of `.sman` (see readFolder).
+    if (migratedFromLegacy) {
+      try {
+        await fsp.unlink(migratedFromLegacy);
+      } catch (err) {
+        // ENOENT is benign: another process may have removed it; anything
+        // else (EACCES, EPERM) means the legacy file stays put. Readers
+        // will still prefer the `.sman`, so nothing is lost.
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+          console.error('[scrapeman] legacy .req.yaml unlink failed:', err);
+        }
+      }
+    }
+
+    return this.toRel(absPath);
   }
 
   async createFolder(parentRelPath: string, name: string): Promise<string> {
@@ -90,7 +158,10 @@ export class WorkspaceFs {
     const stat = await fsp.stat(absOld);
     const parent = dirname(absOld);
     const safeName = slugify(newName);
-    const ext = stat.isFile() && absOld.endsWith(REQUEST_EXT) ? REQUEST_EXT : '';
+    // Keep whatever extension the file currently has. Legacy `.req.yaml`
+    // files stay legacy through rename — migration only happens on save.
+    const match = stat.isFile() ? matchRequestExt(basename(absOld)) : null;
+    const ext = match ? match.ext : '';
     const finalName = await uniqueName(parent, safeName, ext);
     const absNew = join(parent, finalName + ext);
     await fsp.rename(absOld, absNew);
@@ -134,7 +205,7 @@ export class WorkspaceFs {
 
     // If we're moving a request file, relocate its referenced sidecars too.
     const sidecarMoves: Array<{ from: string; to: string }> = [];
-    if (stat.isFile() && absOld.endsWith(REQUEST_EXT)) {
+    if (stat.isFile() && matchRequestExt(basename(absOld))) {
       const text = await fsp.readFile(absOld, 'utf8');
       for (const ref of extractFileRefs(text)) {
         if (isAbsolute(ref)) continue;
@@ -175,6 +246,17 @@ export class WorkspaceFs {
   private async readFolder(relPath: string, absPath: string): Promise<CollectionFolderNode> {
     const entries = await fsp.readdir(absPath, { withFileTypes: true });
     const children: CollectionNode[] = [];
+    // Track request stems we've already seen to resolve `.sman` vs `.req.yaml`
+    // collisions in favour of `.sman`.
+    const requestStems = new Set<string>();
+    // First pass: record every `.sman` stem so we can skip legacy `.req.yaml`
+    // files with a matching stem in the second pass.
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      if (entry.name.endsWith(REQUEST_EXT)) {
+        requestStems.add(entry.name.slice(0, -REQUEST_EXT.length));
+      }
+    }
 
     for (const entry of entries) {
       const entryAbs = join(absPath, entry.name);
@@ -183,12 +265,19 @@ export class WorkspaceFs {
       if (entry.isDirectory()) {
         if (IGNORED_DIRS.has(entry.name)) continue;
         children.push(await this.readFolder(entryRel, entryAbs));
-      } else if (entry.isFile() && entry.name.endsWith(REQUEST_EXT)) {
+      } else if (entry.isFile()) {
+        const match = matchRequestExt(entry.name);
+        if (!match) continue;
+        // Collision: if both `foo.sman` and `foo.req.yaml` exist, the newer
+        // `.sman` wins and the legacy file is hidden from the tree.
+        if (match.ext === LEGACY_REQUEST_EXT && requestStems.has(match.stem)) {
+          continue;
+        }
         const method = await peekMethod(entryAbs);
         children.push({
           kind: 'request',
           id: stableId(entryRel),
-          name: entry.name.slice(0, -REQUEST_EXT.length),
+          name: match.stem,
           relPath: entryRel,
           method,
         });
@@ -239,9 +328,25 @@ async function atomicWrite(absPath: string, data: string | Buffer): Promise<void
 async function uniqueName(parentAbs: string, base: string, ext: string): Promise<string> {
   const entries = await safeReaddir(parentAbs);
   const taken = new Set(entries);
-  if (!taken.has(base + ext)) return base;
+  // For request files the `ext` is `.sman`, but a legacy `.req.yaml` with
+  // the same stem would be shadowed by the new `.sman` (and then migrated
+  // on next save). To avoid surprising the user, we treat both extensions
+  // as taken when picking a unique request name.
+  const isRequest =
+    ext === REQUEST_EXT || (REQUEST_EXTS as readonly string[]).includes(ext);
+  const isTaken = (candidate: string): boolean => {
+    if (taken.has(candidate + ext)) return true;
+    if (isRequest) {
+      for (const otherExt of REQUEST_EXTS) {
+        if (otherExt === ext) continue;
+        if (taken.has(candidate + otherExt)) return true;
+      }
+    }
+    return false;
+  };
+  if (!isTaken(base)) return base;
   let i = 2;
-  while (taken.has(`${base}-${i}${ext}`)) i++;
+  while (isTaken(`${base}-${i}`)) i++;
   return `${base}-${i}`;
 }
 
