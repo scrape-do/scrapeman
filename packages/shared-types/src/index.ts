@@ -382,6 +382,16 @@ export type ImportCurlResult =
   | { ok: true; request: ScrapemanRequest }
   | { ok: false; message: string };
 
+/** Result of fetching an OpenAPI spec text from a remote URL. */
+export type OpenApiFetchResult =
+  | { ok: true; text: string; contentType: string }
+  | { ok: false; message: string };
+
+/** Result of parsing an OpenAPI / Swagger spec text. */
+export type OpenApiParseResult =
+  | { ok: true; result: ImportResult }
+  | { ok: false; message: string };
+
 export interface ImportFolder {
   name: string;
   requests: ScrapemanRequest[];
@@ -634,6 +644,8 @@ export interface ScrapemanBridge {
     filePath: string,
   ) => Promise<{ bytesWritten: number }>;
   importCurl: (input: string) => Promise<ImportCurlResult>;
+  fetchOpenApiSpec: (url: string) => Promise<OpenApiFetchResult>;
+  parseOpenApiSpec: (text: string) => Promise<OpenApiParseResult>;
   generateCode: (input: CodegenInput) => Promise<string>;
   previewHeaders: (request: ScrapemanRequest) => Promise<AutoHeadersPreview>;
 

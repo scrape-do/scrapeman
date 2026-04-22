@@ -25,6 +25,7 @@ export function useCommands(extras: CommandExtras): Command[] {
   const focusUrl = useAppStore((s) => s.focusUrl);
   const focusParams = useAppStore((s) => s.focusParams);
   const openImportCurl = useAppStore((s) => s.openImportCurl);
+  const openImportOpenApi = useAppStore((s) => s.openImportOpenApi);
   const openLoadTest = useAppStore((s) => s.openLoadTest);
   const toggleHiddenRequest = useAppStore((s) => s.toggleHiddenRequest);
   const tabs = useAppStore((s) => s.tabs);
@@ -51,6 +52,12 @@ export function useCommands(extras: CommandExtras): Command[] {
         title: 'Import curl',
         section: 'Request',
         run: () => openImportCurl(),
+      },
+      {
+        id: 'request.import-openapi',
+        title: 'Import OpenAPI / Swagger',
+        section: 'Request',
+        run: () => openImportOpenApi(),
       },
       {
         id: 'request.load-test',
@@ -138,6 +145,7 @@ export function useCommands(extras: CommandExtras): Command[] {
       focusUrl,
       focusParams,
       openImportCurl,
+      openImportOpenApi,
       openLoadTest,
       toggleHiddenRequest,
       tabs,

@@ -23,6 +23,7 @@ import {
   exportRunnerCsv,
   exportRunnerHtml,
   parseCsvIterations,
+  importOpenApiSpec,
 } from '@scrapeman/http-core';
 import type {
   AutoHeadersPreview,
@@ -37,6 +38,8 @@ import type {
   RunnerExportFormat,
   RunnerResult,
   RunnerStartInput,
+  OpenApiFetchResult,
+  OpenApiParseResult,
   ScrapemanRequest,
 } from '@scrapeman/shared-types';
 import { WorkspaceManager } from './workspace-manager.js';
@@ -794,6 +797,46 @@ app.whenReady().then(() => {
       });
     },
   );
+
+  ipcMain.handle(
+    'openapi:fetch',
+    async (_e, url: string): Promise<OpenApiFetchResult> => {
+      // Simple GET to download a spec file. Node 18+ / Electron 28+ ship a
+      // built-in fetch global so no extra dep is needed here.
+      try {
+        const res = await fetch(url, {
+          method: 'GET',
+          headers: { accept: 'application/json, application/yaml, text/yaml, */*' },
+        });
+        if (!res.ok) {
+          return {
+            ok: false,
+            message: `HTTP ${res.status} ${res.statusText}`,
+          };
+        }
+        const text = await res.text();
+        const contentType = res.headers.get('content-type') ?? 'text/plain';
+        return { ok: true, text, contentType };
+      } catch (err) {
+        return {
+          ok: false,
+          message: err instanceof Error ? err.message : String(err),
+        };
+      }
+    },
+  );
+
+  ipcMain.handle('openapi:parse', (_e, text: string): OpenApiParseResult => {
+    try {
+      const result = importOpenApiSpec(text);
+      return { ok: true, result };
+    } catch (err) {
+      return {
+        ok: false,
+        message: err instanceof Error ? err.message : String(err),
+      };
+    }
+  });
 
   ipcMain.handle('curl:import', (_e, input: string): ImportCurlResult => {
     try {

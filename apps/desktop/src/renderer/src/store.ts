@@ -267,6 +267,8 @@ interface AppState {
   // Ticks bumped by the command palette to open dialogs owned by RequestBuilder.
   importCurlTick: number;
   openImportCurl: () => void;
+  importOpenApiTick: number;
+  openImportOpenApi: () => void;
   loadTestTick: number;
   openLoadTest: () => void;
 
@@ -785,6 +787,7 @@ export const useAppStore = create<AppState>((set, get) => {
     setActivePane: (pane) => mutateActive((tab) => ({ ...tab, activePane: pane })),
     focusSidebarSearchTick: 0,
     importCurlTick: 0,
+    importOpenApiTick: 0,
     loadTestTick: 0,
     revealInSidebarTick: 0,
     revealInSidebarPath: null,
@@ -837,6 +840,7 @@ export const useAppStore = create<AppState>((set, get) => {
     focusSidebarSearch: () =>
       set({ focusSidebarSearchTick: get().focusSidebarSearchTick + 1 }),
     openImportCurl: () => set({ importCurlTick: get().importCurlTick + 1 }),
+    openImportOpenApi: () => set({ importOpenApiTick: get().importOpenApiTick + 1 }),
     openLoadTest: () => set({ loadTestTick: get().loadTestTick + 1 }),
 
     newTab: () => {

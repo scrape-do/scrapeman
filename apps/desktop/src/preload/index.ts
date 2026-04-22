@@ -14,6 +14,8 @@ import type {
   ImportCurlResult,
   LoadProgress,
   LoadRunStartInput,
+  OpenApiFetchResult,
+  OpenApiParseResult,
   RecentWorkspace,
   RunnerEventPayload,
   RunnerExportFormat,
@@ -60,6 +62,10 @@ const api: ScrapemanBridge = {
     ) as Promise<{ bytesWritten: number }>,
   importCurl: (input: string) =>
     ipcRenderer.invoke('curl:import', input) as Promise<ImportCurlResult>,
+  fetchOpenApiSpec: (url: string) =>
+    ipcRenderer.invoke('openapi:fetch', url) as Promise<OpenApiFetchResult>,
+  parseOpenApiSpec: (text: string) =>
+    ipcRenderer.invoke('openapi:parse', text) as Promise<OpenApiParseResult>,
   generateCode: (input: CodegenInput) =>
     ipcRenderer.invoke('codegen:generate', input) as Promise<string>,
   previewHeaders: (request: ScrapemanRequest) =>

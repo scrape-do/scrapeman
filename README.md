@@ -161,6 +161,7 @@ The full marketing site lives at **[scrapeman.app](https://scrapeman.app)** and 
 
 ### Import/export
 - curl command (paste or file)
+- OpenAPI 3.0.x / 3.1.x and Swagger 2.0 (JSON or YAML, URL or paste; groups by tag, generates environment with auth variable stubs)
 - Postman Collection v2.1 (folder hierarchy, auth, variables, body modes)
 - Bruno `.bru` folder trees (INI-like format, auth, body, params)
 - Insomnia v4 JSON (resources, folder tree, auth, environments)

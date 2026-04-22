@@ -8,6 +8,7 @@ import { SettingsTab as SettingsTabPanel } from './SettingsTab.js';
 import { AuthTab } from './AuthTab.js';
 import { CodePanel } from './CodePanel.js';
 import { ImportCurlDialog } from './ImportCurlDialog.js';
+import { ImportOpenApiDialog } from './ImportOpenApiDialog.js';
 import { LoadTestPanel } from './LoadTestPanel.js';
 import { WebSocketPanel } from './WebSocketPanel.js';
 import { HighlightedInput } from '../ui/HighlightedInput.js';
@@ -54,6 +55,7 @@ export function RequestBuilder(): JSX.Element {
   const setScreenshotMode = useAppStore((s) => s.setScreenshotMode);
   const screenshotMode = useAppStore((s) => s.screenshotMode);
   const [importOpen, setImportOpen] = useState(false);
+  const [importOpenApiOpen, setImportOpenApiOpen] = useState(false);
   const [screenshotUrl, setScreenshotUrl] = useState<string | null>(null);
 
   const takeScreenshot = useCallback(async (): Promise<void> => {
@@ -129,6 +131,12 @@ export function RequestBuilder(): JSX.Element {
     if (importCurlTick === 0) return;
     setImportOpen(true);
   }, [importCurlTick]);
+
+  const importOpenApiTick = useAppStore((s) => s.importOpenApiTick);
+  useEffect(() => {
+    if (importOpenApiTick === 0) return;
+    setImportOpenApiOpen(true);
+  }, [importOpenApiTick]);
 
   const loadTestTick = useAppStore((s) => s.loadTestTick);
   useEffect(() => {
@@ -440,6 +448,11 @@ export function RequestBuilder(): JSX.Element {
         open={importOpen}
         onClose={() => setImportOpen(false)}
         onImport={importCurl}
+      />
+
+      <ImportOpenApiDialog
+        open={importOpenApiOpen}
+        onClose={() => setImportOpenApiOpen(false)}
       />
 
       <PromptDialog

@@ -482,7 +482,19 @@ If a request in the folder has `scrapeDo.enabled: true`, the runner honours it â
 
 ### Import from other tools
 
-Scrapeman reads collections from four formats:
+Scrapeman reads collections from these formats:
+
+**OpenAPI 3.0.x / 3.1.x and Swagger 2.0** (`importOpenApiSpec`)
+- Accepts JSON or YAML string â€” format is auto-detected from content
+- Each `paths[*][method]` operation becomes one request
+- `operationId` is used as the request name, then `summary`, then `METHOD /path`
+- Operations grouped by `tags[0]` into folders; untagged operations go to the workspace root
+- Server URL written to `base_url` environment variable; request URLs are `{{base_url}}/path`
+- Parameters: `in: query` to `params`, `in: header` to `headers`, `in: path` substituted as `{{paramName}}` in the URL
+- Request body: prefers `application/json`, falls back through `application/xml`, `text/plain`, `application/x-www-form-urlencoded`, `multipart/form-data`. Uses `example`/`examples` when present; otherwise generates a minimal example from the schema (max depth 5)
+- `$ref` resolution: local refs (`#/components/schemas/Foo`, `#/definitions/Foo`) are resolved. Remote URL refs are skipped with a warning
+- Auth schemes (`http:bearer`, `http:basic`, `apiKey`, `oauth2`) mapped to request auth; secrets written as `{{VAR_NAME}}` placeholders in a generated environment (with empty values to fill in)
+- UI: "Import OpenAPI / Swagger" in the command palette or workspace menu. Enter a URL to fetch, or paste JSON/YAML. Preview shows endpoint count, tag list, and auth types before import
 
 **Postman Collection v2.1** (`importPostmanCollection`)
 - Reads the standard Postman JSON export format
