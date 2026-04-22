@@ -571,7 +571,8 @@ function VirtualTextBody({
             position: 'absolute',
             top: 0,
             left: 0,
-            width: '100%',
+            minWidth: '100%',
+            width: 'max-content',
             transform: `translateY(${items[0]?.start ?? 0}px)`,
           }}
         >
@@ -582,17 +583,15 @@ function VirtualTextBody({
               <div
                 key={vRow.key}
                 data-index={vRow.index}
-                ref={virtualizer.measureElement}
-                style={{ height: LINE_HEIGHT_PX, display: 'flex', alignItems: 'center' }}
+                style={{
+                  height: LINE_HEIGHT_PX,
+                  lineHeight: `${LINE_HEIGHT_PX}px`,
+                }}
+                className="whitespace-pre px-4 font-mono text-xs text-ink-1"
               >
-                <pre
-                  className="w-full whitespace-pre-wrap break-words px-4 font-mono text-xs leading-[18px] text-ink-1"
-                  style={{ margin: 0, padding: '0 16px' }}
-                >
-                  {lineMatches
-                    ? renderLineWithMatches(line, lineMatches, activeMatchIndex)
-                    : line || ' '}
-                </pre>
+                {lineMatches
+                  ? renderLineWithMatches(line, lineMatches, activeMatchIndex)
+                  : line || ' '}
               </div>
             );
           })}
