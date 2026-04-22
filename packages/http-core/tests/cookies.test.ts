@@ -113,4 +113,55 @@ describe('WorkspaceCookieJar', () => {
     ]);
     expect(await jar.getCookieHeader(workspace, null, 'https://b.com/')).toBeNull();
   });
+
+  it('setCookie inserts a new cookie and it is returned on the next request', async () => {
+    await jar.setCookie(workspace, null, {
+      domain: 'example.com',
+      path: '/',
+      name: 'manual',
+      value: 'hello',
+      expires: null,
+      httpOnly: false,
+      secure: false,
+      sameSite: null,
+    });
+    const header = await jar.getCookieHeader(workspace, null, 'https://example.com/');
+    expect(header).toBe('manual=hello');
+  });
+
+  it('setCookie replaces an existing cookie with the same domain+path+name', async () => {
+    await jar.setCookiesFromResponse(workspace, null, 'https://example.com/', [
+      'tok=old; Domain=example.com; Path=/',
+    ]);
+    await jar.setCookie(workspace, null, {
+      domain: 'example.com',
+      path: '/',
+      name: 'tok',
+      value: 'new',
+      expires: null,
+      httpOnly: false,
+      secure: false,
+      sameSite: null,
+    });
+    const list = await jar.list(workspace, null);
+    const tok = list.filter((c) => c.name === 'tok');
+    expect(tok).toHaveLength(1);
+    expect(tok[0]!.value).toBe('new');
+  });
+
+  it('setCookie persists across instances', async () => {
+    await jar.setCookie(workspace, null, {
+      domain: 'example.com',
+      path: '/',
+      name: 'persisted',
+      value: 'yes',
+      expires: null,
+      httpOnly: false,
+      secure: false,
+      sameSite: null,
+    });
+    const reopened = new WorkspaceCookieJar({ rootDir: tmp });
+    const header = await reopened.getCookieHeader(workspace, null, 'https://example.com/');
+    expect(header).toBe('persisted=yes');
+  });
 });

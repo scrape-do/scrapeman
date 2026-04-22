@@ -545,6 +545,7 @@ export interface ScrapemanBridge {
 
   // Cookies
   cookieList: (workspacePath: string) => Promise<CookieEntry[]>;
+  cookieSet: (workspacePath: string, cookie: CookieEntry) => Promise<void>;
   cookieDelete: (
     workspacePath: string,
     domain: string,

@@ -93,6 +93,48 @@ export class WorkspaceCookieJar {
     }
   }
 
+  /**
+   * Set (or replace) a single cookie in the jar. If a cookie with the same
+   * domain+path+name already exists it is removed first, then the new one is
+   * inserted. This is used by the Cookies panel "Add" and "Edit" flows.
+   */
+  async setCookie(
+    workspacePath: string,
+    envName: string | null,
+    entry: CookieEntry,
+  ): Promise<void> {
+    const { jar } = this.getOrCreate(workspacePath, envName);
+    const store = (jar as unknown as { store: FileCookieStore }).store;
+    // Remove the old entry first (no-op if it doesn't exist).
+    store.removeCookieSync(entry.domain, entry.path, entry.name);
+    // Build the Set-Cookie string from the entry fields.
+    const parts: string[] = [`${entry.name}=${entry.value}`];
+    parts.push(`Domain=${entry.domain}`);
+    parts.push(`Path=${entry.path}`);
+    if (entry.expires) {
+      // "Session" is the sentinel for no expiry — omit the Expires attribute.
+      if (entry.expires !== 'Session') {
+        parts.push(`Expires=${new Date(entry.expires).toUTCString()}`);
+      }
+    }
+    if (entry.httpOnly) parts.push('HttpOnly');
+    if (entry.secure) parts.push('Secure');
+    if (entry.sameSite) {
+      const ss =
+        entry.sameSite === 'strict'
+          ? 'Strict'
+          : entry.sameSite === 'lax'
+            ? 'Lax'
+            : 'None';
+      parts.push(`SameSite=${ss}`);
+    }
+    const cookieStr = parts.join('; ');
+    // Use a synthetic URL from domain+path so tough-cookie accepts the cookie.
+    const scheme = entry.secure ? 'https' : 'http';
+    const url = `${scheme}://${entry.domain}${entry.path}`;
+    jar.setCookieSync(cookieStr, url);
+  }
+
   async clearAll(
     workspacePath: string,
     envName: string | null,

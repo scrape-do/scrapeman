@@ -474,6 +474,14 @@ app.whenReady().then(() => {
     },
   );
   ipcMain.handle(
+    'cookies:set',
+    async (_e, workspacePath: string, cookie: CookieEntry) => {
+      if (!cookieJar) return;
+      const env = await workspaceManager.getActiveEnvironment(workspacePath);
+      await cookieJar.setCookie(workspacePath, env, cookie);
+    },
+  );
+  ipcMain.handle(
     'cookies:delete',
     async (
       _e,

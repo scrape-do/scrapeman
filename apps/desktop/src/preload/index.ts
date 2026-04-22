@@ -158,6 +158,8 @@ const api: ScrapemanBridge = {
 
   cookieList: (workspacePath: string) =>
     ipcRenderer.invoke('cookies:list', workspacePath) as Promise<CookieEntry[]>,
+  cookieSet: (workspacePath: string, cookie: CookieEntry) =>
+    ipcRenderer.invoke('cookies:set', workspacePath, cookie) as Promise<void>,
   cookieDelete: (workspacePath: string, domain: string, path: string, name: string) =>
     ipcRenderer.invoke(
       'cookies:delete',

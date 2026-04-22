@@ -413,11 +413,32 @@ The main process rewrites the URL to `api.scrape.do` and injects the configured 
 
 Scrapeman uses `tough-cookie` (RFC 6265 compliant) for cookie management.
 
-- Cookies survive app restarts. The jar is written to disk on every change.
-- Cookies are scoped per workspace and environment.
-- The Cookies inspector (in the sidebar) shows all stored cookies with domain, path, expiry, and flags.
+- Cookies survive app restarts. The jar is written to disk synchronously on every change.
+- Cookies are scoped per workspace and per active environment.
 - Set-Cookie headers from responses are automatically captured.
 - Cookie headers are automatically injected on matching requests.
+
+### Cookies inspector
+
+Open the Cookies panel from the sidebar (or the keyboard shortcut) to inspect, edit, and manage the jar for the current workspace and environment.
+
+**Filter:** Type in the domain filter at the top to narrow the list. Clearing it restores all domains.
+
+**Add a cookie manually:** Click **+ Add** to open an inline form. Fields: name, value, domain, path (default `/`), expires (ISO date or blank for session), httpOnly, Secure, SameSite. Save inserts the cookie into the jar immediately.
+
+**Edit a cookie:** Click any cookie row to open the same form pre-filled. Saving replaces the existing entry (delete + re-insert under the hood). The existing delete button (×) is still available on hover.
+
+**httpOnly masking:** Cookies with `httpOnly: true` show `••••••••` for the value by default. Click the eye icon to reveal the real value.
+
+**Export JSON:** Exports the currently visible cookies (respecting the domain filter) as a pretty-printed JSON array and triggers a browser download (`cookies.json`). The shape matches `CookieEntry` from the Scrapeman type definitions.
+
+**Export Netscape:** Exports cookies in Netscape `cookies.txt` format (tab-separated: domain, flag, path, secure, expires, name, value). Compatible with Playwright, Selenium, and curl (`--cookie cookies.txt`).
+
+**Import:** Click **Import** and paste either:
+- A `document.cookie` string: `name1=val1; name2=val2` — you must also enter the domain these cookies belong to.
+- A Netscape cookies.txt body — domain is read from each line; the domain field is ignored.
+
+The format is detected automatically (presence of tabs signals Netscape format). Each parsed cookie is inserted into the jar immediately.
 
 ---
 

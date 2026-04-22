@@ -104,7 +104,7 @@ The full marketing site lives at **[scrapeman.app](https://scrapeman.app)** and 
 - **gzipped**: body preview fields compressed on disk when >= 256 bytes (typical 5-10× smaller)
 - Restore to new tab with one click, dedup if already restored
 - Sidebar panel with clear/delete, method badges, status pills, relative time
-- Cookies inspector (workspace × env scoped via `tough-cookie`)
+- Cookies inspector (workspace × env scoped via `tough-cookie`) — filter by domain, add/edit cookies manually, httpOnly masking with reveal toggle, export JSON or Netscape cookies.txt, import from `document.cookie` string or cookies.txt
 
 ### Response viewer
 - Content-kind detection: JSON / HTML / XML / image / PDF / text / binary
