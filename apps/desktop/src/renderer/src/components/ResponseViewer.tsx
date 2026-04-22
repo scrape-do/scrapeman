@@ -568,9 +568,26 @@ function VirtualTextBody({
   });
 
   // Expose a scroll-to callback so BodyPanel can jump to active match line.
+  // virtualizer handles the vertical scroll; after the row is mounted we also
+  // center the active <mark> horizontally so long lines (pretty JSON, minified
+  // HTML) don't hide the hit off the right edge.
   useEffect(() => {
     scrollToLineRef.current = (lineIndex: number) => {
       virtualizer.scrollToIndex(lineIndex, { align: 'center', behavior: 'smooth' });
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const el = parentRef.current?.querySelector(
+            '[data-active-match="true"]',
+          );
+          if (el instanceof HTMLElement) {
+            el.scrollIntoView({
+              inline: 'center',
+              block: 'nearest',
+              behavior: 'smooth',
+            });
+          }
+        });
+      });
     };
     return () => {
       scrollToLineRef.current = null;
@@ -647,6 +664,7 @@ function renderLineWithMatches(
     nodes.push(
       <mark
         key={`m-${m.globalIndex}`}
+        data-active-match={isActive ? 'true' : undefined}
         className={
           isActive
             ? 'rounded-sm bg-accent px-0.5 text-white'
