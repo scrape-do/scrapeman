@@ -184,6 +184,12 @@ interface AppState {
   focusSearchTick: number;
   focusSearch: () => void;
 
+  // Bumped by the command palette "Add URL parameter" entry; RequestBuilder
+  // watches and switches to the Params pane, adding an empty row when needed,
+  // then focuses its Key cell.
+  focusParamsTick: number;
+  focusParams: () => void;
+
   // Active builder pane (Params / Headers / Body / Auth / Settings / Code / Load)
   // is stored per-tab on Tab.activePane. This setter updates the currently
   // active request tab.
@@ -692,6 +698,7 @@ export const useAppStore = create<AppState>((set, get) => {
     setScreenshotMode: (v) => set({ screenshotMode: v }),
     focusUrlTick: 0,
     focusSearchTick: 0,
+    focusParamsTick: 0,
     setActivePane: (pane) => mutateActive((tab) => ({ ...tab, activePane: pane })),
     focusSidebarSearchTick: 0,
     importCurlTick: 0,
@@ -740,6 +747,7 @@ export const useAppStore = create<AppState>((set, get) => {
 
     focusUrl: () => set({ focusUrlTick: get().focusUrlTick + 1 }),
     focusSearch: () => set({ focusSearchTick: get().focusSearchTick + 1 }),
+    focusParams: () => set({ focusParamsTick: get().focusParamsTick + 1 }),
     focusSidebarSearch: () =>
       set({ focusSidebarSearchTick: get().focusSidebarSearchTick + 1 }),
     openImportCurl: () => set({ importCurlTick: get().importCurlTick + 1 }),

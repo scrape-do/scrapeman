@@ -471,12 +471,21 @@ All shortcuts use `Cmd` on macOS and `Ctrl` on Windows/Linux.
 | Middle-click on tab | Close tab (with dirty guard) |
 | `Cmd+1` through `Cmd+9` | Switch to tab N |
 
+### Command palette
+
+Open with `Cmd+K`. Type to filter any listed command.
+
+| Command | Action |
+|---|---|
+| Add URL parameter | Switch to Params tab, focus the first empty Key cell (adds a row if all rows are filled) |
+
 ### Headers/Params table
 
 | Shortcut | Action |
 |---|---|
 | `Shift+Enter` | Insert new row below, focus Key cell |
 | `Tab` (from last row Key) | Auto-append new row |
+| `Tab` into empty table | Create first row and focus its Key cell |
 
 ### Dirty tab guard
 

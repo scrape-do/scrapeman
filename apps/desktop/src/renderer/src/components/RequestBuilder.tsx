@@ -124,6 +124,14 @@ export function RequestBuilder(): JSX.Element {
     setTab('load');
   }, [loadTestTick]);
 
+  // Switch to the Params pane when the command palette triggers "Add URL parameter".
+  // ParamsEditor receives the raw tick and handles adding a row + focusing the Key cell.
+  const focusParamsTick = useAppStore((s) => s.focusParamsTick);
+  useEffect(() => {
+    if (focusParamsTick === 0) return;
+    setTab('params');
+  }, [focusParamsTick, setTab]);
+
   if (!activeTab) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -313,6 +321,7 @@ export function RequestBuilder(): JSX.Element {
             onUpdate={updateParam}
             onRemove={removeParam}
             onReorder={reorderParam}
+            focusFirstKeyTick={focusParamsTick}
           />
         )}
         {tab === 'headers' && (

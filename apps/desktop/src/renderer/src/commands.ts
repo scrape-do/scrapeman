@@ -23,6 +23,7 @@ export function useCommands(extras: CommandExtras): Command[] {
   const duplicateTab = useAppStore((s) => s.duplicateTab);
   const activeTabId = useAppStore((s) => s.activeTabId);
   const focusUrl = useAppStore((s) => s.focusUrl);
+  const focusParams = useAppStore((s) => s.focusParams);
   const openImportCurl = useAppStore((s) => s.openImportCurl);
   const openLoadTest = useAppStore((s) => s.openLoadTest);
   const toggleHiddenRequest = useAppStore((s) => s.toggleHiddenRequest);
@@ -104,6 +105,12 @@ export function useCommands(extras: CommandExtras): Command[] {
         run: () => focusUrl(),
       },
       {
+        id: 'view.add-param',
+        title: 'Add URL parameter',
+        section: 'View',
+        run: () => focusParams(),
+      },
+      {
         id: 'view.toggle-theme',
         title: 'Toggle theme (light / dark)',
         section: 'View',
@@ -123,6 +130,7 @@ export function useCommands(extras: CommandExtras): Command[] {
       duplicateTab,
       activeTabId,
       focusUrl,
+      focusParams,
       openImportCurl,
       openLoadTest,
       toggleHiddenRequest,
