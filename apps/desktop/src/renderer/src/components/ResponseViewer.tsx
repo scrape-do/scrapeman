@@ -56,6 +56,10 @@ export function ResponseViewer(): JSX.Element {
     const active = s.tabs.find((t) => t.id === s.activeTabId);
     return active?.builder.url ?? '';
   });
+  const validateBody = useAppStore((s) => {
+    const active = s.tabs.find((t) => t.id === s.activeTabId);
+    return active?.builder.settings.validateBody ?? '';
+  });
   const [tab, setTab] = useState<Tab>('body');
 
   const focusSearchTick = useAppStore((s) => s.focusSearchTick);
@@ -116,6 +120,10 @@ export function ResponseViewer(): JSX.Element {
       ? execution.finishedAt - execution.startedAt
       : response.timings.totalMs;
 
+  const validateHit = validateBody.trim()
+    ? decodeBodyText(response.bodyBase64).includes(validateBody)
+    : null;
+
   return (
     <div className="flex h-full flex-col">
       <div className="relative z-10 flex h-10 items-center gap-4 border-b border-line bg-bg-canvas px-4">
@@ -132,6 +140,25 @@ export function ResponseViewer(): JSX.Element {
         )}
         <Metric label="Size" value={formatBytes(response.sizeBytes)} />
         <Metric label="Protocol" value={response.httpVersion} />
+        {validateHit !== null && (
+          <div
+            className={`flex items-center gap-1.5 rounded px-2 py-0.5 text-[11px] font-medium ${
+              validateHit
+                ? 'bg-status-ok/10 text-status-ok'
+                : 'bg-method-delete/10 text-method-delete'
+            }`}
+            title={
+              validateHit
+                ? `Response body contains "${validateBody}"`
+                : `Response body is missing "${validateBody}"`
+            }
+          >
+            <span aria-hidden>{validateHit ? '✓' : '✗'}</span>
+            <span className="font-mono">
+              validate &quot;{truncateMiddle(validateBody, 24)}&quot;
+            </span>
+          </div>
+        )}
         <button
           onClick={() => {
             const name = deriveFilename(response, requestUrl);
@@ -742,6 +769,21 @@ function renderBody({
 }
 
 // ─── detectKind ──────────────────────────────────────────────────────────────
+
+function truncateMiddle(value: string, max: number): string {
+  if (value.length <= max) return value;
+  const half = Math.max(1, Math.floor((max - 1) / 2));
+  return `${value.slice(0, half)}…${value.slice(-half)}`;
+}
+
+function decodeBodyText(bodyBase64: string): string {
+  try {
+    const bytes = Uint8Array.from(atob(bodyBase64), (c) => c.charCodeAt(0));
+    return new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+  } catch {
+    return '';
+  }
+}
 
 function detectKind(
   contentType: string | undefined,

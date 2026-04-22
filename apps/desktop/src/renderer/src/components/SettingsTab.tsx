@@ -112,6 +112,21 @@ export function SettingsTab(): JSX.Element {
         </Row>
       </Section>
 
+      <Section
+        title="Validation"
+        description="If set, the response body is checked for this substring and the result (match / mismatch) appears in the response status bar."
+      >
+        <Row label="Expected text">
+          <HighlightedInput
+            value={s.validateBody}
+            onChange={(e) => patch({ validateBody: e.target.value })}
+            placeholder="e.g. &quot;success&quot; or {{expectedName}}"
+            variant="field"
+            className="flex-1"
+          />
+        </Row>
+      </Section>
+
       <Section title="TLS">
         <Toggle
           label="Ignore invalid certificates"

@@ -79,6 +79,8 @@ export interface SettingsState {
   };
   httpVersion: HttpVersion;
   scrapeDo: ScrapeDoConfig;
+  /** If non-empty, response body is expected to contain this substring. */
+  validateBody: string;
 }
 
 export interface BuilderState {
@@ -334,6 +336,7 @@ function freshSettings(): SettingsState {
     tls: { ignoreInvalidCerts: false },
     httpVersion: 'auto',
     scrapeDo: { enabled: false, token: '' },
+    validateBody: '',
   };
 }
 
