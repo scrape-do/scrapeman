@@ -174,12 +174,16 @@ describe('UndiciExecutor', () => {
     );
   });
 
-  it('appends params from request.params to the URL', async () => {
+  it('sends request.url verbatim without re-appending request.params', async () => {
+    // request.params exists only for file-format round-trip (preserving disabled
+    // rows). The URL bar is canonical — the UI bakes enabled params into url
+    // before send, and the executor must not double-append or sneak in rows the
+    // user removed from the URL bar.
     const response = await executor.execute(
       req({
         method: 'GET',
-        url: `${baseUrl}/echo`,
-        params: { a: '1', b: 'two' },
+        url: `${baseUrl}/echo?a=1&b=two`,
+        params: { a: '1', b: 'two', removed: 'should-not-appear' },
       }),
     );
     const body = JSON.parse(Buffer.from(response.bodyBase64, 'base64').toString('utf8'));

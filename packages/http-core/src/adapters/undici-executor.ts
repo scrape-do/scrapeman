@@ -173,23 +173,13 @@ export class UndiciExecutor implements RequestExecutor {
 }
 
 function buildUrl(request: ScrapemanRequest): string {
-  // Normalize first so that scheme-less / port-only inputs are valid for `new URL()`.
-  const normalized = normalizeUrl(request.url);
-  if (!request.params || Object.keys(request.params).length === 0) {
-    return normalized;
-  }
-  const disabled = new Set(request.disabledParams ?? []);
-  const url = new URL(normalized);
-  const inUrlKeys = new Set(url.searchParams.keys());
-  for (const [key, value] of Object.entries(request.params)) {
-    if (disabled.has(key)) continue;
-    // Skip keys already present in the URL query string — this avoids
-    // duplicating enabled params that the UI also surfaces in the URL bar,
-    // which previously broke {{var}} resolution.
-    if (inUrlKeys.has(key)) continue;
-    url.searchParams.append(key, value);
-  }
-  return url.toString();
+  // The URL bar is the single source of truth for what the user sends —
+  // `request.url` already carries every enabled param the UI surfaced.
+  // `request.params` exists only so the file format can round-trip all
+  // rows (including disabled ones) without losing their values; it is
+  // intentionally NOT appended here, otherwise rows that the user had
+  // removed from the URL bar would silently come back on send.
+  return normalizeUrl(request.url);
 }
 
 function buildBaseDispatcher(
