@@ -764,11 +764,25 @@ function renderBody({
   }
 
   // HTML pretty mode — use CodeMirror for syntax-highlighted rendering.
-  // Search is NOT highlighted inside the editor (CodeMirror has its own search
-  // decorations which would require full editor integration; plain text search
-  // via the SearchBox still counts matches against the raw text).
+  // The outer SearchBox still computes matches against the raw text; when the
+  // user navigates (Enter / Shift+Enter), we map the active match's line/char
+  // into a CodeMirror range and let the editor scroll+select it.
   if (kind === 'html' && mode === 'pretty') {
-    return <HtmlEditor content={text} />;
+    const active = matchAll[activeMatchIndex];
+    return (
+      <HtmlEditor
+        content={text}
+        activeMatch={
+          active
+            ? {
+                lineIndex: active.lineIndex,
+                start: active.start,
+                end: active.end,
+              }
+            : null
+        }
+      />
+    );
   }
 
   // Raw / pretty for all other kinds — virtualized text view.

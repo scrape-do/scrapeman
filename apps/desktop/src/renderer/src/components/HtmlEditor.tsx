@@ -1,15 +1,29 @@
 import { useEffect, useRef } from 'react';
 import { EditorView, basicSetup } from 'codemirror';
 import { html } from '@codemirror/lang-html';
-import { EditorState } from '@codemirror/state';
+import { EditorSelection, EditorState } from '@codemirror/state';
 import { oneDark } from '@codemirror/theme-one-dark';
+
+export interface HtmlEditorActiveMatch {
+  lineIndex: number;
+  start: number;
+  end: number;
+}
 
 /**
  * Read-only CodeMirror editor for HTML pretty view.
  * Adapts between light and dark themes by watching the `html.dark` class on
  * the document element (same mechanism as the rest of the app's Tailwind theme).
+ * When activeMatch is set, scrolls that range into view and selects it so
+ * the browser's selection highlight doubles as the "active match" cue.
  */
-export function HtmlEditor({ content }: { content: string }): JSX.Element {
+export function HtmlEditor({
+  content,
+  activeMatch,
+}: {
+  content: string;
+  activeMatch?: HtmlEditorActiveMatch | null;
+}): JSX.Element {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   const isDark = document.documentElement.classList.contains('dark');
@@ -68,6 +82,24 @@ export function HtmlEditor({ content }: { content: string }): JSX.Element {
       changes: { from: 0, to: view.state.doc.length, insert: content },
     });
   }, [content]);
+
+  // Follow search navigation from the outer SearchBox: map {lineIndex, start, end}
+  // into a CodeMirror range and scroll + select it.
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view || !activeMatch) return;
+    const totalLines = view.state.doc.lines;
+    // lineIndex is 0-based; CodeMirror lines are 1-based.
+    const lineNumber = Math.min(totalLines, Math.max(1, activeMatch.lineIndex + 1));
+    const line = view.state.doc.line(lineNumber);
+    const from = Math.min(line.to, line.from + activeMatch.start);
+    const to = Math.min(line.to, line.from + activeMatch.end);
+    const range = EditorSelection.range(from, to);
+    view.dispatch({
+      selection: EditorSelection.create([range]),
+      effects: EditorView.scrollIntoView(range, { y: 'center', x: 'center' }),
+    });
+  }, [activeMatch]);
 
   return (
     <div
