@@ -43,10 +43,17 @@ export function HeadersEditor({
    * that all edits are committed atomically to the store.
    */
   onReplace: (next: HeaderRow[]) => void;
-  onReorder: (fromId: string, toId: string) => void;
+  onReorder: (
+    fromId: string,
+    toId: string,
+    position: 'before' | 'after',
+  ) => void;
 }): JSX.Element {
   const [bulkMode, setBulkMode] = useState(false);
   const [dragId, setDragId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<
+    { id: string; pos: 'before' | 'after' } | null
+  >(null);
   // Bulk textarea text — kept in local state while bulk mode is active.
   const [bulkText, setBulkText] = useState('');
 
@@ -206,21 +213,45 @@ export function HeadersEditor({
       ) : (
         /* ── Key-value table mode ── */
         <>
-          {rows.map((row) => (
+          {rows.map((row) => {
+            const isDropBefore =
+              dropTarget?.id === row.id && dropTarget.pos === 'before';
+            const isDropAfter =
+              dropTarget?.id === row.id && dropTarget.pos === 'after';
+            return (
             <div
               key={row.id}
-              className={`group grid grid-cols-[16px_32px_1fr_1.5fr_32px] items-center border-b border-line-subtle px-3 hover:bg-bg-subtle ${
+              className={`group relative grid grid-cols-[16px_32px_1fr_1.5fr_32px] items-center border-b border-line-subtle px-3 hover:bg-bg-subtle ${
                 dragId === row.id ? 'opacity-40' : ''
               }`}
               onDragOver={(e) => {
-                if (dragId && dragId !== row.id) e.preventDefault();
+                if (!dragId || dragId === row.id) return;
+                e.preventDefault();
+                const rect = e.currentTarget.getBoundingClientRect();
+                const pos: 'before' | 'after' =
+                  e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+                if (dropTarget?.id !== row.id || dropTarget.pos !== pos) {
+                  setDropTarget({ id: row.id, pos });
+                }
+              }}
+              onDragLeave={() => {
+                if (dropTarget?.id === row.id) setDropTarget(null);
               }}
               onDrop={(e) => {
                 e.preventDefault();
-                if (dragId && dragId !== row.id) onReorder(dragId, row.id);
+                if (dragId && dragId !== row.id && dropTarget?.id === row.id) {
+                  onReorder(dragId, row.id, dropTarget.pos);
+                }
                 setDragId(null);
+                setDropTarget(null);
               }}
             >
+              {isDropBefore && (
+                <div className="pointer-events-none absolute inset-x-0 -top-px h-0.5 bg-accent" />
+              )}
+              {isDropAfter && (
+                <div className="pointer-events-none absolute inset-x-0 -bottom-px h-0.5 bg-accent" />
+              )}
               <div
                 draggable
                 onDragStart={() => setDragId(row.id)}
@@ -272,7 +303,8 @@ export function HeadersEditor({
                 ×
               </button>
             </div>
-          ))}
+            );
+          })}
           <button
             onClick={onAdd}
             className="flex h-8 items-center px-3 text-xs text-ink-3 transition-colors hover:bg-bg-subtle hover:text-accent"

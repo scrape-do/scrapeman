@@ -225,15 +225,23 @@ interface AppState {
   removeHeader: (id: string) => void;
   /** Replace the entire headers array atomically (used by bulk-edit mode). */
   replaceHeaders: (next: HeaderRow[]) => void;
-  /** Reorder: move the row with id `fromId` to the position of `toId`. */
-  reorderHeader: (fromId: string, toId: string) => void;
+  /** Reorder: move `fromId` before or after `toId`. */
+  reorderHeader: (
+    fromId: string,
+    toId: string,
+    position?: 'before' | 'after',
+  ) => void;
   addParam: () => void;
   /** Insert a fresh param row immediately after the row with the given id. Returns the new row id. */
   insertParamAfter: (afterId: string) => string;
   updateParam: (id: string, patch: Partial<ParamRow>) => void;
   removeParam: (id: string) => void;
-  /** Reorder: move the row with id `fromId` to the position of `toId`. */
-  reorderParam: (fromId: string, toId: string) => void;
+  /** Reorder: move `fromId` before or after `toId`. */
+  reorderParam: (
+    fromId: string,
+    toId: string,
+    position?: 'before' | 'after',
+  ) => void;
 
   updateSettings: (patch: Partial<SettingsState>) => void;
   setAuth: (auth: AuthConfig) => void;
@@ -1092,18 +1100,19 @@ export const useAppStore = create<AppState>((set, get) => {
     replaceHeaders: (next) => {
       patchBuilder({ headers: next });
     },
-    reorderHeader: (fromId, toId) => {
+    reorderHeader: (fromId, toId, position = 'before') => {
       if (fromId === toId) return;
       const active = get().tabs.find((t) => t.id === get().activeTabId);
       if (!active) return;
       const rows = active.builder.headers;
-      const fromIdx = rows.findIndex((r) => r.id === fromId);
-      const toIdx = rows.findIndex((r) => r.id === toId);
-      if (fromIdx < 0 || toIdx < 0) return;
-      const next = [...rows];
-      const [moved] = next.splice(fromIdx, 1);
+      const moved = rows.find((r) => r.id === fromId);
       if (!moved) return;
-      next.splice(toIdx, 0, moved);
+      const without = rows.filter((r) => r.id !== fromId);
+      const toIdxInWithout = without.findIndex((r) => r.id === toId);
+      if (toIdxInWithout < 0) return;
+      const insertAt = position === 'after' ? toIdxInWithout + 1 : toIdxInWithout;
+      const next = [...without];
+      next.splice(insertAt, 0, moved);
       patchBuilder({ headers: next });
     },
 
@@ -1166,18 +1175,19 @@ export const useAppStore = create<AppState>((set, get) => {
         dirty: true,
       }));
     },
-    reorderParam: (fromId, toId) => {
+    reorderParam: (fromId, toId, position = 'before') => {
       if (fromId === toId) return;
       const active = get().tabs.find((t) => t.id === get().activeTabId);
       if (!active) return;
       const rows = active.builder.params;
-      const fromIdx = rows.findIndex((r) => r.id === fromId);
-      const toIdx = rows.findIndex((r) => r.id === toId);
-      if (fromIdx < 0 || toIdx < 0) return;
-      const next = [...rows];
-      const [moved] = next.splice(fromIdx, 1);
+      const moved = rows.find((r) => r.id === fromId);
       if (!moved) return;
-      next.splice(toIdx, 0, moved);
+      const without = rows.filter((r) => r.id !== fromId);
+      const toIdxInWithout = without.findIndex((r) => r.id === toId);
+      if (toIdxInWithout < 0) return;
+      const insertAt = position === 'after' ? toIdxInWithout + 1 : toIdxInWithout;
+      const next = [...without];
+      next.splice(insertAt, 0, moved);
       mutateActive((tab) => ({
         ...tab,
         builder: {
