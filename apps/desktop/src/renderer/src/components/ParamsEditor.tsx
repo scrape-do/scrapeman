@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ParamRow } from '../store.js';
+import { HighlightedInput } from '../ui/HighlightedInput.js';
+import { CellContextMenu } from '../ui/CellContextMenu.js';
 
 function GripIcon(): JSX.Element {
   return (
@@ -19,8 +21,6 @@ function GripIcon(): JSX.Element {
     </svg>
   );
 }
-import { HighlightedInput } from '../ui/HighlightedInput.js';
-import { CellContextMenu } from '../ui/CellContextMenu.js';
 
 export function ParamsEditor({
   rows,
