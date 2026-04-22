@@ -11,11 +11,11 @@ import type { ExecutedResponse } from '@scrapeman/shared-types';
 import { bridge } from '../bridge.js';
 import { useAppStore } from '../store.js';
 import { JsonTree } from './JsonTree.js';
-import { HtmlEditor } from './HtmlEditor.js';
+import { CodeMirrorViewer, HtmlEditor } from './HtmlEditor.js';
 
 type Tab = 'body' | 'headers';
 
-type ContentKind = 'json' | 'html' | 'xml' | 'image' | 'pdf' | 'text' | 'binary';
+type ContentKind = 'json' | 'html' | 'xml' | 'javascript' | 'css' | 'image' | 'pdf' | 'text' | 'binary';
 type BodyMode = 'raw' | 'pretty' | 'tree' | 'preview';
 
 const MODE_LABEL: Record<BodyMode, string> = {
@@ -35,6 +35,8 @@ function modesForKind(kind: ContentKind): BodyMode[] {
     case 'html':
       return ['raw', 'pretty', 'preview'];
     case 'xml':
+    case 'javascript':
+    case 'css':
       return ['raw', 'pretty'];
     case 'image':
       return ['raw', 'preview'];
@@ -388,7 +390,10 @@ function BodyPanel({ response }: { response: ExecutedResponse }): JSX.Element {
     scrollToLineRef.current?.(active.lineIndex);
   }, [activeMatchIndex, matchAll]);
 
-  const isLargeHtmlBody = kind === 'html' && response.sizeBytes > LARGE_BODY_BYTES;
+  // CodeMirror is used for pretty mode on html, json, xml, javascript, and css.
+  const isLargeCmBody =
+    (['html', 'json', 'xml', 'javascript', 'css'] as ContentKind[]).includes(kind) &&
+    response.sizeBytes > LARGE_BODY_BYTES;
 
   return (
     <div className="flex h-full flex-col">
@@ -432,8 +437,8 @@ function BodyPanel({ response }: { response: ExecutedResponse }): JSX.Element {
         </span>
       </div>
 
-      {/* Large HTML warning banner shown above CodeMirror pretty view */}
-      {isLargeHtmlBody && mode === 'pretty' && (
+      {/* Large body warning shown above CodeMirror pretty view for all syntax-highlighted kinds */}
+      {isLargeCmBody && mode === 'pretty' && (
         <div className="flex items-center gap-2 border-b border-line bg-method-post/10 px-4 py-1.5 text-[11px] text-method-post">
           <span className="font-semibold">Large body</span>
           <span className="text-method-post/80">
@@ -763,24 +768,30 @@ function renderBody({
     );
   }
 
-  // HTML pretty mode — use CodeMirror for syntax-highlighted rendering.
-  // The outer SearchBox still computes matches against the raw text; when the
-  // user navigates (Enter / Shift+Enter), we map the active match's line/char
-  // into a CodeMirror range and let the editor scroll+select it.
-  if (kind === 'html' && mode === 'pretty') {
+  // Pretty mode for syntax-highlighted kinds — use CodeMirror.
+  // The outer SearchBox computes matches against the formatted text; on
+  // Enter / Shift+Enter we map the active match's line/char into a CodeMirror
+  // range and let the editor scroll+select it.
+  if (
+    mode === 'pretty' &&
+    (kind === 'html' ||
+      kind === 'json' ||
+      kind === 'xml' ||
+      kind === 'javascript' ||
+      kind === 'css')
+  ) {
     const active = matchAll[activeMatchIndex];
+    // For HTML pass raw text; for other kinds pass the formatted pretty string
+    // so CodeMirror's gutter line numbers align with the search match offsets.
+    const cmContent = kind === 'html' ? text : pretty;
+    const activeMatchProp = active
+      ? { lineIndex: active.lineIndex, start: active.start, end: active.end }
+      : null;
     return (
-      <HtmlEditor
-        content={text}
-        activeMatch={
-          active
-            ? {
-                lineIndex: active.lineIndex,
-                start: active.start,
-                end: active.end,
-              }
-            : null
-        }
+      <CodeMirrorViewer
+        content={cmContent}
+        language={kind}
+        {...(activeMatchProp ? { activeMatch: activeMatchProp } : {})}
       />
     );
   }
@@ -833,6 +844,13 @@ function detectKind(
   if (ct.includes('json')) return 'json';
   if (ct.includes('html')) return 'html';
   if (ct.includes('xml')) return 'xml';
+  if (
+    ct.includes('javascript') ||
+    ct.includes('ecmascript') ||
+    ct === 'text/js'
+  )
+    return 'javascript';
+  if (ct === 'text/css') return 'css';
   if (ct.startsWith('image/')) return 'image';
   if (ct.includes('pdf')) return 'pdf';
 
@@ -906,6 +924,10 @@ function mimeFor(kind: ContentKind, contentType: string | undefined): string {
       return 'application/xml';
     case 'json':
       return 'application/json';
+    case 'javascript':
+      return 'text/javascript';
+    case 'css':
+      return 'text/css';
     default:
       return 'text/plain';
   }

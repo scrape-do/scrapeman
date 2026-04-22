@@ -1,8 +1,14 @@
 import { useEffect, useRef } from 'react';
 import { EditorView, basicSetup } from 'codemirror';
 import { html } from '@codemirror/lang-html';
+import { json } from '@codemirror/lang-json';
+import { xml } from '@codemirror/lang-xml';
+import { javascript } from '@codemirror/lang-javascript';
+import { css } from '@codemirror/lang-css';
 import { EditorSelection, EditorState } from '@codemirror/state';
 import { oneDark } from '@codemirror/theme-one-dark';
+
+export type CodeMirrorLanguage = 'html' | 'json' | 'xml' | 'javascript' | 'css';
 
 export interface HtmlEditorActiveMatch {
   lineIndex: number;
@@ -10,35 +16,64 @@ export interface HtmlEditorActiveMatch {
   end: number;
 }
 
+/** Returns the CodeMirror language extension for the given language key. */
+function langExtension(language: CodeMirrorLanguage) {
+  switch (language) {
+    case 'html':
+      return html();
+    case 'json':
+      return json();
+    case 'xml':
+      return xml();
+    case 'javascript':
+      return javascript();
+    case 'css':
+      return css();
+  }
+}
+
+const ARIA_LABEL: Record<CodeMirrorLanguage, string> = {
+  html: 'HTML source',
+  json: 'JSON source',
+  xml: 'XML source',
+  javascript: 'JavaScript source',
+  css: 'CSS source',
+};
+
 /**
- * Read-only CodeMirror editor for HTML pretty view.
- * Adapts between light and dark themes by watching the `html.dark` class on
+ * Read-only CodeMirror editor with syntax highlighting.
+ * Supports HTML, JSON, XML, JavaScript, and CSS.
+ *
+ * Adapts between light and dark themes by checking the `html.dark` class on
  * the document element (same mechanism as the rest of the app's Tailwind theme).
- * When activeMatch is set, scrolls that range into view and selects it so
- * the browser's selection highlight doubles as the "active match" cue.
+ *
+ * When activeMatch is set, scrolls that range into view and selects it so the
+ * browser's native selection highlight doubles as the "active match" cue.
  */
-export function HtmlEditor({
+export function CodeMirrorViewer({
   content,
+  language,
   activeMatch,
 }: {
   content: string;
+  language: CodeMirrorLanguage;
   activeMatch?: HtmlEditorActiveMatch | null;
 }): JSX.Element {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   const isDark = document.documentElement.classList.contains('dark');
 
-  // Mount the editor once, then update doc when content changes.
+  // Mount the editor once per theme/language combo, then update doc separately.
   useEffect(() => {
     if (!containerRef.current) return;
 
     const extensions = [
       basicSetup,
-      html(),
+      langExtension(language),
       EditorView.editable.of(false),
       EditorState.readOnly.of(true),
       EditorView.lineWrapping,
-      // Light-mode base styling that matches the app canvas.
+      // Base styling that matches the app canvas in light mode.
       EditorView.theme({
         '&': {
           height: '100%',
@@ -69,8 +104,9 @@ export function HtmlEditor({
       view.destroy();
       viewRef.current = null;
     };
+    // Recreate when theme or language changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDark]); // Recreate when theme changes.
+  }, [isDark, language]);
 
   // Update document content without recreating the editor instance.
   useEffect(() => {
@@ -105,8 +141,27 @@ export function HtmlEditor({
     <div
       ref={containerRef}
       className="h-full overflow-hidden"
-      aria-label="HTML source"
+      aria-label={ARIA_LABEL[language]}
       role="region"
+    />
+  );
+}
+
+/**
+ * Backward-compatible alias. New code should prefer CodeMirrorViewer directly.
+ */
+export function HtmlEditor({
+  content,
+  activeMatch,
+}: {
+  content: string;
+  activeMatch?: HtmlEditorActiveMatch | null;
+}): JSX.Element {
+  return (
+    <CodeMirrorViewer
+      content={content}
+      language="html"
+      {...(activeMatch !== undefined ? { activeMatch } : {})}
     />
   );
 }

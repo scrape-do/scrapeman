@@ -248,18 +248,22 @@ The history panel has a search bar that filters by request name and URL.
 
 ### Content detection
 
-Scrapeman auto-detects the response content type: JSON, HTML, XML, image, PDF, text, or binary.
+Scrapeman auto-detects the response content type: JSON, HTML, XML, JavaScript, CSS, image, PDF, text, or binary.
 
 ### View modes per content type
 
 | Content type | Available modes |
 |---|---|
-| JSON | Raw, Pretty (formatted), Tree (collapsible with JSONPath copy) |
+| JSON | Raw, Pretty (CodeMirror syntax-highlighted, formatted), Tree (collapsible with JSONPath copy) |
 | HTML | Raw, Pretty (CodeMirror syntax-highlighted), Preview (sandboxed iframe) |
-| XML | Raw, Pretty |
+| XML | Raw, Pretty (CodeMirror syntax-highlighted, indented) |
+| JavaScript | Raw, Pretty (CodeMirror syntax-highlighted) |
+| CSS | Raw, Pretty (CodeMirror syntax-highlighted) |
 | Image | Raw (hex), Preview (rendered) |
 | PDF | Raw, Preview (Chromium PDF viewer) |
 | Text/binary | Raw |
+
+Pretty mode uses CodeMirror with the one-dark theme in dark mode and a neutral light theme otherwise. Syntax coloring follows the language grammar: key/value colors for JSON, tag/attribute for XML, keyword/string for JavaScript, and selector/property for CSS.
 
 **Lazy parsing**: the default view is Raw. JSON.parse and tree rendering only happen when you switch to Pretty or Tree view.
 
@@ -268,9 +272,9 @@ Scrapeman auto-detects the response content type: JSON, HTML, XML, image, PDF, t
 Search within the response body with highlight, previous/next navigation. The search persists across sends and auto-re-runs when a new response arrives.
 
 - **Debounced input**: the match scan runs 150 ms after you stop typing so keystrokes feel instant even on large bodies.
-- **Virtualized rendering**: Raw and Pretty views render only the visible lines — 5 MB bodies scroll and search without jank.
+- **Virtualized rendering**: Raw views render only the visible lines — 5 MB bodies scroll and search without jank.
 - **Enter / Shift+Enter**: jump to next / previous match; the viewport scrolls to the active match automatically.
-- **Large HTML warning**: switching to Pretty HTML mode on a body over 500 KB shows a banner suggesting Raw for better performance.
+- **Large body warning**: switching to Pretty mode on a body over 500 KB shows a banner suggesting Raw for best performance. Applies to all syntax-highlighted kinds (JSON, HTML, XML, JavaScript, CSS).
 
 ### Metrics
 
