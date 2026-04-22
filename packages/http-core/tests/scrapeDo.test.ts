@@ -76,21 +76,26 @@ describe('composeScrapeDoRequest', () => {
     expect(u.searchParams.has('super')).toBe(false);
   });
 
-  it('merges request.params into the target URL before encoding', () => {
+  it('uses request.url verbatim as the inner target (no params re-appending)', () => {
+    // request.url already carries every enabled param via the URL bar.
+    // The composer must not re-append request.params or the scrape.do API
+    // rejects duplicated keys with
+    // "Wrong query parameter. You are sending multiple value via same parameter(...)".
     const out = composeScrapeDoRequest(
       req({
         method: 'GET',
-        url: 'https://target.com/search',
-        params: { q: 'scrape do', page: '2' },
+        url: 'https://target.com/search?q=scrape+do&page=2',
+        params: { q: 'scrape do', page: '2', ghost: 'leftover' },
         scrapeDo: { enabled: true, token: 'tok' },
       }),
     );
     const u = new URL(out.url);
     const inner = u.searchParams.get('url');
-    expect(inner).toBeTruthy();
+    expect(inner).toBe('https://target.com/search?q=scrape+do&page=2');
     const innerUrl = new URL(inner!);
-    expect(innerUrl.searchParams.get('q')).toBe('scrape do');
+    expect(innerUrl.searchParams.getAll('q')).toEqual(['scrape do']);
     expect(innerUrl.searchParams.get('page')).toBe('2');
+    expect(innerUrl.searchParams.has('ghost')).toBe(false);
   });
 
   it('clears request.params and request.scrapeDo on the composed request', () => {

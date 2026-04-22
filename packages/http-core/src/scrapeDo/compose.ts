@@ -14,7 +14,13 @@ export function composeScrapeDoRequest(
 ): ScrapemanRequest {
   if (!request.scrapeDo || !request.scrapeDo.enabled) return request;
 
-  const targetUrl = mergeParamsIntoUrl(request);
+  // request.url already carries every enabled param (the URL bar is the
+  // single source of truth for the outgoing URL — see buildUrl). Do NOT
+  // re-append request.params here; that duplicated keys the user had
+  // already placed in the URL, which the scrape.do API rejects with
+  // "Wrong query parameter. You are sending multiple value via same
+  // parameter('token')".
+  const targetUrl = request.url;
   const out = new URL(SCRAPE_DO_BASE);
   out.searchParams.set('token', request.scrapeDo.token);
   out.searchParams.set('url', targetUrl);
@@ -36,17 +42,6 @@ export function composeScrapeDoRequest(
   delete (composed as { params?: unknown }).params;
   delete (composed as { scrapeDo?: ScrapeDoConfig }).scrapeDo;
   return composed;
-}
-
-function mergeParamsIntoUrl(request: ScrapemanRequest): string {
-  if (!request.params || Object.keys(request.params).length === 0) {
-    return request.url;
-  }
-  const u = new URL(request.url);
-  for (const [key, value] of Object.entries(request.params)) {
-    u.searchParams.append(key, value);
-  }
-  return u.toString();
 }
 
 function appendBoolean(url: URL, key: string, value: boolean | undefined): void {
