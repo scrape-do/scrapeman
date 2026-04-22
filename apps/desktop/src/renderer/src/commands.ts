@@ -105,9 +105,9 @@ export function useCommands(extras: CommandExtras): Command[] {
         run: () => focusUrl(),
       },
       {
-        id: 'view.add-param',
+        id: 'request.add-param',
         title: 'Add URL parameter',
-        section: 'View',
+        section: 'Request',
         run: () => focusParams(),
       },
       {

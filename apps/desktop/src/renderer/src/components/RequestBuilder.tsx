@@ -3,7 +3,7 @@ import { useAppStore } from '../store.js';
 import { MethodPicker } from './MethodPicker.js';
 import { HeadersEditor } from './HeadersEditor.js';
 import { AutoHeadersPanel } from './AutoHeadersPanel.js';
-import { ParamsEditor } from './ParamsEditor.js';
+import { ParamsEditor, type ParamsEditorHandle } from './ParamsEditor.js';
 import { SettingsTab as SettingsTabPanel } from './SettingsTab.js';
 import { AuthTab } from './AuthTab.js';
 import { CodePanel } from './CodePanel.js';
@@ -112,6 +112,17 @@ export function RequestBuilder(): JSX.Element {
     urlInputRef.current?.select();
   }, [focusUrlTick]);
 
+  const paramsEditorRef = useRef<ParamsEditorHandle | null>(null);
+  const focusParamsTick = useAppStore((s) => s.focusParamsTick);
+  const focusParamsTickRef = useRef(focusParamsTick);
+  useEffect(() => {
+    if (focusParamsTick === focusParamsTickRef.current) return;
+    focusParamsTickRef.current = focusParamsTick;
+    setTab('params');
+    // addAndFocus runs after the pane re-renders via requestAnimationFrame.
+    requestAnimationFrame(() => paramsEditorRef.current?.addAndFocus());
+  }, [focusParamsTick, setTab]);
+
   const importCurlTick = useAppStore((s) => s.importCurlTick);
   useEffect(() => {
     if (importCurlTick === 0) return;
@@ -124,13 +135,6 @@ export function RequestBuilder(): JSX.Element {
     setTab('load');
   }, [loadTestTick]);
 
-  // Switch to the Params pane when the command palette triggers "Add URL parameter".
-  // ParamsEditor receives the raw tick and handles adding a row + focusing the Key cell.
-  const focusParamsTick = useAppStore((s) => s.focusParamsTick);
-  useEffect(() => {
-    if (focusParamsTick === 0) return;
-    setTab('params');
-  }, [focusParamsTick, setTab]);
 
   if (!activeTab) {
     return (
@@ -315,13 +319,13 @@ export function RequestBuilder(): JSX.Element {
       <div className="flex-1 overflow-y-auto">
         {tab === 'params' && (
           <ParamsEditor
+            ref={paramsEditorRef}
             rows={builder.params}
             onAdd={addParam}
             onInsertAfter={insertParamAfter}
             onUpdate={updateParam}
             onRemove={removeParam}
             onReorder={reorderParam}
-            focusFirstKeyTick={focusParamsTick}
           />
         )}
         {tab === 'headers' && (

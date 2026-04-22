@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react';
 import type { ParamRow } from '../store.js';
 import { HighlightedInput } from '../ui/HighlightedInput.js';
 import { CellContextMenu } from '../ui/CellContextMenu.js';
@@ -22,39 +22,42 @@ function GripIcon(): JSX.Element {
   );
 }
 
-export function ParamsEditor({
-  rows,
-  onAdd,
-  onInsertAfter,
-  onUpdate,
-  onRemove,
-  onReorder,
-  focusFirstKeyTick = 0,
-}: {
-  rows: ParamRow[];
-  onAdd: () => void;
-  /** Insert a new empty row below the given row id. Returns the new row id. */
-  onInsertAfter: (afterId: string) => string;
-  onUpdate: (id: string, patch: Partial<ParamRow>) => void;
-  onRemove: (id: string) => void;
-  onReorder: (
-    fromId: string,
-    toId: string,
-    position: 'before' | 'after',
-  ) => void;
-  /**
-   * Bumped by the command palette "Add URL parameter" action. When it
-   * changes (and is non-zero), the component focuses the first Key cell,
-   * creating a new row first when every existing row is already filled.
-   */
-  focusFirstKeyTick?: number;
-}): JSX.Element {
+export interface ParamsEditorHandle {
+  /** Add a new param row and focus its key cell. */
+  addAndFocus: () => void;
+}
+
+export const ParamsEditor = forwardRef<
+  ParamsEditorHandle,
+  {
+    rows: ParamRow[];
+    onAdd: () => void;
+    /** Insert a new empty row below the given row id. Returns the new row id. */
+    onInsertAfter: (afterId: string) => string;
+    onUpdate: (id: string, patch: Partial<ParamRow>) => void;
+    onRemove: (id: string) => void;
+    onReorder: (
+      fromId: string,
+      toId: string,
+      position: 'before' | 'after',
+    ) => void;
+  }
+>(function ParamsEditor(
+  { rows, onAdd, onInsertAfter, onUpdate, onRemove, onReorder },
+  ref,
+) {
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<
     { id: string; pos: 'before' | 'after' } | null
   >(null);
   // Refs map: rowId -> HTMLInputElement for key cell focus after insert.
   const keyRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const onAddRef = useRef(onAdd);
+  onAddRef.current = onAdd;
+
+  // Stable ref so the sentinel empty-table handler can read the current rows.
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
 
   const focusKeyCell = useCallback(
     (rowId: string) => {
@@ -66,40 +69,22 @@ export function ParamsEditor({
     [],
   );
 
-  // Stable ref so the effect below doesn't re-run when rows array changes.
-  const rowsRef = useRef(rows);
-  rowsRef.current = rows;
-  const onAddRef = useRef(onAdd);
-  onAddRef.current = onAdd;
-
-  // Track the tick that was active when this component instance mounted.
-  // Any higher value means a new command-palette trigger fired.
-  const mountTickRef = useRef(focusFirstKeyTick);
-  const focusFirstKeyTickRef = useRef(focusFirstKeyTick);
-  useEffect(() => {
-    // Fire on the first mount when the tick is already non-zero (component was
-    // just shown because the command palette switched to the Params pane), AND
-    // on any subsequent bump while the component stays mounted.
-    const isFreshMount = focusFirstKeyTick > 0 && focusFirstKeyTick === mountTickRef.current;
-    const isBump = focusFirstKeyTick > focusFirstKeyTickRef.current;
-    if (!isFreshMount && !isBump) return;
-    focusFirstKeyTickRef.current = focusFirstKeyTick;
-    const rows = rowsRef.current;
-    // Find the first row whose Key cell is empty; if none, append a new one.
-    const emptyRow = rows.find((r) => r.key.trim() === '');
-    if (emptyRow) {
-      focusKeyCell(emptyRow.id);
-    } else {
-      // All rows have content — add a fresh one and focus it.
-      onAddRef.current();
-      requestAnimationFrame(() => {
-        // After onAdd the new row is the last one; rows ref will be stale
-        // here but keyRefs will have the new entry by next frame.
-        const lastRow = rowsRef.current[rowsRef.current.length - 1];
-        if (lastRow) focusKeyCell(lastRow.id);
-      });
-    }
-  }, [focusFirstKeyTick, focusKeyCell]);
+  useImperativeHandle(ref, () => ({
+    addAndFocus: () => {
+      // Find the first row whose Key cell is empty; if none, append a new one.
+      const emptyRow = rowsRef.current.find((r) => r.key.trim() === '');
+      if (emptyRow) {
+        focusKeyCell(emptyRow.id);
+      } else {
+        onAddRef.current();
+        requestAnimationFrame(() => {
+          const ids = Object.keys(keyRefs.current);
+          const lastId = ids[ids.length - 1];
+          if (lastId) keyRefs.current[lastId]?.focus();
+        });
+      }
+    },
+  }));
 
   const handleKeyKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>, row: ParamRow) => {
@@ -131,9 +116,19 @@ export function ParamsEditor({
         e.preventDefault();
         const newId = onInsertAfter(row.id);
         focusKeyCell(newId);
+        return;
+      }
+      // Tab from value cell of last row → append new row, focus its key cell.
+      if (e.key === 'Tab' && !e.shiftKey) {
+        const isLastRow = rows[rows.length - 1]?.id === row.id;
+        if (isLastRow) {
+          e.preventDefault();
+          const newId = onInsertAfter(row.id);
+          focusKeyCell(newId);
+        }
       }
     },
-    [onInsertAfter, focusKeyCell],
+    [rows, onInsertAfter, focusKeyCell],
   );
 
   return (
@@ -156,8 +151,6 @@ export function ParamsEditor({
             if (e.key === 'Tab' && !e.shiftKey) {
               e.preventDefault();
               onAdd();
-              // onAdd is synchronous in the store but React needs a frame to
-              // render the new row before keyRefs is populated.
               requestAnimationFrame(() => {
                 const firstRow = rowsRef.current[0];
                 if (firstRow) focusKeyCell(firstRow.id);
@@ -265,4 +258,4 @@ export function ParamsEditor({
       </button>
     </div>
   );
-}
+});
