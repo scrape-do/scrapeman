@@ -501,16 +501,16 @@ function buildRequest(
   for (const row of builder.headers) {
     if (row.enabled && row.key.trim()) headers[row.key.trim()] = row.value;
   }
-  // request.url already carries the enabled params via the URL bar.
-  // Only DISABLED params need to survive serialization so they can be restored
-  // on reload. Putting enabled params here too would cause the executor to
-  // append them to the URL, producing duplicates (and breaking {{var}} resolve).
-  const disabledParams: Record<string, string> = {};
+  // Persist ALL params (enabled + disabled) in row order so that reload
+  // restores the exact UI ordering the user built. The executor skips
+  // disabled keys and avoids duplicating keys already present in the URL
+  // query string, so this does not introduce the duplicate-append bug.
+  const allParams: Record<string, string> = {};
   const disabledParamKeys: string[] = [];
   for (const row of builder.params) {
-    if (!row.key.trim() || row.enabled) continue;
-    disabledParams[row.key.trim()] = row.value;
-    disabledParamKeys.push(row.key.trim());
+    if (!row.key.trim()) continue;
+    allParams[row.key.trim()] = row.value;
+    if (!row.enabled) disabledParamKeys.push(row.key.trim());
   }
 
   const request: ScrapemanRequest = {
@@ -519,10 +519,8 @@ function buildRequest(
     method: builder.method,
     url: builder.url,
   };
-  if (disabledParamKeys.length > 0) {
-    request.params = disabledParams;
-    request.disabledParams = disabledParamKeys;
-  }
+  if (Object.keys(allParams).length > 0) request.params = allParams;
+  if (disabledParamKeys.length > 0) request.disabledParams = disabledParamKeys;
   if (Object.keys(headers).length > 0) request.headers = headers;
   if (builder.bodyType !== 'none' && builder.body.trim().length > 0) {
     const contentType: 'json' | 'text' = builder.bodyType;
@@ -1016,20 +1014,31 @@ export const useAppStore = create<AppState>((set, get) => {
       })),
     setUrl: (url) => {
       mutateActive((tab) => {
-        // Re-parse params from the new URL whenever it contains a query string.
-        // If the URL has no ?, keep the existing params editor rows as-is.
-        // When the URL does have a ?, we merge: disabled rows are always
-        // preserved; enabled rows come from the freshly parsed URL query string.
+        // When the URL has a ?, merge freshly parsed URL params with existing
+        // rows PRESERVING their order. Disabled rows stay in place untouched.
+        // Enabled rows get their value refreshed from the URL (and are dropped
+        // if the user removed them from the URL bar). New keys from the URL
+        // are appended after the existing rows.
         const urlHasQuery = url.includes('?');
         let newParams: ParamRow[];
         if (urlHasQuery) {
-          const disabledRows = tab.builder.params.filter((p) => !p.enabled);
           const fromUrl = paramsFromUrl(url);
-          // Build a set of keys that are already captured as disabled so we
-          // don't create duplicate rows if the user typed the same key.
-          const disabledKeys = new Set(disabledRows.map((p) => p.key));
-          const enabledFromUrl = fromUrl.filter((p) => !disabledKeys.has(p.key));
-          const merged = [...disabledRows, ...enabledFromUrl];
+          const fromUrlByKey = new Map(fromUrl.map((p) => [p.key, p.value]));
+          const existingKeys = new Set<string>();
+          const merged: ParamRow[] = [];
+          for (const row of tab.builder.params) {
+            existingKeys.add(row.key);
+            if (!row.enabled) {
+              merged.push(row);
+              continue;
+            }
+            const v = fromUrlByKey.get(row.key);
+            if (v !== undefined) merged.push({ ...row, value: v });
+            // enabled but removed from URL → drop the row
+          }
+          for (const p of fromUrl) {
+            if (!existingKeys.has(p.key)) merged.push(p);
+          }
           newParams = merged.length > 0 ? merged : [freshParam()];
         } else {
           newParams = tab.builder.params;
