@@ -568,24 +568,31 @@ function VirtualTextBody({
   });
 
   // Expose a scroll-to callback so BodyPanel can jump to active match line.
-  // virtualizer handles the vertical scroll; after the row is mounted we also
-  // center the active <mark> horizontally so long lines (pretty JSON, minified
-  // HTML) don't hide the hit off the right edge.
+  // virtualizer handles vertical scroll (instant — smooth left the DOM in an
+  // intermediate position while we tried to measure). After the row is
+  // mounted we compute the active mark's left offset manually and set
+  // parent.scrollLeft directly, which works regardless of contain:strict or
+  // the absolute-positioned slab we render inside.
   useEffect(() => {
     scrollToLineRef.current = (lineIndex: number) => {
-      virtualizer.scrollToIndex(lineIndex, { align: 'center', behavior: 'smooth' });
+      virtualizer.scrollToIndex(lineIndex, { align: 'center', behavior: 'auto' });
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          const el = parentRef.current?.querySelector(
+          const parent = parentRef.current;
+          if (!parent) return;
+          const el = parent.querySelector<HTMLElement>(
             '[data-active-match="true"]',
           );
-          if (el instanceof HTMLElement) {
-            el.scrollIntoView({
-              inline: 'center',
-              block: 'nearest',
-              behavior: 'smooth',
-            });
-          }
+          if (!el) return;
+          const parentRect = parent.getBoundingClientRect();
+          const elRect = el.getBoundingClientRect();
+          const elCenterWithinContent =
+            elRect.left + elRect.width / 2 - parentRect.left + parent.scrollLeft;
+          const targetScrollLeft = Math.max(
+            0,
+            elCenterWithinContent - parent.clientWidth / 2,
+          );
+          parent.scrollLeft = targetScrollLeft;
         });
       });
     };
