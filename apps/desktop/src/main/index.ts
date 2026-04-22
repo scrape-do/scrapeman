@@ -33,6 +33,7 @@ import type {
 } from '@scrapeman/shared-types';
 import { WorkspaceManager } from './workspace-manager.js';
 import { initAutoUpdater } from './updater.js';
+import { registerWebSocketHandlers, disposeWebSocketClients } from './ipc/websocket.js';
 import {
   gitIsRepo,
   gitLog,
@@ -861,6 +862,8 @@ app.whenReady().then(() => {
       workspaceManager.setActiveEnvironment(workspacePath, name),
   );
 
+  registerWebSocketHandlers();
+
   const mainWindow = createWindow();
   initAutoUpdater(mainWindow);
 
@@ -874,6 +877,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  disposeWebSocketClients();
   void workspaceManager.dispose();
 });
 

@@ -32,7 +32,9 @@
   "devDependencies": {
     "@types/aws4": "^1.11.0",
     "@types/node": "^22.10.0",
+    "@types/ws": "^8.5.0",
     "typescript": "^5.7.0",
-    "vitest": "^2.1.0"
+    "vitest": "^2.1.0",
+    "ws": "^8.18.0"
   }
 }

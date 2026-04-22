@@ -22,5 +22,9 @@ export * from './sse-reader.js';
 export * from './git/index.js';
 export * from './import/index.js';
 export { normalizeUrl } from './url/normalize.js';
+// Note: WebSocketClient is exported here for main-process use only.
+// The renderer must NOT import @scrapeman/http-core top-level — it drags undici in.
+export { WebSocketClient } from './websocket/index.js';
+export type { WebSocketClientOptions } from './websocket/index.js';
 
 export type { ScrapemanRequest, ExecutedResponse };

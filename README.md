@@ -55,6 +55,7 @@ The full marketing site lives at **[scrapeman.app](https://scrapeman.app)** and 
 | Git-friendly file format | ❌ | ✅ | ❌ | ✅ YAML, one file per req |
 | HTTP/2 toggle | ✅ | ❌ | ❌ | ✅ (undici `allowH2`) |
 | Single-request load testing | ❌ | ❌ | ❌ | ✅ with validator |
+| WebSocket client | ✅ (paid) | ❌ | ✅ | ✅ bidirectional timeline |
 | Response body search + highlight | ✅ | ❌ | ✅ | ✅ auto re-run |
 | `{{var}}` autocomplete | ✅ | ❌ | ❌ | ✅ with built-ins |
 | Dark mode | ✅ | ✅ | ✅ | ✅ (CSS variables) |
@@ -133,6 +134,16 @@ The full marketing site lives at **[scrapeman.app](https://scrapeman.app)** and 
 - Status histogram + error kind breakdown
 - Stop mid-run with AbortSignal, partial results preserved
 - **Per-tab isolation** — start a load test in one tab, switch to another, come back — your config and progress are preserved. Hover any metric for a description.
+
+### WebSocket client
+- Full bidirectional messaging from a "WebSocket" pane on any tab
+- Live timeline: each message shows direction arrow (↓ in / ↑ out), timestamp, and payload
+- JSON payloads expand inline with the existing tree viewer
+- Auto-scroll to bottom; scrolling up pauses auto-scroll and a button resumes it
+- Application-level ping/pong with round-trip latency tracking
+- Per-connection proxy support (standard HTTP proxy or Scrape.do WS proxy)
+- Export full timeline as JSON
+- Connection state persists when switching tabs — switch away and back without losing messages
 
 ### Import/export
 - curl command (paste or file)

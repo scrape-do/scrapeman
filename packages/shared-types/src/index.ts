@@ -453,6 +453,32 @@ export interface UpdateInfo {
   notes?: string;
 }
 
+// ------------------------------------------------------------------ //
+// WebSocket                                                           //
+// ------------------------------------------------------------------ //
+
+export type WsConnectionState = 'CONNECTING' | 'OPEN' | 'CLOSING' | 'CLOSED';
+
+export type WsMessageDirection = 'in' | 'out' | 'ping' | 'pong' | 'status';
+
+export interface WsMessage {
+  id: string;
+  direction: WsMessageDirection;
+  timestamp: number;
+  data: string;
+  isBinary?: boolean;
+  latencyMs?: number;
+}
+
+/**
+ * Pushed from main → renderer via webContents.send('ws:message').
+ * Carries the connectionId so the renderer can route to the correct tab.
+ */
+export interface WsEvent {
+  connectionId: string;
+  message: WsMessage;
+}
+
 // IPC bridge contract — source of truth for preload + main + renderer.
 export interface ScrapemanBridge {
   ping: () => Promise<'pong'>;
@@ -589,4 +615,20 @@ export interface ScrapemanBridge {
   onUpdateAvailable: (handler: (info: UpdateInfo) => void) => () => void;
   dismissUpdate: (version: string) => void;
   openReleasePage: (url: string) => void;
+
+  // WebSocket
+  wsConnect: (
+    connectionId: string,
+    url: string,
+    options: {
+      headers?: Record<string, string>;
+      proxyUrl?: string;
+      autoReconnect?: boolean;
+      reconnectIntervalMs?: number;
+      pingIntervalMs?: number;
+    },
+  ) => Promise<void>;
+  wsSend: (connectionId: string, data: string) => Promise<void>;
+  wsDisconnect: (connectionId: string) => Promise<void>;
+  onWsEvent: (handler: (event: WsEvent) => void) => () => void;
 }

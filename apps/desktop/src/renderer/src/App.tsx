@@ -38,9 +38,10 @@ export function App(): JSX.Element {
   const toggleHiddenRequest = useAppStore((s) => s.toggleHiddenRequest);
   const tabs = useAppStore((s) => s.tabs);
   const isRepo = useAppStore((s) => s.gitStatus?.isRepo === true);
-  const hideResponsePanel = useAppStore(
-    (s) => s.tabs.find((t) => t.id === s.activeTabId)?.activePane === 'load',
-  );
+  const hideResponsePanel = useAppStore((s) => {
+    const pane = s.tabs.find((t) => t.id === s.activeTabId)?.activePane;
+    return pane === 'load' || pane === 'websocket';
+  });
   const screenshotMode = useAppStore((s) => s.screenshotMode);
 
   const guard = useDirtyTabGuard();
@@ -76,6 +77,13 @@ export function App(): JSX.Element {
   useEffect(() => {
     return bridge.onLoadProgress((p) => {
       useAppStore.getState().handleLoadProgress(p);
+    });
+  }, []);
+
+  // Global WebSocket event listener — routes events to the tab that owns the connectionId.
+  useEffect(() => {
+    return bridge.onWsEvent((event) => {
+      useAppStore.getState().handleWsEvent(event);
     });
   }, []);
 

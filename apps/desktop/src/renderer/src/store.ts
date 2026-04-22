@@ -19,6 +19,9 @@ import type {
   ScrapemanRequest,
   SerializedExecutorError,
   UpdateInfo,
+  WsConnectionState,
+  WsEvent,
+  WsMessage,
   WorkspaceInfo,
 } from '@scrapeman/shared-types';
 import { bridge } from './bridge.js';
@@ -136,6 +139,8 @@ export interface Tab {
   responseSearch: string;
   responseMode: ResponseBodyMode | null;
   sourceHistoryId?: string;
+  /** Per-tab WebSocket panel state. Initialized lazily when the pane is first activated. */
+  websocket?: WsTabState;
 }
 
 export type BuilderPane =
@@ -145,7 +150,20 @@ export type BuilderPane =
   | 'body'
   | 'settings'
   | 'code'
-  | 'load';
+  | 'load'
+  | 'websocket';
+
+export interface WsTabState {
+  /** Unique id for this connection (generated client-side, stable per tab). */
+  connectionId: string;
+  url: string;
+  state: WsConnectionState;
+  timeline: WsMessage[];
+  /** Draft text in the send box. */
+  sendDraft: string;
+  connecting: boolean;
+  error: string | null;
+}
 
 interface AppState {
   workspace: WorkspaceInfo | null;
@@ -293,6 +311,14 @@ interface AppState {
   renameNode: (relPath: string, newName: string) => Promise<void>;
   deleteNode: (relPath: string) => Promise<void>;
   moveNode: (relPath: string, newParentRelPath: string) => Promise<string | null>;
+
+  // WebSocket
+  wsConnect: (tabId: string, url: string) => Promise<void>;
+  wsSend: (tabId: string, data: string) => Promise<void>;
+  wsDisconnect: (tabId: string) => Promise<void>;
+  wsSetUrl: (tabId: string, url: string) => void;
+  wsSetSendDraft: (tabId: string, draft: string) => void;
+  handleWsEvent: (event: WsEvent) => void;
 
   // Auto-update
   updateInfo: UpdateInfo | null;
@@ -1408,6 +1434,127 @@ export const useAppStore = create<AppState>((set, get) => {
       if (p.lastEvent) {
         get().appendLoadEvent(target.id, p.lastEvent);
       }
+    },
+
+    // ------------------------------------------------------------------ //
+    // WebSocket                                                           //
+    // ------------------------------------------------------------------ //
+
+    wsConnect: async (tabId, url) => {
+      const tab = get().tabs.find((t) => t.id === tabId);
+      if (!tab) return;
+
+      // Initialize or reuse the WsTabState for this tab.
+      const connectionId = tab.websocket?.connectionId ?? crypto.randomUUID();
+
+      mutateById(tabId, (t) => ({
+        ...t,
+        websocket: {
+          connectionId,
+          url,
+          state: 'CONNECTING',
+          timeline: t.websocket?.timeline ?? [],
+          sendDraft: t.websocket?.sendDraft ?? '',
+          connecting: true,
+          error: null,
+        },
+      }));
+
+      try {
+        await bridge.wsConnect(connectionId, url, {});
+        mutateById(tabId, (t) => {
+          if (t.websocket?.connectionId !== connectionId) return t;
+          return {
+            ...t,
+            websocket: { ...t.websocket, state: 'OPEN', connecting: false },
+          };
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        mutateById(tabId, (t) => {
+          if (t.websocket?.connectionId !== connectionId) return t;
+          return {
+            ...t,
+            websocket: { ...t.websocket, state: 'CLOSED', connecting: false, error: message },
+          };
+        });
+      }
+    },
+
+    wsSend: async (tabId, data) => {
+      const tab = get().tabs.find((t) => t.id === tabId);
+      if (!tab?.websocket) return;
+      const { connectionId } = tab.websocket;
+      await bridge.wsSend(connectionId, data);
+    },
+
+    wsDisconnect: async (tabId) => {
+      const tab = get().tabs.find((t) => t.id === tabId);
+      if (!tab?.websocket) return;
+      const { connectionId } = tab.websocket;
+      mutateById(tabId, (t) => {
+        if (!t.websocket) return t;
+        return { ...t, websocket: { ...t.websocket, state: 'CLOSING' } };
+      });
+      await bridge.wsDisconnect(connectionId);
+    },
+
+    wsSetUrl: (tabId, url) => {
+      mutateById(tabId, (t) => {
+        if (!t.websocket) {
+          return {
+            ...t,
+            websocket: {
+              connectionId: crypto.randomUUID(),
+              url,
+              state: 'CLOSED' as WsConnectionState,
+              timeline: [],
+              sendDraft: '',
+              connecting: false,
+              error: null,
+            },
+          };
+        }
+        return { ...t, websocket: { ...t.websocket, url } };
+      });
+    },
+
+    wsSetSendDraft: (tabId, draft) => {
+      mutateById(tabId, (t) => {
+        if (!t.websocket) return t;
+        return { ...t, websocket: { ...t.websocket, sendDraft: draft } };
+      });
+    },
+
+    handleWsEvent: (event) => {
+      const { connectionId, message } = event;
+      const { tabs } = get();
+      const target = tabs.find((t) => t.websocket?.connectionId === connectionId);
+      if (!target) return;
+      const tabId = target.id;
+      mutateById(tabId, (t) => {
+        if (!t.websocket) return t;
+        const newTimeline = [...t.websocket.timeline, message];
+        // Infer connection state from status messages.
+        let state = t.websocket.state;
+        if (message.direction === 'status') {
+          if (message.data === 'OPEN') state = 'OPEN';
+          else if (message.data.startsWith('CLOSED')) state = 'CLOSED';
+          else if (message.data.startsWith('ERROR')) state = 'CLOSED';
+        }
+        return {
+          ...t,
+          websocket: {
+            ...t.websocket,
+            state,
+            timeline: newTimeline,
+            connecting: state === 'CONNECTING',
+            error: message.direction === 'status' && message.data.startsWith('ERROR')
+              ? message.data
+              : t.websocket.error,
+          },
+        };
+      });
     },
 
     createRequest: async (parentRelPath: string, name: string) => {

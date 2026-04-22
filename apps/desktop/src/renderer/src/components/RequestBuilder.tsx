@@ -9,6 +9,7 @@ import { AuthTab } from './AuthTab.js';
 import { CodePanel } from './CodePanel.js';
 import { ImportCurlDialog } from './ImportCurlDialog.js';
 import { LoadTestPanel } from './LoadTestPanel.js';
+import { WebSocketPanel } from './WebSocketPanel.js';
 import { HighlightedInput } from '../ui/HighlightedInput.js';
 import { CellContextMenu } from '../ui/CellContextMenu.js';
 import { PromptDialog } from '../ui/Dialog.js';
@@ -17,7 +18,7 @@ import { formatJson } from '../utils/json-format.js';
 import { ScreenshotModal } from './ScreenshotModal.js';
 import { bridge } from '../bridge.js';
 
-type Tab = 'params' | 'headers' | 'auth' | 'body' | 'settings' | 'code' | 'load';
+type Tab = 'params' | 'headers' | 'auth' | 'body' | 'settings' | 'code' | 'load' | 'websocket';
 
 export function RequestBuilder(): JSX.Element {
   const activeTab = useAppStore((s) => s.tabs.find((t) => t.id === s.activeTabId) ?? null);
@@ -314,6 +315,9 @@ export function RequestBuilder(): JSX.Element {
         <TabButton active={tab === 'load'} onClick={() => setTab('load')}>
           Load Test
         </TabButton>
+        <TabButton active={tab === 'websocket'} onClick={() => setTab('websocket')}>
+          WebSocket
+        </TabButton>
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -425,6 +429,11 @@ export function RequestBuilder(): JSX.Element {
         <div className={tab === 'load' ? 'flex h-full flex-col' : 'hidden'}>
           <LoadTestPanel />
         </div>
+        {/* WebSocket panel: only mounted when the pane is selected. Connection state lives in the
+            store so switching tabs does not tear down the open socket. */}
+        {tab === 'websocket' && (
+          <WebSocketPanel tabId={activeTab.id} />
+        )}
       </div>
 
       <ImportCurlDialog

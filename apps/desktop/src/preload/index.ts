@@ -20,6 +20,7 @@ import type {
   UpdateInfo,
   WorkspaceEvent,
   WorkspaceTree,
+  WsEvent,
 } from '@scrapeman/shared-types';
 
 const api: ScrapemanBridge = {
@@ -243,6 +244,30 @@ const api: ScrapemanBridge = {
   },
   openReleasePage: (url: string) => {
     ipcRenderer.send('update:open-release', url);
+  },
+
+  wsConnect: (
+    connectionId: string,
+    url: string,
+    options: {
+      headers?: Record<string, string>;
+      proxyUrl?: string;
+      autoReconnect?: boolean;
+      reconnectIntervalMs?: number;
+      pingIntervalMs?: number;
+    },
+  ) => ipcRenderer.invoke('ws:connect', connectionId, url, options) as Promise<void>,
+
+  wsSend: (connectionId: string, data: string) =>
+    ipcRenderer.invoke('ws:send', connectionId, data) as Promise<void>,
+
+  wsDisconnect: (connectionId: string) =>
+    ipcRenderer.invoke('ws:disconnect', connectionId) as Promise<void>,
+
+  onWsEvent: (handler: (event: WsEvent) => void) => {
+    const listener = (_event: unknown, payload: WsEvent): void => handler(payload);
+    ipcRenderer.on('ws:event', listener);
+    return () => ipcRenderer.off('ws:event', listener);
   },
 };
 

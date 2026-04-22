@@ -15,6 +15,7 @@ Complete reference for every feature in Scrapeman. For installation and project 
 - [Response Viewer](#response-viewer)
 - [Code Export](#code-export)
 - [Load Runner](#load-runner)
+- [WebSocket](#websocket)
 - [Import and Export](#import-and-export)
 - [Proxy and Scrape.do Mode](#proxy-and-scrapedo-mode)
 - [Cookie Jar](#cookie-jar)
@@ -338,6 +339,56 @@ Set expected status codes (e.g., `200, 201`) and an optional body-contains subst
 
 - **Stop** mid-run with partial results preserved.
 - Console log with color-coded rows: green for success, yellow for validation fail, red for network error.
+
+---
+
+## WebSocket
+
+The "WebSocket" tab on any request tab opens a bidirectional WebSocket client. It does not replace the HTTP request builder — both live in the same tab.
+
+### Connecting
+
+Enter a `ws://` or `wss://` URL and click **Connect** (or press Enter). The status dot in the top bar changes:
+
+- Gray — closed
+- Yellow — connecting or closing
+- Green — open
+- Red — closed after error
+
+Click **Disconnect** to close the connection with code 1000.
+
+### Sending messages
+
+Type in the send area at the bottom. Press **Send** or **⌘↵** to send. The message appears in the timeline with a ↑ direction indicator.
+
+### Timeline
+
+Each message row shows:
+- **↓** — inbound message
+- **↑** — outbound message
+- **●** — ping sent (application-level keep-alive)
+- **○** — pong received (with round-trip latency in ms)
+- **—** — status event (connected, disconnected, error)
+
+JSON payloads have an expand toggle that renders the collapsible tree viewer inline.
+
+**Auto-scroll** keeps the timeline pinned to the bottom as new messages arrive. Scrolling up manually pauses it; clicking the Auto-scroll button resumes it.
+
+Click **Export** to download the full timeline as a JSON file.
+
+### Ping / keep-alive
+
+By default the client sends an application-level ping message every 30 seconds. Servers that echo it back are used to measure round-trip latency. The pong row shows the latency in milliseconds.
+
+This is not a WebSocket protocol-level ping frame — it is a text message with a sentinel value, because the undici WebSocket implementation does not expose raw ping frame APIs to userland.
+
+### Connection state across tab switches
+
+Switching to another tab does not close the socket. The connection stays open in the background. Switching back resumes the live timeline from where you left off.
+
+### Proxy support
+
+The WebSocket client routes through the same proxy configuration used for HTTP requests. Set a proxy URL in the connection options, and all WebSocket handshake and frames will go through it. This includes Scrape.do proxy endpoints for scraping targets that require it.
 
 ---
 
