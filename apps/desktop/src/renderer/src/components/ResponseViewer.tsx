@@ -197,7 +197,7 @@ export function ResponseViewer(): JSX.Element {
           <BodyPanel
             response={response}
             durationMs={durationMs}
-            streaming={execution.status === 'sending'}
+            streaming={false}
           />
         )}
         {tab === 'headers' && <HeadersPanel response={response} />}
@@ -482,7 +482,9 @@ function BodyPanel({
             events={response.sseEvents ?? []}
             streaming={streaming}
             durationMs={durationMs}
-            requestId={response.requestId}
+            {...(response.requestId !== undefined
+              ? { requestId: response.requestId }
+              : {})}
           />
         ) : (
           renderBody({
