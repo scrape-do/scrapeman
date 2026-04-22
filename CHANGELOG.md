@@ -2,6 +2,19 @@
 
 All notable changes land here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [SemVer](https://semver.org/).
 
+## [0.4.1] — 2026-04-22
+
+### Added
+- **Syntax highlighting for every pretty-mode response kind.** JSON, XML, JavaScript and CSS responses now render through the same read-only CodeMirror viewer HTML has been using. `HtmlEditor` became the general `CodeMirrorViewer` behind the scenes; each kind pulls its `@codemirror/lang-*` pack and the `oneDark` theme in dark mode. Search navigation (Enter / Shift+Enter) scrolls and selects the active match inside the editor for all five kinds; the 500 KB large-body warning banner now fires for all of them too.
+- **Command palette "Add URL parameter"** (cmd+k, View section). Switches the active request tab to the Params pane and focuses the first empty Key cell, appending a new row when every existing one is already filled.
+- **Tab-to-create in the Params table.** When the table is empty and you tab into it, a new row is appended and the cursor lands in the Key cell. Matches Postman's behaviour. Existing Shift+Enter (insert below) and Tab-from-last-row (append) shortcuts unchanged.
+
+### Fixed
+- Regression coverage for the load runner. A new integration test file asserts that `{{random}}`, `{{uuid}}`, `{{timestamp}}` and `{{isoDate}}` resolve fresh every iteration (100 `{{random}}` iterations produce ≥ 95 distinct URLs), and that `normalizeUrl` runs per iteration so scheme-less, port-only and empty-host URLs reach the server the same way they do for a single-shot send.
+
+### Tests
+- 338 tests pass across `http-core` and `desktop`; 7 skipped. Typecheck clean in all three packages.
+
 ## [0.4.0] — 2026-04-22
 
 ### Added
