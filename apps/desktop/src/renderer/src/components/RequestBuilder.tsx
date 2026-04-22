@@ -51,6 +51,7 @@ export function RequestBuilder(): JSX.Element {
   );
   const setTab = useAppStore((s) => s.setActivePane);
   const setScreenshotMode = useAppStore((s) => s.setScreenshotMode);
+  const screenshotMode = useAppStore((s) => s.screenshotMode);
   const [importOpen, setImportOpen] = useState(false);
   const [screenshotUrl, setScreenshotUrl] = useState<string | null>(null);
 
@@ -186,6 +187,8 @@ export function RequestBuilder(): JSX.Element {
             </span>
           )}
         </div>
+        {!screenshotMode && (
+        <>
         <button
           onClick={() => setTab('load')}
           disabled={!builder.url.trim()}
@@ -223,6 +226,8 @@ export function RequestBuilder(): JSX.Element {
             {shortcutLabel('mod+s')}
           </span>
         </button>
+        </>
+        )}
       </div>
 
       <div className="flex items-center gap-2 px-4 py-3">
@@ -239,7 +244,7 @@ export function RequestBuilder(): JSX.Element {
             />
           </div>
         </CellContextMenu>
-        {sending ? (
+        {!screenshotMode && (sending ? (
           <button
             onClick={cancelSend}
             className="btn-secondary min-w-[86px] gap-1.5"
@@ -257,7 +262,7 @@ export function RequestBuilder(): JSX.Element {
           >
             Send
           </button>
-        )}
+        ))}
       </div>
 
       {sending && <div className="progress-indeterminate" aria-hidden="true" />}
