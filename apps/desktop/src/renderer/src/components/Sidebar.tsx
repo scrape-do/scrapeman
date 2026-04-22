@@ -64,6 +64,7 @@ export function Sidebar(): JSX.Element {
   const revealTick = useAppStore((s) => s.revealInSidebarTick);
   const revealPath = useAppStore((s) => s.revealInSidebarPath);
   const focusSidebarSearchTick = useAppStore((s) => s.focusSidebarSearchTick);
+  const openRunnerPanel = useAppStore((s) => s.openRunnerPanel);
 
   const [dialog, setDialog] = useState<DialogState>({ kind: 'none' });
   const [selectedFolder, setSelectedFolder] = useState<string>('');
@@ -164,6 +165,7 @@ export function Sidebar(): JSX.Element {
           revealTick={revealTick}
           revealPath={revealPath}
           focusSidebarSearchTick={focusSidebarSearchTick}
+          onRunFolder={openRunnerPanel}
         />
       )}
 
@@ -277,6 +279,7 @@ interface FilesViewProps {
   setDialog: (dialog: DialogState) => void;
   selectedFolder: string;
   onSelectFolder: (relPath: string) => void;
+  onRunFolder: (folderRelPath: string) => void;
   onMoveRequest: (relPath: string, newParent: string) => void;
   revealTick: number;
   revealPath: string | null;
@@ -299,6 +302,7 @@ function FilesView({
   revealTick,
   revealPath,
   focusSidebarSearchTick,
+  onRunFolder,
 }: FilesViewProps): JSX.Element {
   const [expandTick, setExpandTick] = useState<{ path: string; tick: number } | null>(
     null,
@@ -482,6 +486,7 @@ function FilesView({
                     onDelete={(relPath, name) =>
                       setDialog({ kind: 'delete', relPath, name })
                     }
+                    onRunFolder={onRunFolder}
                     forceExpand={isFiltering}
                   />
                 ))
@@ -511,6 +516,7 @@ interface TreeNodeProps {
   onNewFolder: (parent: string) => void;
   onRename: (relPath: string, currentName: string) => void;
   onDelete: (relPath: string, name: string) => void;
+  onRunFolder: (folderRelPath: string) => void;
   /** When true, folders are always rendered as expanded (used during filtering). */
   forceExpand?: boolean;
 }
@@ -531,6 +537,7 @@ function TreeNode({
   onNewFolder,
   onRename,
   onDelete,
+  onRunFolder,
   forceExpand = false,
 }: TreeNodeProps): JSX.Element {
   const [expanded, setExpanded] = useState(depth < 1);
@@ -640,6 +647,10 @@ function TreeNode({
               New folder
             </ContextMenuItem>
             <ContextMenuSeparator />
+            <ContextMenuItem onSelect={() => onRunFolder(node.relPath)}>
+              Run folder…
+            </ContextMenuItem>
+            <ContextMenuSeparator />
             <ContextMenuItem onSelect={() => onRename(node.relPath, node.name)}>
               Rename
             </ContextMenuItem>
@@ -670,6 +681,7 @@ function TreeNode({
               onNewFolder={onNewFolder}
               onRename={onRename}
               onDelete={onDelete}
+              onRunFolder={onRunFolder}
               forceExpand={forceExpand}
             />
           ))}

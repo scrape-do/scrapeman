@@ -17,6 +17,7 @@ import { useShortcuts, type Shortcut } from './hooks/useShortcuts.js';
 import { useTheme } from './hooks/useTheme.js';
 import { UpdateBanner } from './components/UpdateBanner.js';
 import { useDirtyTabGuard } from './hooks/useDirtyTabGuard.js';
+import { RunnerPanel } from './components/runner/RunnerPanel.js';
 
 export function App(): JSX.Element {
   const workspace = useAppStore((s) => s.workspace);
@@ -84,6 +85,13 @@ export function App(): JSX.Element {
   useEffect(() => {
     return bridge.onWsEvent((event) => {
       useAppStore.getState().handleWsEvent(event);
+    });
+  }, []);
+
+  // Global collection runner event listener.
+  useEffect(() => {
+    return bridge.onRunnerEvent((event) => {
+      useAppStore.getState().handleRunnerEvent(event);
     });
   }, []);
 
@@ -364,6 +372,7 @@ export function App(): JSX.Element {
           setSplitOrientation((o) => (o === 'horizontal' ? 'vertical' : 'horizontal'))
         }
       />
+      <RunnerPanel />
     </div>
   );
 }

@@ -15,7 +15,11 @@ Complete reference for every feature in Scrapeman. For installation and project 
 - [Response Viewer](#response-viewer)
 - [Code Export](#code-export)
 - [Load Runner](#load-runner)
+<<<<<<< HEAD
 - [WebSocket](#websocket)
+=======
+- [Collection Runner](#collection-runner)
+>>>>>>> ed92491 (feat: collection runner — sequential/parallel, CSV iterations, JSON/CSV/HTML export)
 - [Import and Export](#import-and-export)
 - [Proxy and Scrape.do Mode](#proxy-and-scrapedo-mode)
 - [Cookie Jar](#cookie-jar)
@@ -342,6 +346,7 @@ Set expected status codes (e.g., `200, 201`) and an optional body-contains subst
 
 ---
 
+<<<<<<< HEAD
 ## WebSocket
 
 The "WebSocket" tab on any request tab opens a bidirectional WebSocket client. It does not replace the HTTP request builder — both live in the same tab.
@@ -389,6 +394,74 @@ Switching to another tab does not close the socket. The connection stays open in
 ### Proxy support
 
 The WebSocket client routes through the same proxy configuration used for HTTP requests. Set a proxy URL in the connection options, and all WebSocket handshake and frames will go through it. This includes Scrape.do proxy endpoints for scraping targets that require it.
+=======
+## Collection Runner
+
+Run all requests in a folder together — useful for smoke-testing a workflow, seeding test data, or running a multi-step scraping sequence.
+
+### Opening the runner
+
+Right-click any folder in the sidebar and choose **Run folder…**. The runner panel opens pre-filled with that folder's request list.
+
+### Modes
+
+**Sequential** — requests fire one at a time in the order they appear in the folder tree. Each request waits for its response before the next starts. Use this for workflows where order matters (e.g., login → fetch → clean up).
+
+**Parallel** — requests in each iteration fire simultaneously, up to the configured **Concurrency** limit. Iterations are still sequential (one iteration completes before the next starts).
+
+### Configuration options
+
+| Option | Default | Notes |
+|---|---|---|
+| Mode | Sequential | Sequential or Parallel |
+| Concurrency | 5 | Parallel mode only; max simultaneous in-flight requests |
+| Delay (ms) | 0 | Wait after each request completes, before the next starts |
+| Iterations | 1 | How many full-collection passes to run |
+| CSV file | — | Replaces the iterations counter; see data-driven below |
+
+### Data-driven iterations (CSV)
+
+Upload a CSV file to run the collection once per data row. The header row defines variable names; each subsequent row becomes one iteration's variable bag, merged on top of the active environment.
+
+Example:
+
+```csv
+user_id,token
+42,abc123
+99,xyz789
+```
+
+With this CSV, the collection runs twice. In iteration 1, `{{user_id}}` resolves to `42` and `{{token}}` to `abc123`. In iteration 2 they resolve to `99` and `xyz789`.
+
+### Results list
+
+Each completed request shows:
+- Pass (✓) or fail (✗) indicator
+- Iteration number, request name, method, HTTP status, duration
+- Click any row to expand it: URL, response headers, body preview, and error detail
+
+### Progress bar
+
+A live progress bar tracks `completed / total` across all iterations.
+
+### Abort
+
+Click **Stop** at any time. In-flight requests are cancelled via AbortSignal; partial results are preserved in the results list and are still exportable.
+
+### Export
+
+After a run completes, three export buttons appear:
+
+- **JSON** — full `RunnerResult` object including all per-request results, timings, and metadata
+- **CSV** — one row per request: iteration, name, method, URL, status, duration, ok, error
+- **HTML** — self-contained styled report; dark theme, summary cards, full results table
+
+The native file-save dialog prompts for a destination on each export.
+
+### Scrape.do compatibility
+
+If a request in the folder has `scrapeDo.enabled: true`, the runner honours it — just as the single-request executor does. The runner does not force Scrape.do on globally; per-request settings are respected.
+>>>>>>> ed92491 (feat: collection runner — sequential/parallel, CSV iterations, JSON/CSV/HTML export)
 
 ---
 

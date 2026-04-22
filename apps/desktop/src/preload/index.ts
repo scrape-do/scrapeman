@@ -15,6 +15,9 @@ import type {
   LoadProgress,
   LoadRunStartInput,
   RecentWorkspace,
+  RunnerEventPayload,
+  RunnerExportFormat,
+  RunnerStartInput,
   ScrapemanBridge,
   ScrapemanRequest,
   UpdateInfo,
@@ -269,6 +272,27 @@ const api: ScrapemanBridge = {
     ipcRenderer.on('ws:event', listener);
     return () => ipcRenderer.off('ws:event', listener);
   },
+
+  // Collection runner
+  runnerStart: (input: RunnerStartInput) =>
+    ipcRenderer.invoke('runner:start', input) as Promise<void>,
+  runnerStop: (runId: string) =>
+    ipcRenderer.invoke('runner:stop', runId) as Promise<void>,
+  runnerExportReport: (runId: string, format: RunnerExportFormat) =>
+    ipcRenderer.invoke(
+      'runner:exportReport',
+      runId,
+      format,
+    ) as Promise<{ ok: boolean; canceled?: boolean }>,
+  onRunnerEvent: (handler: (event: RunnerEventPayload) => void) => {
+    const listener = (_event: unknown, payload: RunnerEventPayload): void =>
+      handler(payload);
+    ipcRenderer.on('runner:event', listener);
+    return () => ipcRenderer.off('runner:event', listener);
+  },
+
+  pickFile: (options: { filters?: Array<{ name: string; extensions: string[] }> }) =>
+    ipcRenderer.invoke('app:pickFile', options) as Promise<string | null>,
 };
 
 contextBridge.exposeInMainWorld('scrapeman', api);

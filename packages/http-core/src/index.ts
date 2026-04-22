@@ -26,5 +26,8 @@ export { normalizeUrl } from './url/normalize.js';
 // The renderer must NOT import @scrapeman/http-core top-level — it drags undici in.
 export { WebSocketClient } from './websocket/index.js';
 export type { WebSocketClientOptions } from './websocket/index.js';
+export * from './runner/index.js';
+export * from './runner/report.js';
+export * from './runner/csv-reader.js';
 
 export type { ScrapemanRequest, ExecutedResponse };

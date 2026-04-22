@@ -18,6 +18,11 @@ import {
   composeScrapeDoRequest,
   WorkspaceCookieJar,
   runLoad,
+  runCollection,
+  exportRunnerJson,
+  exportRunnerCsv,
+  exportRunnerHtml,
+  parseCsvIterations,
 } from '@scrapeman/http-core';
 import type {
   AutoHeadersPreview,
@@ -29,6 +34,9 @@ import type {
   ImportCurlResult,
   LoadProgress,
   LoadRunStartInput,
+  RunnerExportFormat,
+  RunnerResult,
+  RunnerStartInput,
   ScrapemanRequest,
 } from '@scrapeman/shared-types';
 import { WorkspaceManager } from './workspace-manager.js';
@@ -82,6 +90,10 @@ let historyStore: HistoryStore | null = null;
 let cookieJar: WorkspaceCookieJar | null = null;
 const loadRuns = new Map<string, AbortController>();
 const requestRuns = new Map<string, AbortController>();
+const runnerRuns = new Map<string, AbortController>();
+// Completed runner results keyed by runId. Kept for export after the run ends.
+const runnerResults = new Map<string, RunnerResult>();
+const RUNNER_RESULT_CACHE = 20;
 
 // T3W1: full decoded response bodies, keyed by the caller-provided requestId.
 // We keep only the last FULL_BODY_CACHE_SIZE entries to bound memory; older
@@ -608,6 +620,136 @@ app.whenReady().then(() => {
     const controller = loadRuns.get(runId);
     if (controller) controller.abort();
   });
+
+  // ---- Collection runner ----------------------------------------------------
+
+  ipcMain.handle(
+    'runner:start',
+    async (_e, input: RunnerStartInput): Promise<void> => {
+      const { runId } = input;
+      const controller = new AbortController();
+      runnerRuns.set(runId, controller);
+
+      const baseVariables = input.workspacePath
+        ? await workspaceManager.resolveActiveVariables(input.workspacePath)
+        : {};
+      const mergedVariables = { ...baseVariables, ...(input.variables ?? {}) };
+
+      // Parse CSV rows when CSV content was supplied.
+      const csvRows =
+        input.csvContent && input.csvContent.trim().length > 0
+          ? parseCsvIterations(input.csvContent)
+          : undefined;
+
+      void (async () => {
+        try {
+          const result = await runCollection({
+            requests: input.requests,
+            mode: input.mode,
+            ...(input.concurrency !== undefined ? { concurrency: input.concurrency } : {}),
+            ...(input.delayMs !== undefined ? { delayMs: input.delayMs } : {}),
+            ...(input.iterations !== undefined ? { iterations: input.iterations } : {}),
+            variables: mergedVariables,
+            abortSignal: controller.signal,
+            ...(csvRows ? { csvRows } : {}),
+            onEvent: (event) => {
+              const payload = { runId, ...event };
+              for (const win of BrowserWindow.getAllWindows()) {
+                win.webContents.send('runner:event', payload);
+              }
+            },
+          });
+
+          // Cache result for export (evict oldest if over limit).
+          runnerResults.set(runId, result);
+          while (runnerResults.size > RUNNER_RESULT_CACHE) {
+            const oldest = runnerResults.keys().next().value;
+            if (oldest !== undefined) runnerResults.delete(oldest);
+          }
+        } catch (err) {
+          console.error('[scrapeman] runner failed:', err);
+        } finally {
+          runnerRuns.delete(runId);
+        }
+      })();
+    },
+  );
+
+  ipcMain.handle('runner:stop', (_e, runId: string): void => {
+    runnerRuns.get(runId)?.abort();
+  });
+
+  ipcMain.handle(
+    'runner:exportReport',
+    async (
+      _e,
+      runId: string,
+      format: RunnerExportFormat,
+    ): Promise<{ ok: boolean; canceled?: boolean }> => {
+      const result = runnerResults.get(runId);
+      if (!result) return { ok: false };
+
+      let content: string;
+      let ext: string;
+      let filterName: string;
+      if (format === 'json') {
+        content = exportRunnerJson(result);
+        ext = 'json';
+        filterName = 'JSON';
+      } else if (format === 'csv') {
+        content = exportRunnerCsv(result);
+        ext = 'csv';
+        filterName = 'CSV';
+      } else {
+        content = exportRunnerHtml(result);
+        ext = 'html';
+        filterName = 'HTML';
+      }
+
+      const focused = BrowserWindow.getFocusedWindow();
+      const saveResult = focused
+        ? await dialog.showSaveDialog(focused, {
+            defaultPath: `runner-report.${ext}`,
+            filters: [{ name: filterName, extensions: [ext] }],
+          })
+        : await dialog.showSaveDialog({
+            defaultPath: `runner-report.${ext}`,
+            filters: [{ name: filterName, extensions: [ext] }],
+          });
+
+      if (saveResult.canceled || !saveResult.filePath) {
+        return { ok: false, canceled: true };
+      }
+      try {
+        await writeFile(saveResult.filePath, content, 'utf8');
+        return { ok: true };
+      } catch (err) {
+        console.error('[scrapeman] runner export failed:', err);
+        return { ok: false };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    'app:pickFile',
+    async (
+      _e,
+      options: { filters?: Array<{ name: string; extensions: string[] }> },
+    ): Promise<string | null> => {
+      const focused = BrowserWindow.getFocusedWindow();
+      const result = focused
+        ? await dialog.showOpenDialog(focused, {
+            properties: ['openFile'],
+            ...(options.filters ? { filters: options.filters } : {}),
+          })
+        : await dialog.showOpenDialog({
+            properties: ['openFile'],
+            ...(options.filters ? { filters: options.filters } : {}),
+          });
+      if (result.canceled || result.filePaths.length === 0) return null;
+      return result.filePaths[0] ?? null;
+    },
+  );
 
   ipcMain.handle(
     'screenshot:capture',

@@ -479,6 +479,135 @@ export interface WsEvent {
   message: WsMessage;
 }
 
+// -------------------- Collection Runner ------------------------------------
+
+export type RunnerMode = 'sequential' | 'parallel';
+
+export type RunnerExportFormat = 'json' | 'csv' | 'html';
+
+export interface RunnerRequestInput {
+  request: ScrapemanRequest;
+  name?: string;
+}
+
+export interface RunnerStartInput {
+  runId: string;
+  requests: RunnerRequestInput[];
+  mode: RunnerMode;
+  concurrency?: number;
+  delayMs?: number;
+  iterations?: number;
+  variables?: Record<string, string>;
+  /** CSV content (text) for data-driven iteration. When supplied, `iterations` is ignored. */
+  csvContent?: string;
+  workspacePath?: string;
+}
+
+export type RunnerEventKind =
+  | 'start'
+  | 'request-start'
+  | 'request-complete'
+  | 'request-failed'
+  | 'iteration-done'
+  | 'done'
+  | 'aborted';
+
+export interface RunnerEventBase {
+  runId: string;
+  kind: RunnerEventKind;
+  elapsedMs: number;
+}
+
+export interface RunnerStartPayload extends RunnerEventBase {
+  kind: 'start';
+  totalRequests: number;
+  totalIterations: number;
+}
+
+export interface RunnerRequestStartPayload extends RunnerEventBase {
+  kind: 'request-start';
+  iteration: number;
+  requestIndex: number;
+  requestName: string;
+}
+
+export interface RunnerRequestCompletePayload extends RunnerEventBase {
+  kind: 'request-complete';
+  iteration: number;
+  requestIndex: number;
+  requestName: string;
+  status: number;
+  durationMs: number;
+  bodyPreview: string;
+  responseHeaders: Array<[string, string]>;
+}
+
+export interface RunnerRequestFailedPayload extends RunnerEventBase {
+  kind: 'request-failed';
+  iteration: number;
+  requestIndex: number;
+  requestName: string;
+  errorKind: string;
+  errorMessage: string;
+  durationMs: number;
+}
+
+export interface RunnerIterationDonePayload extends RunnerEventBase {
+  kind: 'iteration-done';
+  iteration: number;
+  succeeded: number;
+  failed: number;
+}
+
+export interface RunnerDonePayload extends RunnerEventBase {
+  kind: 'done';
+  totalSucceeded: number;
+  totalFailed: number;
+  totalDurationMs: number;
+}
+
+export interface RunnerAbortedPayload extends RunnerEventBase {
+  kind: 'aborted';
+}
+
+export type RunnerEventPayload =
+  | RunnerStartPayload
+  | RunnerRequestStartPayload
+  | RunnerRequestCompletePayload
+  | RunnerRequestFailedPayload
+  | RunnerIterationDonePayload
+  | RunnerDonePayload
+  | RunnerAbortedPayload;
+
+export interface RunnerRequestResult {
+  iteration: number;
+  requestIndex: number;
+  requestName: string;
+  url: string;
+  method: string;
+  status: number;
+  durationMs: number;
+  ok: boolean;
+  bodyPreview: string;
+  responseHeaders: Array<[string, string]>;
+  errorKind?: string;
+  errorMessage?: string;
+  startedAt: string;
+}
+
+export interface RunnerResult {
+  runId: string;
+  startedAt: string;
+  finishedAt: string;
+  totalDurationMs: number;
+  totalSucceeded: number;
+  totalFailed: number;
+  iterations: number;
+  requestCount: number;
+  results: RunnerRequestResult[];
+  aborted: boolean;
+}
+
 // IPC bridge contract — source of truth for preload + main + renderer.
 export interface ScrapemanBridge {
   ping: () => Promise<'pong'>;
@@ -631,4 +760,16 @@ export interface ScrapemanBridge {
   wsSend: (connectionId: string, data: string) => Promise<void>;
   wsDisconnect: (connectionId: string) => Promise<void>;
   onWsEvent: (handler: (event: WsEvent) => void) => () => void;
+
+  // Collection runner
+  runnerStart: (input: RunnerStartInput) => Promise<void>;
+  runnerStop: (runId: string) => Promise<void>;
+  runnerExportReport: (
+    runId: string,
+    format: RunnerExportFormat,
+  ) => Promise<{ ok: boolean; canceled?: boolean }>;
+  onRunnerEvent: (handler: (event: RunnerEventPayload) => void) => () => void;
+
+  // File picker (used by runner CSV upload)
+  pickFile: (options: { filters?: Array<{ name: string; extensions: string[] }> }) => Promise<string | null>;
 }

@@ -15,6 +15,9 @@ import type {
   ProxyConfig,
   RecentWorkspace,
   RequestOptions,
+  RunnerEventPayload,
+  RunnerMode,
+  RunnerRequestResult,
   ScrapeDoConfig,
   ScrapemanRequest,
   SerializedExecutorError,
@@ -123,6 +126,51 @@ export interface LoadTestState {
   events: LoadEvent[];
   starting: boolean;
   startError: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Collection runner
+// ---------------------------------------------------------------------------
+
+export interface RunnerRunState {
+  runId: string;
+  /** Folder relPath that was used to launch the run. */
+  folderRelPath: string;
+  mode: RunnerMode;
+  concurrency: number;
+  delayMs: number;
+  iterations: number;
+  /** true while the run is in flight. */
+  running: boolean;
+  /** true when aborted by the user. */
+  aborted: boolean;
+  /** Incremental list of per-request results. */
+  results: RunnerRequestResult[];
+  /** Counts for the live progress bar. */
+  totalRequests: number;
+  totalIterations: number;
+  completedRequests: number;
+  succeeded: number;
+  failed: number;
+  startedAt: string | null;
+  finishedAt: string | null;
+  error: string | null;
+}
+
+export interface RunnerPanelState {
+  open: boolean;
+  /** Folder relPath pre-filled when opening from the sidebar context menu. */
+  folderRelPath: string;
+  mode: RunnerMode;
+  concurrency: number;
+  delayMs: number;
+  iterations: number;
+  /** CSV file content loaded from disk. */
+  csvContent: string;
+  /** Active run, null when no run is in progress or all runs have finished. */
+  activeRunId: string | null;
+  /** Map of completed/in-progress runs keyed by runId. */
+  runs: Map<string, RunnerRunState>;
 }
 
 export interface Tab {
@@ -319,6 +367,16 @@ interface AppState {
   wsSetUrl: (tabId: string, url: string) => void;
   wsSetSendDraft: (tabId: string, draft: string) => void;
   handleWsEvent: (event: WsEvent) => void;
+
+  // Collection runner
+  runner: RunnerPanelState;
+  openRunnerPanel: (folderRelPath: string) => void;
+  closeRunnerPanel: () => void;
+  updateRunnerConfig: (patch: Partial<Pick<RunnerPanelState, 'mode' | 'concurrency' | 'delayMs' | 'iterations' | 'csvContent'>>) => void;
+  startRunner: () => Promise<void>;
+  stopRunner: () => Promise<void>;
+  handleRunnerEvent: (event: RunnerEventPayload) => void;
+  exportRunnerReport: (format: 'json' | 'csv' | 'html') => Promise<void>;
 
   // Auto-update
   updateInfo: UpdateInfo | null;
@@ -1781,6 +1839,251 @@ export const useAppStore = create<AppState>((set, get) => {
       };
 
       set({ tabs: [...get().tabs, tab], activeTabId: tab.id });
+    },
+
+    // ------------------------------------------------------------------ //
+    // Collection runner                                                    //
+    // ------------------------------------------------------------------ //
+
+    runner: {
+      open: false,
+      folderRelPath: '',
+      mode: 'sequential',
+      concurrency: 5,
+      delayMs: 0,
+      iterations: 1,
+      csvContent: '',
+      activeRunId: null,
+      runs: new Map(),
+    },
+
+    openRunnerPanel: (folderRelPath) => {
+      set((state) => ({
+        runner: { ...state.runner, open: true, folderRelPath },
+      }));
+    },
+
+    closeRunnerPanel: () => {
+      set((state) => ({ runner: { ...state.runner, open: false } }));
+    },
+
+    updateRunnerConfig: (patch) => {
+      set((state) => ({ runner: { ...state.runner, ...patch } }));
+    },
+
+    startRunner: async () => {
+      const { runner, workspace, root } = get();
+      if (!workspace || !root) return;
+
+      // Collect requests in the target folder.
+      const collectRequests = (
+        nodes: import('@scrapeman/shared-types').CollectionNode[],
+        folderRelPath: string,
+      ): Array<{ request: ScrapemanRequest; name: string }> => {
+        // We can't read file content here — we build minimal stubs from tree
+        // nodes. The main process resolves variables; the runner reads the
+        // actual request from disk via the workspace manager.
+        // We pass the ScrapemanRequest structures from the tree nodes through
+        // IPC. Since we don't have the full bodies in the tree, the runner
+        // will need them. We read each request file here.
+        return [];
+      };
+      void collectRequests; // will be used below
+
+      // Gather request objects from open tabs or by reading from disk.
+      // We read each request from the workspace to get full details.
+      const gatherRequests = async (
+        folderRelPath: string,
+      ): Promise<Array<{ request: ScrapemanRequest; name: string }>> => {
+        // Walk the collection tree to find all requests in the folder.
+        const findRequests = (
+          nodes: import('@scrapeman/shared-types').CollectionNode[],
+          inFolder: string,
+        ): Array<{ relPath: string; name: string }> => {
+          const out: Array<{ relPath: string; name: string }> = [];
+          for (const node of nodes) {
+            if (node.kind === 'folder') {
+              // Include requests from subfolders of the target.
+              const isTarget =
+                inFolder === '' ||
+                node.relPath === inFolder ||
+                node.relPath.startsWith(`${inFolder}/`);
+              if (isTarget || inFolder === '') {
+                out.push(...findRequests(node.children, inFolder));
+              }
+            } else if (node.kind === 'request') {
+              const parentFolder = node.relPath.includes('/')
+                ? node.relPath.slice(0, node.relPath.lastIndexOf('/'))
+                : '';
+              const inTarget =
+                inFolder === '' ||
+                parentFolder === inFolder ||
+                parentFolder.startsWith(`${inFolder}/`);
+              if (inTarget) {
+                out.push({ relPath: node.relPath, name: node.name });
+              }
+            }
+          }
+          return out;
+        };
+
+        const found = findRequests(root.children, folderRelPath);
+        const requests = await Promise.all(
+          found.map(async ({ relPath, name }) => {
+            const req = await bridge.workspaceReadRequest(workspace.path, relPath);
+            return { request: req, name };
+          }),
+        );
+        return requests;
+      };
+
+      const requests = await gatherRequests(runner.folderRelPath);
+      if (requests.length === 0) return;
+
+      const runId = crypto.randomUUID();
+      const newRun: RunnerRunState = {
+        runId,
+        folderRelPath: runner.folderRelPath,
+        mode: runner.mode,
+        concurrency: runner.concurrency,
+        delayMs: runner.delayMs,
+        iterations: runner.csvContent.trim()
+          ? 0 // will be determined by CSV row count
+          : runner.iterations,
+        running: true,
+        aborted: false,
+        results: [],
+        totalRequests: requests.length,
+        totalIterations: runner.iterations,
+        completedRequests: 0,
+        succeeded: 0,
+        failed: 0,
+        startedAt: new Date().toISOString(),
+        finishedAt: null,
+        error: null,
+      };
+
+      set((state) => {
+        const runs = new Map(state.runner.runs);
+        runs.set(runId, newRun);
+        return {
+          runner: { ...state.runner, activeRunId: runId, runs },
+        };
+      });
+
+      try {
+        await bridge.runnerStart({
+          runId,
+          requests: requests.map(({ request, name }) => ({ request, name })),
+          mode: runner.mode,
+          ...(runner.concurrency !== 5 ? { concurrency: runner.concurrency } : {}),
+          ...(runner.delayMs > 0 ? { delayMs: runner.delayMs } : {}),
+          ...(runner.csvContent.trim()
+            ? { csvContent: runner.csvContent }
+            : { iterations: runner.iterations }),
+          workspacePath: workspace.path,
+        });
+      } catch (err) {
+        set((state) => {
+          const runs = new Map(state.runner.runs);
+          const run = runs.get(runId);
+          if (run) {
+            runs.set(runId, {
+              ...run,
+              running: false,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+          return { runner: { ...state.runner, runs } };
+        });
+      }
+    },
+
+    stopRunner: async () => {
+      const { runner } = get();
+      if (!runner.activeRunId) return;
+      await bridge.runnerStop(runner.activeRunId);
+    },
+
+    handleRunnerEvent: (event) => {
+      const { runId } = event;
+      set((state) => {
+        const runs = new Map(state.runner.runs);
+        const run = runs.get(runId);
+        if (!run) return {};
+
+        if (event.kind === 'start') {
+          runs.set(runId, {
+            ...run,
+            totalRequests: event.totalRequests,
+            totalIterations: event.totalIterations,
+          });
+        } else if (event.kind === 'request-complete') {
+          const result: RunnerRequestResult = {
+            iteration: event.iteration,
+            requestIndex: event.requestIndex,
+            requestName: event.requestName,
+            url: '',
+            method: '',
+            status: event.status,
+            durationMs: event.durationMs,
+            ok: event.status >= 200 && event.status < 400,
+            bodyPreview: event.bodyPreview,
+            responseHeaders: event.responseHeaders,
+            startedAt: new Date().toISOString(),
+          };
+          runs.set(runId, {
+            ...run,
+            results: [...run.results, result],
+            completedRequests: run.completedRequests + 1,
+            succeeded: run.succeeded + (result.ok ? 1 : 0),
+          });
+        } else if (event.kind === 'request-failed') {
+          const result: RunnerRequestResult = {
+            iteration: event.iteration,
+            requestIndex: event.requestIndex,
+            requestName: event.requestName,
+            url: '',
+            method: '',
+            status: 0,
+            durationMs: event.durationMs,
+            ok: false,
+            bodyPreview: '',
+            responseHeaders: [],
+            errorKind: event.errorKind,
+            errorMessage: event.errorMessage,
+            startedAt: new Date().toISOString(),
+          };
+          runs.set(runId, {
+            ...run,
+            results: [...run.results, result],
+            completedRequests: run.completedRequests + 1,
+            failed: run.failed + 1,
+          });
+        } else if (event.kind === 'done') {
+          runs.set(runId, {
+            ...run,
+            running: false,
+            finishedAt: new Date().toISOString(),
+          });
+        } else if (event.kind === 'aborted') {
+          runs.set(runId, {
+            ...run,
+            running: false,
+            aborted: true,
+            finishedAt: new Date().toISOString(),
+          });
+        }
+
+        return { runner: { ...state.runner, runs } };
+      });
+    },
+
+    exportRunnerReport: async (format) => {
+      const { runner } = get();
+      const runId = runner.activeRunId;
+      if (!runId) return;
+      await bridge.runnerExportReport(runId, format);
     },
 
     loadGitStatus: async () => {
