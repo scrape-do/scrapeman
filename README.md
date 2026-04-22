@@ -84,12 +84,16 @@ The full marketing site lives at **[scrapeman.app](https://scrapeman.app)** and 
 - AWS Signature v4 (via `aws4`)
 - OAuth 2.0 authorization code flow — planned
 
-### Environment variables
+### Environment variables and scoped variables
 - Per-workspace environments stored as `.env.yaml` files under `.scrapeman/environments/`
 - Secret flag with masked display
 - Active environment persisted in workspace state
 - `{{var}}` resolution across URL, params, headers, body, auth, proxy, Scrape.do fields
 - Built-in dynamic variables fresh per send: `{{random}}`, `{{uuid}}`, `{{timestamp}}`, `{{timestampSec}}`, `{{isoDate}}`, `{{randomInt}}`
+- **Global variables** (`.scrapeman/globals.yaml`) — lowest precedence, available across all environments
+- **Collection variables** (`.scrapeman/collection.yaml`) — workspace-wide defaults with optional default auth
+- **Folder variables and auth** (`_folder.yaml` per folder) — per-folder variable overrides and auth inheritance
+- Variable precedence (highest wins): folder chain → environment → collection → global
 
 ### Collections & file format
 - Custom YAML format (`*.sman`), one file per request, stable key order → clean git diffs (legacy `*.req.yaml` files remain readable and are migrated to `.sman` on next save)

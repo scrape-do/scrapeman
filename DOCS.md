@@ -9,6 +9,7 @@ Complete reference for every feature in Scrapeman. For installation and project 
 - [Getting Started](#getting-started)
 - [Request Building](#request-building)
 - [Environment Variables](#environment-variables)
+- [Scoped Variables and Auth Inheritance](#scoped-variables-and-auth-inheritance)
 - [Auth Schemes](#auth-schemes)
 - [Collections and File Format](#collections-and-file-format)
 - [Local History](#local-history)
@@ -120,11 +121,14 @@ variables:
 
 `{{var}}` syntax works across: URL, params, headers, body, auth fields, proxy fields, and Scrape.do fields.
 
-**Scope precedence** (highest to lowest):
-1. Per-request overrides
+**Scope precedence** (highest wins):
+1. Folder chain (deepest folder overrides shallower)
 2. Active environment
-3. Collection-level variables
-4. Built-in dynamics
+3. Collection variables
+4. Global variables
+5. Built-in dynamics
+
+See [Scoped Variables and Auth Inheritance](#scoped-variables-and-auth-inheritance) for details on each scope.
 
 ### Built-in dynamic variables
 
@@ -142,6 +146,74 @@ These re-resolve on every send:
 ### Secret variables
 
 Variables with `secret: true` are masked in the UI (shown as `••••••`). They resolve normally at send time. History entries preserve the template (`{{token}}`) on disk, never the resolved secret value.
+
+---
+
+## Scoped Variables and Auth Inheritance
+
+Variables resolve in this order (rightmost wins):
+
+```
+Global → Collection → Environment → Folder chain (root → leaf)
+```
+
+### Global variables
+
+Stored at `.scrapeman/globals.yaml`. Available to every request in the workspace, across all environments. Edit via the workspace settings gear icon in the sidebar.
+
+```yaml
+# .scrapeman/globals.yaml
+scrapeman: "2.0"
+variables:
+  - key: COMPANY_ID
+    value: acme
+    enabled: true
+    secret: false
+```
+
+### Collection variables
+
+Stored at `.scrapeman/collection.yaml`. Apply to all requests. Lower precedence than environment variables. Also holds the collection-level default auth. Edit via the workspace settings gear icon → "Collection settings…".
+
+```yaml
+# .scrapeman/collection.yaml
+scrapeman: "2.0"
+variables:
+  - key: API_VERSION
+    value: v2
+    enabled: true
+    secret: false
+auth:
+  type: bearer
+  token: "{{BEARER_TOKEN}}"
+```
+
+### Folder variables and auth
+
+Each folder can have a `_folder.yaml` file with variables and an optional auth block. Right-click a folder in the sidebar and select "Folder settings…" to open the two-tab dialog (Variables / Auth).
+
+```yaml
+# api/users/_folder.yaml
+scrapeman: "2.0"
+variables:
+  - key: RESOURCE
+    value: users
+    enabled: true
+    secret: false
+auth:
+  type: apiKey
+  key: X-Api-Key
+  value: "{{API_KEY}}"
+  in: header
+```
+
+Folder variables from ancestor folders are merged first (root to leaf), so a deeper folder's variable wins over a shallower one's.
+
+### Auth inheritance
+
+When a request's Auth tab is set to "None" (or the Inherit option), Scrapeman walks the folder chain from the request's folder up to the workspace root. The first ancestor with an `auth` block in its `_folder.yaml` is used. If no folder defines auth, the collection default auth is applied.
+
+The Auth tab shows an "Inherited from /path" label when inheritance is active. Set an explicit auth type on the request to override it.
 
 ---
 

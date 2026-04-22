@@ -65,6 +65,21 @@ export function App(): JSX.Element {
         void useAppStore.getState().loadHiddenRequests();
       }
       if (event.type === 'environments-changed') void loadEnvironments();
+      if (event.type === 'globals-changed') {
+        void useAppStore.getState().loadGlobals();
+      }
+      if (event.type === 'collection-settings-changed') {
+        void useAppStore.getState().loadCollectionSettings();
+      }
+      if (event.type === 'folder-settings-changed') {
+        // Evict the cached folder settings so the next read is fresh.
+        const { folderRelPath } = event;
+        useAppStore.setState((state) => {
+          const next = { ...state.folderSettingsCache };
+          delete next[folderRelPath];
+          return { folderSettingsCache: next };
+        });
+      }
     });
     return unsubscribe;
   }, [workspace, refreshTree, loadEnvironments]);

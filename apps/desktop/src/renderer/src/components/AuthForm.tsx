@@ -1,6 +1,9 @@
-import { useEffect, useState } from 'react';
-import type { AuthConfig, InheritedAuthInfo } from '@scrapeman/shared-types';
-import { useAppStore } from '../store.js';
+/**
+ * A controlled auth form, used by collection and folder settings dialogs.
+ * Mirrors the shape of AuthTab but takes explicit `auth` + `onChange` props
+ * instead of reading from the active request tab.
+ */
+import type { AuthConfig } from '@scrapeman/shared-types';
 import { HighlightedInput } from '../ui/HighlightedInput.js';
 import { CellContextMenu } from '../ui/CellContextMenu.js';
 
@@ -15,35 +18,20 @@ const AUTH_TYPES: Array<{ kind: AuthKind; label: string }> = [
   { kind: 'awsSigV4', label: 'AWS SigV4' },
 ];
 
-export function AuthTab(): JSX.Element {
-  const activeTab = useAppStore((s) => s.tabs.find((t) => t.id === s.activeTabId) ?? null);
-  const setAuth = useAppStore((s) => s.setAuth);
-  const resolveInheritedAuth = useAppStore((s) => s.resolveInheritedAuth);
-
-  const [inheritedAuth, setInheritedAuth] = useState<InheritedAuthInfo | null>(null);
-
-  // Fetch inherited auth whenever the active tab or its relPath changes.
-  const relPath = activeTab?.relPath ?? null;
-  useEffect(() => {
-    if (!relPath) {
-      setInheritedAuth(null);
-      return;
-    }
-    void resolveInheritedAuth(relPath).then(setInheritedAuth);
-  }, [relPath, resolveInheritedAuth]);
-
-  if (!activeTab) return <div />;
-  const auth = activeTab.builder.auth;
-
+export function AuthForm({
+  auth,
+  onChange,
+}: {
+  auth: AuthConfig;
+  onChange: (auth: AuthConfig) => void;
+}): JSX.Element {
   const changeType = (kind: AuthKind): void => {
-    setAuth(defaultForType(kind));
+    onChange(defaultForType(kind));
   };
 
-  const hasInherited = inheritedAuth !== null;
-
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b border-line px-4 py-3">
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center gap-2">
         <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-4">
           Type
         </span>
@@ -52,10 +40,7 @@ export function AuthTab(): JSX.Element {
           onChange={(e) => changeType(e.target.value as AuthKind)}
           className="field w-48 cursor-pointer"
         >
-          {hasInherited && (
-            <option value="none">Inherit ({inheritedAuth!.auth.type})</option>
-          )}
-          {AUTH_TYPES.filter((t) => hasInherited ? t.kind !== 'none' : true).map((t) => (
+          {AUTH_TYPES.map((t) => (
             <option key={t.kind} value={t.kind}>
               {t.label}
             </option>
@@ -63,19 +48,10 @@ export function AuthTab(): JSX.Element {
         </select>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4">
-        {auth.type === 'none' && hasInherited && (
-          <div className="mb-3 rounded-md border border-line bg-bg-subtle px-3 py-2 text-xs text-ink-3">
-            Inherited from{' '}
-            <span className="font-mono text-ink-2">
-              /{inheritedAuth!.source}
-            </span>
-            . Set an explicit auth type above to override.
-          </div>
-        )}
-        {auth.type === 'none' && !hasInherited && (
+      <div>
+        {auth.type === 'none' && (
           <div className="text-xs text-ink-4">
-            This request is sent without authentication.
+            No default auth. Requests use their own auth settings.
           </div>
         )}
 
@@ -84,14 +60,14 @@ export function AuthTab(): JSX.Element {
             <Row label="Username">
               <HiField
                 value={auth.username}
-                onChange={(v) => setAuth({ ...auth, username: v })}
+                onChange={(v) => onChange({ ...auth, username: v })}
                 placeholder="admin"
               />
             </Row>
             <Row label="Password">
               <HiField
                 value={auth.password}
-                onChange={(v) => setAuth({ ...auth, password: v })}
+                onChange={(v) => onChange({ ...auth, password: v })}
                 placeholder="{{password}}"
                 password
               />
@@ -103,7 +79,7 @@ export function AuthTab(): JSX.Element {
           <Row label="Token">
             <HiField
               value={auth.token}
-              onChange={(v) => setAuth({ ...auth, token: v })}
+              onChange={(v) => onChange({ ...auth, token: v })}
               placeholder="{{token}}"
             />
           </Row>
@@ -114,14 +90,14 @@ export function AuthTab(): JSX.Element {
             <Row label="Key">
               <HiField
                 value={auth.key}
-                onChange={(v) => setAuth({ ...auth, key: v })}
+                onChange={(v) => onChange({ ...auth, key: v })}
                 placeholder="X-Api-Key"
               />
             </Row>
             <Row label="Value">
               <HiField
                 value={auth.value}
-                onChange={(v) => setAuth({ ...auth, value: v })}
+                onChange={(v) => onChange({ ...auth, value: v })}
                 placeholder="{{apiKey}}"
               />
             </Row>
@@ -129,13 +105,13 @@ export function AuthTab(): JSX.Element {
               <div className="flex gap-1">
                 <RadioButton
                   active={auth.in === 'header'}
-                  onClick={() => setAuth({ ...auth, in: 'header' })}
+                  onClick={() => onChange({ ...auth, in: 'header' })}
                 >
                   Header
                 </RadioButton>
                 <RadioButton
                   active={auth.in === 'query'}
-                  onClick={() => setAuth({ ...auth, in: 'query' })}
+                  onClick={() => onChange({ ...auth, in: 'query' })}
                 >
                   Query
                 </RadioButton>
@@ -150,37 +126,37 @@ export function AuthTab(): JSX.Element {
               <select
                 value={auth.flow}
                 onChange={(e) =>
-                  setAuth({
+                  onChange({
                     ...auth,
-                    flow: e.target.value as 'clientCredentials' | 'authorizationCode',
+                    flow: e.target.value as
+                      | 'clientCredentials'
+                      | 'authorizationCode',
                   })
                 }
                 className="field w-48 cursor-pointer"
               >
                 <option value="clientCredentials">Client credentials</option>
-                <option value="authorizationCode">
-                  Authorization code (coming soon)
-                </option>
+                <option value="authorizationCode">Authorization code</option>
               </select>
             </Row>
             <Row label="Token URL">
               <HiField
                 value={auth.tokenUrl}
-                onChange={(v) => setAuth({ ...auth, tokenUrl: v })}
+                onChange={(v) => onChange({ ...auth, tokenUrl: v })}
                 placeholder="https://auth.example.com/oauth/token"
               />
             </Row>
             <Row label="Client ID">
               <HiField
                 value={auth.clientId}
-                onChange={(v) => setAuth({ ...auth, clientId: v })}
+                onChange={(v) => onChange({ ...auth, clientId: v })}
                 placeholder="{{oauthClientId}}"
               />
             </Row>
             <Row label="Client secret">
               <HiField
                 value={auth.clientSecret}
-                onChange={(v) => setAuth({ ...auth, clientSecret: v })}
+                onChange={(v) => onChange({ ...auth, clientSecret: v })}
                 placeholder="{{oauthClientSecret}}"
                 password
               />
@@ -188,15 +164,8 @@ export function AuthTab(): JSX.Element {
             <Row label="Scope">
               <HiField
                 value={auth.scope ?? ''}
-                onChange={(v) => setAuth({ ...auth, scope: v })}
+                onChange={(v) => onChange({ ...auth, scope: v })}
                 placeholder="read:things write:things"
-              />
-            </Row>
-            <Row label="Audience">
-              <HiField
-                value={auth.audience ?? ''}
-                onChange={(v) => setAuth({ ...auth, audience: v })}
-                placeholder="(optional)"
               />
             </Row>
           </div>
@@ -207,36 +176,29 @@ export function AuthTab(): JSX.Element {
             <Row label="Access key ID">
               <HiField
                 value={auth.accessKeyId}
-                onChange={(v) => setAuth({ ...auth, accessKeyId: v })}
+                onChange={(v) => onChange({ ...auth, accessKeyId: v })}
                 placeholder="{{awsAccessKeyId}}"
               />
             </Row>
             <Row label="Secret key">
               <HiField
                 value={auth.secretAccessKey}
-                onChange={(v) => setAuth({ ...auth, secretAccessKey: v })}
+                onChange={(v) => onChange({ ...auth, secretAccessKey: v })}
                 placeholder="{{awsSecretKey}}"
                 password
-              />
-            </Row>
-            <Row label="Session token">
-              <HiField
-                value={auth.sessionToken ?? ''}
-                onChange={(v) => setAuth({ ...auth, sessionToken: v })}
-                placeholder="(optional)"
               />
             </Row>
             <Row label="Region">
               <HiField
                 value={auth.region}
-                onChange={(v) => setAuth({ ...auth, region: v })}
+                onChange={(v) => onChange({ ...auth, region: v })}
                 placeholder="us-east-1"
               />
             </Row>
             <Row label="Service">
               <HiField
                 value={auth.service}
-                onChange={(v) => setAuth({ ...auth, service: v })}
+                onChange={(v) => onChange({ ...auth, service: v })}
                 placeholder="s3"
               />
             </Row>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import type { CollectionNode, GitFileChangeStatus } from '@scrapeman/shared-types';
 import { useAppStore } from '../store.js';
 import {
@@ -13,6 +14,9 @@ import { EyeOffIcon } from '../ui/EyeOffIcon.js';
 import { HistoryPanel } from './HistoryPanel.js';
 import { SourceControlPanel } from './SourceControlPanel.js';
 import { SplitPane } from './SplitPane.js';
+import { FolderSettingsDialog } from './FolderSettingsDialog.js';
+import { CollectionSettingsDialog } from './CollectionSettingsDialog.js';
+import { GlobalsDialog } from './GlobalsDialog.js';
 
 const METHOD_COLOR: Record<string, string> = {
   GET: 'text-method-get',
@@ -45,7 +49,10 @@ type DialogState =
   | { kind: 'newRequest'; parent: string }
   | { kind: 'newFolder'; parent: string }
   | { kind: 'rename'; relPath: string; currentName: string }
-  | { kind: 'delete'; relPath: string; name: string };
+  | { kind: 'delete'; relPath: string; name: string }
+  | { kind: 'folderSettings'; folderRelPath: string }
+  | { kind: 'collectionSettings' }
+  | { kind: 'globals' };
 
 export function Sidebar(): JSX.Element {
   const workspace = useAppStore((s) => s.workspace);
@@ -215,6 +222,21 @@ export function Sidebar(): JSX.Element {
         }}
         onClose={closeDialog}
       />
+      <FolderSettingsDialog
+        open={dialog.kind === 'folderSettings'}
+        folderRelPath={
+          dialog.kind === 'folderSettings' ? dialog.folderRelPath : ''
+        }
+        onClose={closeDialog}
+      />
+      <CollectionSettingsDialog
+        open={dialog.kind === 'collectionSettings'}
+        onClose={closeDialog}
+      />
+      <GlobalsDialog
+        open={dialog.kind === 'globals'}
+        onClose={closeDialog}
+      />
     </div>
   );
 }
@@ -370,6 +392,37 @@ function FilesView({
         <button title="New folder" onClick={onNewFolder} className="icon-btn text-lg">
           ⌸
         </button>
+        {/* Workspace settings dropdown */}
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger asChild>
+            <button
+              title="Workspace settings"
+              className="icon-btn text-base leading-none"
+            >
+              ⚙
+            </button>
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Portal>
+            <DropdownMenu.Content
+              align="end"
+              sideOffset={4}
+              className="z-50 min-w-[200px] rounded-md border border-line bg-bg-canvas p-1 shadow-popover animate-slide-down-fade"
+            >
+              <DropdownMenu.Item
+                onSelect={() => setDialog({ kind: 'collectionSettings' })}
+                className="flex cursor-default items-center rounded px-2 py-1.5 text-xs text-ink-2 outline-none data-[highlighted]:bg-bg-hover"
+              >
+                Collection settings…
+              </DropdownMenu.Item>
+              <DropdownMenu.Item
+                onSelect={() => setDialog({ kind: 'globals' })}
+                className="flex cursor-default items-center rounded px-2 py-1.5 text-xs text-ink-2 outline-none data-[highlighted]:bg-bg-hover"
+              >
+                Global variables…
+              </DropdownMenu.Item>
+            </DropdownMenu.Content>
+          </DropdownMenu.Portal>
+        </DropdownMenu.Root>
         <button title="Switch workspace" onClick={onPick} className="icon-btn text-lg">
           ⇄
         </button>
@@ -487,6 +540,9 @@ function FilesView({
                       setDialog({ kind: 'delete', relPath, name })
                     }
                     onRunFolder={onRunFolder}
+                    onFolderSettings={(folderRelPath) =>
+                      setDialog({ kind: 'folderSettings', folderRelPath })
+                    }
                     forceExpand={isFiltering}
                   />
                 ))
@@ -517,6 +573,7 @@ interface TreeNodeProps {
   onRename: (relPath: string, currentName: string) => void;
   onDelete: (relPath: string, name: string) => void;
   onRunFolder: (folderRelPath: string) => void;
+  onFolderSettings: (folderRelPath: string) => void;
   /** When true, folders are always rendered as expanded (used during filtering). */
   forceExpand?: boolean;
 }
@@ -538,6 +595,7 @@ function TreeNode({
   onRename,
   onDelete,
   onRunFolder,
+  onFolderSettings,
   forceExpand = false,
 }: TreeNodeProps): JSX.Element {
   const [expanded, setExpanded] = useState(depth < 1);
@@ -650,6 +708,13 @@ function TreeNode({
             <ContextMenuItem onSelect={() => onRunFolder(node.relPath)}>
               Run folder…
             </ContextMenuItem>
+            <ContextMenuItem
+              onSelect={() =>
+                onFolderSettings(node.relPath)
+              }
+            >
+              Folder settings…
+            </ContextMenuItem>
             <ContextMenuSeparator />
             <ContextMenuItem onSelect={() => onRename(node.relPath, node.name)}>
               Rename
@@ -682,6 +747,7 @@ function TreeNode({
               onRename={onRename}
               onDelete={onDelete}
               onRunFolder={onRunFolder}
+              onFolderSettings={onFolderSettings}
               forceExpand={forceExpand}
             />
           ))}

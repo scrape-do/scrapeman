@@ -2,16 +2,20 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type {
   AutoHeadersPreview,
   CodegenInput,
+  CollectionSettings,
   CookieEntry,
   Environment,
   ExecuteResult,
+  FolderSettings,
   GitCommit,
   GitOpResult,
   GitPullStrategy,
   GitStatus,
+  GlobalVariables,
   HistoryEntry,
   HistoryListOptions,
   ImportCurlResult,
+  InheritedAuthInfo,
   LoadProgress,
   LoadRunStartInput,
   OpenApiFetchResult,
@@ -195,6 +199,48 @@ const api: ScrapemanBridge = {
     ipcRenderer.invoke('env:getActive', workspacePath) as Promise<string | null>,
   envSetActive: (workspacePath: string, name: string | null) =>
     ipcRenderer.invoke('env:setActive', workspacePath, name) as Promise<void>,
+
+  globalsRead: (workspacePath: string) =>
+    ipcRenderer.invoke('globals:read', workspacePath) as Promise<GlobalVariables>,
+  globalsWrite: (workspacePath: string, globals: GlobalVariables) =>
+    ipcRenderer.invoke('globals:write', workspacePath, globals) as Promise<void>,
+
+  collectionSettingsRead: (workspacePath: string) =>
+    ipcRenderer.invoke(
+      'collection:readSettings',
+      workspacePath,
+    ) as Promise<CollectionSettings>,
+  collectionSettingsWrite: (workspacePath: string, settings: CollectionSettings) =>
+    ipcRenderer.invoke(
+      'collection:writeSettings',
+      workspacePath,
+      settings,
+    ) as Promise<void>,
+
+  folderSettingsRead: (workspacePath: string, folderRelPath: string) =>
+    ipcRenderer.invoke(
+      'folder:readSettings',
+      workspacePath,
+      folderRelPath,
+    ) as Promise<FolderSettings>,
+  folderSettingsWrite: (
+    workspacePath: string,
+    folderRelPath: string,
+    settings: FolderSettings,
+  ) =>
+    ipcRenderer.invoke(
+      'folder:writeSettings',
+      workspacePath,
+      folderRelPath,
+      settings,
+    ) as Promise<void>,
+
+  resolveInheritedAuth: (workspacePath: string, requestRelPath: string) =>
+    ipcRenderer.invoke(
+      'folder:resolveInheritedAuth',
+      workspacePath,
+      requestRelPath,
+    ) as Promise<InheritedAuthInfo | null>,
 
   onWorkspaceEvent: (handler: (event: WorkspaceEvent) => void) => {
     const listener = (_event: unknown, payload: WorkspaceEvent): void => handler(payload);

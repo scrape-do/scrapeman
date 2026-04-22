@@ -28,11 +28,15 @@ import {
 import type {
   AutoHeadersPreview,
   CodegenInput,
+  CollectionSettings,
   CookieEntry,
   Environment,
   ExecuteResult,
+  FolderSettings,
+  GlobalVariables,
   HistoryListOptions,
   ImportCurlResult,
+  InheritedAuthInfo,
   LoadProgress,
   LoadRunStartInput,
   RunnerExportFormat,
@@ -1048,6 +1052,62 @@ app.whenReady().then(() => {
   );
 
   registerWebSocketHandlers();
+
+  ipcMain.handle(
+    'globals:read',
+    (_e, workspacePath: string): Promise<GlobalVariables> =>
+      workspaceManager.readGlobals(workspacePath),
+  );
+  ipcMain.handle(
+    'globals:write',
+    (_e, workspacePath: string, globals: GlobalVariables): Promise<void> =>
+      workspaceManager.writeGlobals(workspacePath, globals),
+  );
+
+  ipcMain.handle(
+    'collection:readSettings',
+    (_e, workspacePath: string): Promise<CollectionSettings> =>
+      workspaceManager.readCollectionSettings(workspacePath),
+  );
+  ipcMain.handle(
+    'collection:writeSettings',
+    (
+      _e,
+      workspacePath: string,
+      settings: CollectionSettings,
+    ): Promise<void> =>
+      workspaceManager.writeCollectionSettings(workspacePath, settings),
+  );
+
+  ipcMain.handle(
+    'folder:readSettings',
+    (
+      _e,
+      workspacePath: string,
+      folderRelPath: string,
+    ): Promise<FolderSettings> =>
+      workspaceManager.readFolderSettings(workspacePath, folderRelPath),
+  );
+  ipcMain.handle(
+    'folder:writeSettings',
+    (
+      _e,
+      workspacePath: string,
+      folderRelPath: string,
+      settings: FolderSettings,
+    ): Promise<void> =>
+      workspaceManager.writeFolderSettings(workspacePath, folderRelPath, settings),
+  );
+
+  ipcMain.handle(
+    'folder:resolveInheritedAuth',
+    (
+      _e,
+      workspacePath: string,
+      requestRelPath: string,
+    ): Promise<InheritedAuthInfo | null> =>
+      workspaceManager.resolveInheritedAuth(workspacePath, requestRelPath),
+  );
 
   const mainWindow = createWindow();
   initAutoUpdater(mainWindow);

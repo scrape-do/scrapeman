@@ -3,13 +3,17 @@ import { FORMAT_VERSION } from '@scrapeman/shared-types';
 import type {
   AuthConfig,
   CollectionFolderNode,
+  CollectionSettings,
   Environment,
   EnvironmentVariable,
   ExecutedResponse,
+  FolderSettings,
   GitStatus,
+  GlobalVariables,
   HistoryEntry,
   HttpMethod,
   HttpVersion,
+  InheritedAuthInfo,
   LoadEvent,
   LoadProgress,
   ProxyConfig,
@@ -350,6 +354,29 @@ interface AppState {
   setActiveEnvironment: (name: string | null) => Promise<void>;
   saveEnvironment: (env: Environment) => Promise<void>;
   deleteEnvironment: (name: string) => Promise<void>;
+
+  // Globals
+  globals: GlobalVariables;
+  loadGlobals: () => Promise<void>;
+  saveGlobals: (globals: GlobalVariables) => Promise<void>;
+
+  // Collection settings
+  collectionSettings: CollectionSettings;
+  loadCollectionSettings: () => Promise<void>;
+  saveCollectionSettings: (settings: CollectionSettings) => Promise<void>;
+
+  // Folder settings (keyed by folderRelPath)
+  folderSettingsCache: Record<string, FolderSettings>;
+  loadFolderSettings: (folderRelPath: string) => Promise<FolderSettings>;
+  saveFolderSettings: (
+    folderRelPath: string,
+    settings: FolderSettings,
+  ) => Promise<void>;
+
+  // Auth inheritance resolve (on-demand, not cached in store)
+  resolveInheritedAuth: (
+    requestRelPath: string,
+  ) => Promise<InheritedAuthInfo | null>;
 
   loadHistory: () => Promise<void>;
   deleteHistoryEntry: (id: string) => Promise<void>;
@@ -752,6 +779,9 @@ export const useAppStore = create<AppState>((set, get) => {
     recents: [],
     environments: [],
     activeEnvironment: null,
+    globals: { variables: [] },
+    collectionSettings: { variables: [] },
+    folderSettingsCache: {},
     history: [],
     tabs: [],
     activeTabId: null,
@@ -811,6 +841,9 @@ export const useAppStore = create<AppState>((set, get) => {
         activeTabId: null,
         environments: [],
         activeEnvironment: null,
+        globals: { variables: [] },
+        collectionSettings: { variables: [] },
+        folderSettingsCache: {},
         history: [],
         gitStatus: null,
         gitLoaded: false,
@@ -819,6 +852,8 @@ export const useAppStore = create<AppState>((set, get) => {
       });
       await get().loadRecents();
       await get().loadEnvironments();
+      await get().loadGlobals();
+      await get().loadCollectionSettings();
       await get().loadHistory();
       await get().loadGitStatus();
       await get().loadHiddenRequests();
@@ -2244,6 +2279,84 @@ export const useAppStore = create<AppState>((set, get) => {
       } catch (err) {
         set({ gitError: err instanceof Error ? err.message : String(err) });
       }
+    },
+
+    loadGlobals: async () => {
+      const workspace = get().workspace;
+      if (!workspace) return;
+      try {
+        const globals = await bridge.globalsRead(workspace.path);
+        set({ globals });
+      } catch (err) {
+        console.error('[scrapeman] loadGlobals failed:', err);
+      }
+    },
+
+    saveGlobals: async (globals: GlobalVariables) => {
+      const workspace = get().workspace;
+      if (!workspace) return;
+      await bridge.globalsWrite(workspace.path, globals);
+      set({ globals });
+    },
+
+    loadCollectionSettings: async () => {
+      const workspace = get().workspace;
+      if (!workspace) return;
+      try {
+        const collectionSettings = await bridge.collectionSettingsRead(workspace.path);
+        set({ collectionSettings });
+      } catch (err) {
+        console.error('[scrapeman] loadCollectionSettings failed:', err);
+      }
+    },
+
+    saveCollectionSettings: async (settings: CollectionSettings) => {
+      const workspace = get().workspace;
+      if (!workspace) return;
+      await bridge.collectionSettingsWrite(workspace.path, settings);
+      set({ collectionSettings: settings });
+    },
+
+    loadFolderSettings: async (folderRelPath: string) => {
+      const workspace = get().workspace;
+      if (!workspace) return { variables: [] };
+      try {
+        const settings = await bridge.folderSettingsRead(
+          workspace.path,
+          folderRelPath,
+        );
+        set((state) => ({
+          folderSettingsCache: {
+            ...state.folderSettingsCache,
+            [folderRelPath]: settings,
+          },
+        }));
+        return settings;
+      } catch (err) {
+        console.error('[scrapeman] loadFolderSettings failed:', err);
+        return { variables: [] };
+      }
+    },
+
+    saveFolderSettings: async (
+      folderRelPath: string,
+      settings: FolderSettings,
+    ) => {
+      const workspace = get().workspace;
+      if (!workspace) return;
+      await bridge.folderSettingsWrite(workspace.path, folderRelPath, settings);
+      set((state) => ({
+        folderSettingsCache: {
+          ...state.folderSettingsCache,
+          [folderRelPath]: settings,
+        },
+      }));
+    },
+
+    resolveInheritedAuth: async (requestRelPath: string) => {
+      const workspace = get().workspace;
+      if (!workspace) return null;
+      return bridge.resolveInheritedAuth(workspace.path, requestRelPath);
     },
   };
 });

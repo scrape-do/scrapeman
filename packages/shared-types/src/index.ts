@@ -251,7 +251,10 @@ export interface RecentWorkspace {
 export type WorkspaceEvent =
   | { type: 'tree-changed'; workspacePath: string }
   | { type: 'file-changed'; workspacePath: string; relPath: string }
-  | { type: 'environments-changed'; workspacePath: string };
+  | { type: 'environments-changed'; workspacePath: string }
+  | { type: 'globals-changed'; workspacePath: string }
+  | { type: 'collection-settings-changed'; workspacePath: string }
+  | { type: 'folder-settings-changed'; workspacePath: string; folderRelPath: string };
 
 export interface EnvironmentVariable {
   key: string;
@@ -267,6 +270,27 @@ export interface Environment {
 
 export interface WorkspaceState {
   activeEnvironment: string | null;
+}
+
+export interface GlobalVariables {
+  variables: EnvironmentVariable[];
+}
+
+export interface CollectionSettings {
+  variables: EnvironmentVariable[];
+  auth?: AuthConfig;
+}
+
+export interface FolderSettings {
+  variables: EnvironmentVariable[];
+  auth?: AuthConfig;
+}
+
+/** Returned by the variable resolver when auth is inherited from an ancestor. */
+export interface InheritedAuthInfo {
+  auth: AuthConfig;
+  /** Human-readable source label, e.g. "users" or ".scrapeman/collection.yaml". */
+  source: string;
 }
 
 export interface HistoryEntry {
@@ -728,6 +752,37 @@ export interface ScrapemanBridge {
   envDelete: (workspacePath: string, name: string) => Promise<void>;
   envGetActive: (workspacePath: string) => Promise<string | null>;
   envSetActive: (workspacePath: string, name: string | null) => Promise<void>;
+
+  // Global variables
+  globalsRead: (workspacePath: string) => Promise<GlobalVariables>;
+  globalsWrite: (
+    workspacePath: string,
+    globals: GlobalVariables,
+  ) => Promise<void>;
+
+  // Collection settings (variables + default auth)
+  collectionSettingsRead: (workspacePath: string) => Promise<CollectionSettings>;
+  collectionSettingsWrite: (
+    workspacePath: string,
+    settings: CollectionSettings,
+  ) => Promise<void>;
+
+  // Folder settings (variables + folder-level auth)
+  folderSettingsRead: (
+    workspacePath: string,
+    folderRelPath: string,
+  ) => Promise<FolderSettings>;
+  folderSettingsWrite: (
+    workspacePath: string,
+    folderRelPath: string,
+    settings: FolderSettings,
+  ) => Promise<void>;
+
+  // Resolve inherited auth for a specific request path.
+  resolveInheritedAuth: (
+    workspacePath: string,
+    requestRelPath: string,
+  ) => Promise<InheritedAuthInfo | null>;
 
   onWorkspaceEvent: (handler: (event: WorkspaceEvent) => void) => () => void;
 
