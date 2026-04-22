@@ -1,8 +1,8 @@
 {
   "name": "@scrapeman/desktop",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "private": true,
-  "description": "Scrapeman — Postman-grade API client for every developer",
+  "description": "Free, local-first API client with unlimited history, git-friendly .sman collections, a built-in load runner, and native Scrape.do proxy.",
   "author": {
     "name": "scrape-do",
     "email": "hello@scrape.do",
