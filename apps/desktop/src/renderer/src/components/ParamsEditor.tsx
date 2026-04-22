@@ -1,5 +1,24 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import type { ParamRow } from '../store.js';
+
+function GripIcon(): JSX.Element {
+  return (
+    <svg
+      width="10"
+      height="10"
+      viewBox="0 0 10 10"
+      fill="currentColor"
+      aria-hidden
+    >
+      <circle cx="3" cy="2" r="0.9" />
+      <circle cx="7" cy="2" r="0.9" />
+      <circle cx="3" cy="5" r="0.9" />
+      <circle cx="7" cy="5" r="0.9" />
+      <circle cx="3" cy="8" r="0.9" />
+      <circle cx="7" cy="8" r="0.9" />
+    </svg>
+  );
+}
 import { HighlightedInput } from '../ui/HighlightedInput.js';
 import { CellContextMenu } from '../ui/CellContextMenu.js';
 
@@ -9,6 +28,7 @@ export function ParamsEditor({
   onInsertAfter,
   onUpdate,
   onRemove,
+  onReorder,
 }: {
   rows: ParamRow[];
   onAdd: () => void;
@@ -16,7 +36,9 @@ export function ParamsEditor({
   onInsertAfter: (afterId: string) => string;
   onUpdate: (id: string, patch: Partial<ParamRow>) => void;
   onRemove: (id: string) => void;
+  onReorder: (fromId: string, toId: string) => void;
 }): JSX.Element {
+  const [dragId, setDragId] = useState<string | null>(null);
   // Refs map: rowId -> HTMLInputElement for key cell focus after insert.
   const keyRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
@@ -67,7 +89,8 @@ export function ParamsEditor({
 
   return (
     <div className="flex flex-col">
-      <div className="grid grid-cols-[32px_1fr_1.5fr_32px] items-center border-b border-line bg-bg-subtle px-3 text-[10px] font-semibold uppercase tracking-wider text-ink-4">
+      <div className="grid grid-cols-[16px_32px_1fr_1.5fr_32px] items-center border-b border-line bg-bg-subtle px-3 text-[10px] font-semibold uppercase tracking-wider text-ink-4">
+        <div />
         <div />
         <div className="py-2">Key</div>
         <div className="py-2">Value</div>
@@ -76,8 +99,27 @@ export function ParamsEditor({
       {rows.map((row) => (
         <div
           key={row.id}
-          className="group grid grid-cols-[32px_1fr_1.5fr_32px] items-center border-b border-line-subtle px-3 hover:bg-bg-subtle"
+          className={`group grid grid-cols-[16px_32px_1fr_1.5fr_32px] items-center border-b border-line-subtle px-3 hover:bg-bg-subtle ${
+            dragId === row.id ? 'opacity-40' : ''
+          }`}
+          onDragOver={(e) => {
+            if (dragId && dragId !== row.id) e.preventDefault();
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            if (dragId && dragId !== row.id) onReorder(dragId, row.id);
+            setDragId(null);
+          }}
         >
+          <div
+            draggable
+            onDragStart={() => setDragId(row.id)}
+            onDragEnd={() => setDragId(null)}
+            className="flex h-8 cursor-grab items-center justify-center text-ink-4 opacity-0 group-hover:opacity-100 active:cursor-grabbing"
+            title="Drag to reorder"
+          >
+            <GripIcon />
+          </div>
           <div className="flex items-center justify-center">
             <input
               type="checkbox"

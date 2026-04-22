@@ -28,11 +28,13 @@ export function RequestBuilder(): JSX.Element {
   const updateHeader = useAppStore((s) => s.updateHeader);
   const removeHeader = useAppStore((s) => s.removeHeader);
   const replaceHeaders = useAppStore((s) => s.replaceHeaders);
+  const reorderHeader = useAppStore((s) => s.reorderHeader);
   const setDisabledAutoHeaders = useAppStore((s) => s.setDisabledAutoHeaders);
   const addParam = useAppStore((s) => s.addParam);
   const insertParamAfter = useAppStore((s) => s.insertParamAfter);
   const updateParam = useAppStore((s) => s.updateParam);
   const removeParam = useAppStore((s) => s.removeParam);
+  const reorderParam = useAppStore((s) => s.reorderParam);
   const send = useAppStore((s) => s.send);
   const cancelSend = useAppStore((s) => s.cancelSend);
   const saveOrPrompt = useAppStore((s) => s.saveOrPrompt);
@@ -269,6 +271,7 @@ export function RequestBuilder(): JSX.Element {
             onInsertAfter={insertParamAfter}
             onUpdate={updateParam}
             onRemove={removeParam}
+            onReorder={reorderParam}
           />
         )}
         {tab === 'headers' && (
@@ -284,6 +287,7 @@ export function RequestBuilder(): JSX.Element {
               onUpdate={updateHeader}
               onRemove={removeHeader}
               onReplace={replaceHeaders}
+              onReorder={reorderHeader}
             />
           </div>
         )}
