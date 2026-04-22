@@ -71,6 +71,11 @@ const api: ScrapemanBridge = {
     ipcRenderer.on('load:progress', listener);
     return () => ipcRenderer.off('load:progress', listener);
   },
+  captureScreenshot: (
+    rect?: { x: number; y: number; width: number; height: number },
+  ) => ipcRenderer.invoke('screenshot:capture', rect) as Promise<string>,
+  writeClipboardImage: (dataUrl: string) =>
+    ipcRenderer.invoke('clipboard:writeImage', dataUrl) as Promise<void>,
 
   workspacePickDir: () =>
     ipcRenderer.invoke('workspace:pickDir') as Promise<string | null>,

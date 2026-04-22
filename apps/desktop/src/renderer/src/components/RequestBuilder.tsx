@@ -14,6 +14,8 @@ import { CellContextMenu } from '../ui/CellContextMenu.js';
 import { PromptDialog } from '../ui/Dialog.js';
 import { shortcutLabel } from '../hooks/useShortcuts.js';
 import { formatJson } from '../utils/json-format.js';
+import { ScreenshotModal } from './ScreenshotModal.js';
+import { bridge } from '../bridge.js';
 
 type Tab = 'params' | 'headers' | 'auth' | 'body' | 'settings' | 'code' | 'load';
 
@@ -48,7 +50,30 @@ export function RequestBuilder(): JSX.Element {
     (s) => s.tabs.find((t) => t.id === s.activeTabId)?.activePane ?? 'params',
   );
   const setTab = useAppStore((s) => s.setActivePane);
+  const setScreenshotMode = useAppStore((s) => s.setScreenshotMode);
   const [importOpen, setImportOpen] = useState(false);
+  const [screenshotUrl, setScreenshotUrl] = useState<string | null>(null);
+
+  const takeScreenshot = useCallback(async (): Promise<void> => {
+    setScreenshotMode(true);
+    // Wait two frames so the Sidebar / TabBar have fully unmounted and
+    // SplitPane re-layout has settled before we measure the capture rect.
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+    );
+    try {
+      const target = document.getElementById('screenshot-target');
+      const rect = target?.getBoundingClientRect();
+      const dataUrl = await bridge.captureScreenshot(
+        rect
+          ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+          : undefined,
+      );
+      setScreenshotUrl(dataUrl);
+    } finally {
+      setScreenshotMode(false);
+    }
+  }, [setScreenshotMode]);
 
   // Ephemeral toast message shown in the body bar. Auto-clears after 3s.
   const [bodyToast, setBodyToast] = useState<string | null>(null);
@@ -175,6 +200,17 @@ export function RequestBuilder(): JSX.Element {
           title="Import curl command"
         >
           Import curl
+        </button>
+        <button
+          onClick={() => void takeScreenshot()}
+          className="btn-ghost"
+          title="Screenshot the current request + response view"
+          aria-label="Take screenshot"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
+            <circle cx="12" cy="13" r="4" />
+          </svg>
         </button>
         <button
           onClick={() => void saveOrPrompt()}
@@ -388,6 +424,11 @@ export function RequestBuilder(): JSX.Element {
         confirmLabel="Save"
         onConfirm={(name) => void saveActiveAs('', name)}
         onClose={closeSaveDialog}
+      />
+
+      <ScreenshotModal
+        dataUrl={screenshotUrl}
+        onClose={() => setScreenshotUrl(null)}
       />
     </div>
   );

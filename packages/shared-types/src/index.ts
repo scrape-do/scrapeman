@@ -486,6 +486,11 @@ export interface ScrapemanBridge {
   loadStop: (runId: string) => Promise<void>;
   onLoadProgress: (handler: (progress: LoadProgress) => void) => () => void;
 
+  captureScreenshot: (
+    rect?: { x: number; y: number; width: number; height: number },
+  ) => Promise<string>;
+  writeClipboardImage: (dataUrl: string) => Promise<void>;
+
   // Workspace operations
   workspacePickDir: () => Promise<string | null>;
   workspaceOpen: (path: string) => Promise<WorkspaceTree>;

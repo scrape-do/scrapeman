@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, nativeImage, session, shell } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, session, shell } from 'electron';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { promises as fsp } from 'node:fs';
@@ -598,6 +598,33 @@ app.whenReady().then(() => {
   ipcMain.handle('load:stop', (_e, runId: string) => {
     const controller = loadRuns.get(runId);
     if (controller) controller.abort();
+  });
+
+  ipcMain.handle(
+    'screenshot:capture',
+    async (
+      e,
+      rect?: { x: number; y: number; width: number; height: number },
+    ): Promise<string> => {
+      const win = BrowserWindow.fromWebContents(e.sender);
+      if (!win) throw new Error('No browser window for capture');
+      // Electron rounds/clamps rects internally; capturePage without a rect
+      // grabs the whole viewport. A rect lets us trim chrome the UI hid.
+      const img = rect
+        ? await win.webContents.capturePage({
+            x: Math.max(0, Math.round(rect.x)),
+            y: Math.max(0, Math.round(rect.y)),
+            width: Math.max(1, Math.round(rect.width)),
+            height: Math.max(1, Math.round(rect.height)),
+          })
+        : await win.webContents.capturePage();
+      return img.toDataURL();
+    },
+  );
+
+  ipcMain.handle('clipboard:writeImage', (_e, dataUrl: string): void => {
+    const img = nativeImage.createFromDataURL(dataUrl);
+    clipboard.writeImage(img);
   });
 
   ipcMain.handle(

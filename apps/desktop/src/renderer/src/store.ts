@@ -169,6 +169,11 @@ interface AppState {
   openSaveDialog: () => void;
   closeSaveDialog: () => void;
 
+  // Screenshot mode: hides sidebar + tab bar so capturePage grabs only the
+  // active request/response view.
+  screenshotMode: boolean;
+  setScreenshotMode: (v: boolean) => void;
+
   // Bumped by ⌘L; RequestBuilder watches and focuses+selects the URL bar.
   focusUrlTick: number;
   focusUrl: () => void;
@@ -680,6 +685,8 @@ export const useAppStore = create<AppState>((set, get) => {
     sidebarView: 'files',
     setSidebarView: (view) => set({ sidebarView: view }),
     saveDialogOpen: false,
+    screenshotMode: false,
+    setScreenshotMode: (v) => set({ screenshotMode: v }),
     focusUrlTick: 0,
     focusSearchTick: 0,
     setActivePane: (pane) => mutateActive((tab) => ({ ...tab, activePane: pane })),

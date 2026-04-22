@@ -41,6 +41,7 @@ export function App(): JSX.Element {
   const hideResponsePanel = useAppStore(
     (s) => s.tabs.find((t) => t.id === s.activeTabId)?.activePane === 'load',
   );
+  const screenshotMode = useAppStore((s) => s.screenshotMode);
 
   const guard = useDirtyTabGuard();
 
@@ -297,16 +298,19 @@ export function App(): JSX.Element {
           minSize={12}
           maxSize={45}
           storageKey="app/sidebar"
-          firstCollapsed={!sidebarVisible}
+          firstCollapsed={!sidebarVisible || screenshotMode}
           first={
             <aside className="h-full border-r border-line bg-bg-subtle">
               <Sidebar />
             </aside>
           }
           second={
-            <div className="flex h-full flex-col overflow-hidden">
-              <UpdateBanner />
-              <TabBar guard={guard} />
+            <div
+              id="screenshot-target"
+              className="flex h-full flex-col overflow-hidden"
+            >
+              {!screenshotMode && <UpdateBanner />}
+              {!screenshotMode && <TabBar guard={guard} />}
               <div className="flex-1 overflow-hidden">
                 <SplitPane
                   orientation={splitOrientation}
