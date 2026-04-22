@@ -288,6 +288,29 @@ export interface HistoryEntry {
   durationMs: number;
   protocol: string;
   error?: SerializedExecutorError;
+  /**
+   * Present on entries produced by a load test run. When set, status and
+   * body fields reflect a run-level summary and the UI renders the entry
+   * differently (badge + aggregated metrics).
+   */
+  loadRun?: LoadRunSummary;
+}
+
+export interface LoadRunSummary {
+  total: number;
+  sent: number;
+  succeeded: number;
+  failed: number;
+  validationFailures: number;
+  elapsedMs: number;
+  rps: number;
+  latencyP50: number;
+  latencyP95: number;
+  latencyP99: number;
+  latencyMin: number;
+  latencyMax: number;
+  statusHistogram: Record<string, number>;
+  errorKinds: Record<string, number>;
 }
 
 export interface HistoryListOptions {

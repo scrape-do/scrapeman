@@ -118,7 +118,7 @@ export function ResponseViewer(): JSX.Element {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-10 items-center gap-4 border-b border-line px-4">
+      <div className="relative z-10 flex h-10 items-center gap-4 border-b border-line bg-bg-canvas px-4">
         <StatusBadge status={response.status} />
         <Metric label="Time" value={`${Math.round(durationMs)} ms`} />
         {response.timings.ttfbMs !== undefined && (
@@ -149,7 +149,7 @@ export function ResponseViewer(): JSX.Element {
         )}
       </div>
 
-      <div className="flex h-9 items-center border-b border-line px-4">
+      <div className="relative z-10 flex h-9 items-center border-b border-line bg-bg-canvas px-4">
         <TabButton active={tab === 'body'} onClick={() => setTab('body')}>
           Body
         </TabButton>
@@ -877,8 +877,8 @@ function ModeButton({
 
 function HeadersPanel({ response }: { response: ExecutedResponse }): JSX.Element {
   return (
-    <div className="flex flex-col overflow-auto">
-      <div className="grid grid-cols-[240px_1fr] border-b border-line bg-bg-subtle px-4 text-[10px] font-semibold uppercase tracking-wider text-ink-4">
+    <div className="flex h-full flex-col overflow-auto">
+      <div className="sticky top-0 z-10 grid grid-cols-[240px_1fr] border-b border-line bg-bg-subtle px-4 text-[10px] font-semibold uppercase tracking-wider text-ink-4">
         <div className="py-2">Name</div>
         <div className="py-2">Value</div>
       </div>

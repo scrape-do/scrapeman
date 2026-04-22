@@ -513,9 +513,14 @@ app.whenReady().then(() => {
       const variables = input.workspacePath
         ? await workspaceManager.resolveActiveVariables(input.workspacePath)
         : {};
+      const activeEnvironment = input.workspacePath
+        ? await workspaceManager.getActiveEnvironment(input.workspacePath)
+        : null;
+      const runStartedAt = Date.now();
 
       // Fire and forget — progress streams via webContents.send until done.
       void (async () => {
+        let lastProgress: LoadProgress | null = null;
         try {
           await runLoad(
             {
@@ -530,6 +535,7 @@ app.whenReady().then(() => {
             },
             (progress) => {
               const payload: LoadProgress = { runId, ...progress };
+              lastProgress = payload;
               for (const win of BrowserWindow.getAllWindows()) {
                 win.webContents.send('load:progress', payload);
               }
@@ -540,6 +546,48 @@ app.whenReady().then(() => {
           console.error('[scrapeman] load run failed:', err);
         } finally {
           loadRuns.delete(runId);
+          if (input.workspacePath && historyStore && lastProgress) {
+            try {
+              const p: LoadProgress = lastProgress;
+              const rps =
+                p.elapsedMs > 0 ? (p.sent * 1000) / p.elapsedMs : 0;
+              await historyStore.insert(input.workspacePath, {
+                workspacePath: input.workspacePath,
+                environmentName: activeEnvironment,
+                method: input.request.method,
+                url: input.request.url,
+                headers: input.request.headers ?? {},
+                bodyPreview: extractRequestBodyPreview(input.request),
+                bodyTruncated: false,
+                status: 0,
+                statusOk: p.failed === 0 && p.validationFailures === 0,
+                responseHeaders: [],
+                responseBodyPreview: `Load run · ${p.sent}/${p.totalTarget} sent · ${p.succeeded} ok / ${p.failed} failed / ${p.validationFailures} invalid · p50=${Math.round(p.latencyP50)}ms p95=${Math.round(p.latencyP95)}ms`,
+                responseBodyTruncated: false,
+                responseSizeBytes: 0,
+                durationMs: Date.now() - runStartedAt,
+                protocol: 'load',
+                loadRun: {
+                  total: p.totalTarget,
+                  sent: p.sent,
+                  succeeded: p.succeeded,
+                  failed: p.failed,
+                  validationFailures: p.validationFailures,
+                  elapsedMs: p.elapsedMs,
+                  rps,
+                  latencyP50: p.latencyP50,
+                  latencyP95: p.latencyP95,
+                  latencyP99: p.latencyP99,
+                  latencyMin: p.latencyMin,
+                  latencyMax: p.latencyMax,
+                  statusHistogram: p.statusHistogram,
+                  errorKinds: p.errorKinds,
+                },
+              });
+            } catch (err) {
+              console.error('[scrapeman] load history insert failed:', err);
+            }
+          }
         }
       })();
 
