@@ -491,14 +491,16 @@ function buildRequest(
   for (const row of builder.headers) {
     if (row.enabled && row.key.trim()) headers[row.key.trim()] = row.value;
   }
-  // Collect all params (key/value) regardless of enabled state.
-  // The URL field already reflects only the enabled ones via urlFromParams.
-  const allParams: Record<string, string> = {};
+  // request.url already carries the enabled params via the URL bar.
+  // Only DISABLED params need to survive serialization so they can be restored
+  // on reload. Putting enabled params here too would cause the executor to
+  // append them to the URL, producing duplicates (and breaking {{var}} resolve).
+  const disabledParams: Record<string, string> = {};
   const disabledParamKeys: string[] = [];
   for (const row of builder.params) {
-    if (!row.key.trim()) continue;
-    allParams[row.key.trim()] = row.value;
-    if (!row.enabled) disabledParamKeys.push(row.key.trim());
+    if (!row.key.trim() || row.enabled) continue;
+    disabledParams[row.key.trim()] = row.value;
+    disabledParamKeys.push(row.key.trim());
   }
 
   const request: ScrapemanRequest = {
@@ -507,8 +509,10 @@ function buildRequest(
     method: builder.method,
     url: builder.url,
   };
-  if (Object.keys(allParams).length > 0) request.params = allParams;
-  if (disabledParamKeys.length > 0) request.disabledParams = disabledParamKeys;
+  if (disabledParamKeys.length > 0) {
+    request.params = disabledParams;
+    request.disabledParams = disabledParamKeys;
+  }
   if (Object.keys(headers).length > 0) request.headers = headers;
   if (builder.bodyType !== 'none' && builder.body.trim().length > 0) {
     const contentType: 'json' | 'text' = builder.bodyType;

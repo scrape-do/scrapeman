@@ -365,7 +365,7 @@ function BodyPanel({ response }: { response: ExecutedResponse }): JSX.Element {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-1 border-b border-line px-4 py-2">
+      <div className="relative z-10 flex items-center gap-1 border-b border-line bg-bg-canvas px-4 py-2">
         <span className="mr-2 text-[10px] font-semibold uppercase tracking-wider text-ink-4">
           View
         </span>

@@ -178,8 +178,10 @@ function buildUrl(request: ScrapemanRequest): string {
   if (!request.params || Object.keys(request.params).length === 0) {
     return normalized;
   }
+  const disabled = new Set(request.disabledParams ?? []);
   const url = new URL(normalized);
   for (const [key, value] of Object.entries(request.params)) {
+    if (disabled.has(key)) continue;
     url.searchParams.append(key, value);
   }
   return url.toString();
