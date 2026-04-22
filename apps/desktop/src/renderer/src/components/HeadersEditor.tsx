@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import type { HeaderRow } from '../store.js';
 import { HighlightedInput } from '../ui/HighlightedInput.js';
 import { CellContextMenu } from '../ui/CellContextMenu.js';
-import { parseHeaderBulk, serializeHeaderBulk, type BulkHeaderRow } from '@scrapeman/http-core';
+import { parseHeaderBulk, serializeHeaderBulk, type BulkHeaderRow } from '../utils/header-bulk';
 
 export function HeadersEditor({
   rows,

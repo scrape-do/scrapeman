@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseHeaderBulk, serializeHeaderBulk } from '../src/header-bulk.js';
+import { parseHeaderBulk, serializeHeaderBulk } from './header-bulk';
 
 describe('parseHeaderBulk', () => {
   it('returns empty array for empty string', () => {
@@ -33,34 +33,34 @@ describe('parseHeaderBulk', () => {
   it('ignores blank lines between headers', () => {
     const result = parseHeaderBulk('A: 1\n\nB: 2\n\n');
     expect(result).toHaveLength(2);
-    expect(result[0]).toEqual({ key: 'A', value: '1', enabled: true });
-    expect(result[1]).toEqual({ key: 'B', value: '2', enabled: true });
+    expect(result[0]!).toEqual({ key: 'A', value: '1', enabled: true });
+    expect(result[1]!).toEqual({ key: 'B', value: '2', enabled: true });
   });
 
   it('last occurrence wins for duplicate keys', () => {
     const result = parseHeaderBulk('X-Dupe: first\nX-Dupe: second');
     expect(result).toHaveLength(1);
-    expect(result[0]).toEqual({ key: 'X-Dupe', value: 'second', enabled: true });
+    expect(result[0]!).toEqual({ key: 'X-Dupe', value: 'second', enabled: true });
   });
 
   it('preserves value that contains colons', () => {
     const result = parseHeaderBulk('Authorization: Bearer tok:en:extra');
-    expect(result[0].value).toBe('Bearer tok:en:extra');
+    expect(result[0]!.value).toBe('Bearer tok:en:extra');
   });
 
   it('trims whitespace from key and value', () => {
     const result = parseHeaderBulk('  X-Padded  :   padded value   ');
-    expect(result[0]).toEqual({ key: 'X-Padded', value: 'padded value', enabled: true });
+    expect(result[0]!).toEqual({ key: 'X-Padded', value: 'padded value', enabled: true });
   });
 
   it('supports {{var}} placeholders in values unchanged', () => {
     const result = parseHeaderBulk('Authorization: Bearer {{token}}');
-    expect(result[0].value).toBe('Bearer {{token}}');
+    expect(result[0]!.value).toBe('Bearer {{token}}');
   });
 
   it('line with no colon becomes a key with empty value', () => {
     const result = parseHeaderBulk('NoColon');
-    expect(result[0]).toEqual({ key: 'NoColon', value: '', enabled: true });
+    expect(result[0]!).toEqual({ key: 'NoColon', value: '', enabled: true });
   });
 });
 
