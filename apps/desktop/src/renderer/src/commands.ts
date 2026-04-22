@@ -122,6 +122,12 @@ export function useCommands(extras: CommandExtras): Command[] {
         section: 'View',
         run: () => extras.toggleSplit(),
       },
+      {
+        id: 'view.help',
+        title: 'Help',
+        section: 'General',
+        run: () => {},
+      },
     ],
     [
       send,
