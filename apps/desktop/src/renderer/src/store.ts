@@ -111,7 +111,7 @@ export interface ExecutionState {
 
 export type TabKind = 'file' | 'draft';
 
-export type ResponseBodyMode = 'raw' | 'pretty' | 'tree' | 'preview';
+export type ResponseBodyMode = 'raw' | 'pretty' | 'tree' | 'preview' | 'events';
 
 export interface LoadTestState {
   config: {

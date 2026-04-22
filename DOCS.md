@@ -259,6 +259,7 @@ Scrapeman auto-detects the response content type: JSON, HTML, XML, JavaScript, C
 
 | Content type | Available modes |
 |---|---|
+| SSE (`text/event-stream`) | Events (default), Raw |
 | JSON | Raw, Pretty (CodeMirror syntax-highlighted, formatted), Tree (collapsible with JSONPath copy) |
 | HTML | Raw, Pretty (CodeMirror syntax-highlighted), Preview (sandboxed iframe) |
 | XML | Raw, Pretty (CodeMirror syntax-highlighted, indented) |
@@ -271,6 +272,18 @@ Scrapeman auto-detects the response content type: JSON, HTML, XML, JavaScript, C
 Pretty mode uses CodeMirror with the one-dark theme in dark mode and a neutral light theme otherwise. Syntax coloring follows the language grammar: key/value colors for JSON, tag/attribute for XML, keyword/string for JavaScript, and selector/property for CSS.
 
 **Lazy parsing**: the default view is Raw. JSON.parse and tree rendering only happen when you switch to Pretty or Tree view.
+
+### SSE Events mode
+
+When the response is `text/event-stream` (or `ExecutedResponse.sseEvents` is populated), the viewer defaults to **Events** mode:
+
+- Each event is shown in its own block with `id`, `event`, `retry` fields in the header row and the `data` body below.
+- If `data` is valid JSON, it renders as a collapsible JSON tree (same component used in the Tree view). Otherwise it displays as monospace text.
+- **Auto-scroll**: the list follows new events as they arrive. Click "Scroll: off" to pause and browse earlier events; click again to resume.
+- **Export JSON**: saves the full `sseEvents` array as a `.json` file via the system save dialog.
+- Raw and Pretty modes remain accessible for inspecting the raw stream text.
+
+Detection fires on either `Content-Type: text/event-stream` in the response headers, or when the executor sets `sseEvents` on the response (which it does for all SSE responses regardless of the header).
 
 ### Response body search
 

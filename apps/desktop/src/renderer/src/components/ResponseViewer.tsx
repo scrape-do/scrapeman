@@ -12,17 +12,19 @@ import { bridge } from '../bridge.js';
 import { useAppStore } from '../store.js';
 import { JsonTree } from './JsonTree.js';
 import { CodeMirrorViewer, HtmlEditor } from './HtmlEditor.js';
+import { SseEventsView } from './SseEventsView.js';
 
 type Tab = 'body' | 'headers';
 
 type ContentKind = 'json' | 'html' | 'xml' | 'javascript' | 'css' | 'image' | 'pdf' | 'text' | 'binary';
-type BodyMode = 'raw' | 'pretty' | 'tree' | 'preview';
+type BodyMode = 'raw' | 'pretty' | 'tree' | 'preview' | 'events';
 
 const MODE_LABEL: Record<BodyMode, string> = {
   raw: 'Raw',
   pretty: 'Pretty',
   tree: 'Tree',
   preview: 'Preview',
+  events: 'Events',
 };
 
 // 500 KB threshold for large-body warning in Pretty HTML mode.
@@ -191,7 +193,13 @@ export function ResponseViewer(): JSX.Element {
       </div>
 
       <div className="flex-1 overflow-hidden">
-        {tab === 'body' && <BodyPanel response={response} />}
+        {tab === 'body' && (
+          <BodyPanel
+            response={response}
+            durationMs={durationMs}
+            streaming={execution.status === 'sending'}
+          />
+        )}
         {tab === 'headers' && <HeadersPanel response={response} />}
       </div>
     </div>
@@ -259,7 +267,15 @@ function computeMatches(
 
 // ─── BodyPanel ───────────────────────────────────────────────────────────────
 
-function BodyPanel({ response }: { response: ExecutedResponse }): JSX.Element {
+function BodyPanel({
+  response,
+  durationMs,
+  streaming,
+}: {
+  response: ExecutedResponse;
+  durationMs: number;
+  streaming: boolean;
+}): JSX.Element {
   const searchRaw = useAppStore((s) => {
     const active = s.tabs.find((t) => t.id === s.activeTabId);
     return active?.responseSearch ?? '';
@@ -298,12 +314,25 @@ function BodyPanel({ response }: { response: ExecutedResponse }): JSX.Element {
     [response.contentType, bytes, text],
   );
 
-  const availableModes = useMemo(() => modesForKind(kind), [kind]);
+  // SSE detection: the executor populated sseEvents (even if empty) OR the
+  // Content-Type header is text/event-stream.
+  const isSse =
+    response.sseEvents !== undefined ||
+    (response.contentType ?? '').toLowerCase().includes('event-stream');
+
+  // When SSE is detected, prepend 'events' as the first available mode.
+  const availableModes = useMemo<BodyMode[]>(() => {
+    const base = modesForKind(kind);
+    if (isSse) return ['events', ...base];
+    return base;
+  }, [kind, isSse]);
 
   // Effective mode: persisted choice if still valid, otherwise first available.
+  // For SSE responses, the first available mode is 'events' so it becomes the
+  // default unless the user already picked something else.
   const mode: BodyMode =
-    persistedMode && availableModes.includes(persistedMode)
-      ? persistedMode
+    persistedMode !== null && (availableModes as string[]).includes(persistedMode)
+      ? (persistedMode as BodyMode)
       : (availableModes[0] ?? 'raw');
 
   const setMode = (next: BodyMode): void => {
@@ -448,22 +477,31 @@ function BodyPanel({ response }: { response: ExecutedResponse }): JSX.Element {
       )}
 
       <div className="flex-1 overflow-hidden">
-        {renderBody({
-          kind,
-          mode,
-          text,
-          pretty,
-          parsed,
-          bodyBase64: response.bodyBase64,
-          mimeType,
-          search: debouncedSearch,
-          searchRaw,
-          matchAll,
-          matchByLine,
-          activeMatchIndex,
-          lines,
-          scrollToLineRef,
-        })}
+        {mode === 'events' ? (
+          <SseEventsView
+            events={response.sseEvents ?? []}
+            streaming={streaming}
+            durationMs={durationMs}
+            requestId={response.requestId}
+          />
+        ) : (
+          renderBody({
+            kind,
+            mode,
+            text,
+            pretty,
+            parsed,
+            bodyBase64: response.bodyBase64,
+            mimeType,
+            search: debouncedSearch,
+            searchRaw,
+            matchAll,
+            matchByLine,
+            activeMatchIndex,
+            lines,
+            scrollToLineRef,
+          })
+        )}
       </div>
     </div>
   );
