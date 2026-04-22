@@ -242,12 +242,55 @@ export function LoadTestPanel(): JSX.Element {
           <span className="spinner h-5 w-5" aria-hidden="true" />
           <div className="text-sm font-medium text-ink-2">Sending requests…</div>
           <div className="text-xs text-ink-3">Waiting for the first response.</div>
+          {(config?.expectStatus.trim() || config?.expectBody.trim()) && (
+            <div className="mt-2 flex flex-wrap items-center justify-center gap-2 text-[11px]">
+              <span className="font-semibold uppercase tracking-wider text-ink-4">
+                Validating
+              </span>
+              {config?.expectStatus.trim() && (
+                <span className="rounded bg-bg-muted px-2 py-0.5 font-mono text-ink-2">
+                  status&nbsp;=&nbsp;{config.expectStatus}
+                </span>
+              )}
+              {config?.expectBody.trim() && (
+                <span
+                  className="max-w-[240px] truncate rounded bg-bg-muted px-2 py-0.5 font-mono text-ink-2"
+                  title={`Response body must contain: ${config.expectBody}`}
+                >
+                  body ⊃ &quot;{config.expectBody}&quot;
+                </span>
+              )}
+            </div>
+          )}
         </div>
       )}
 
       {/* Metrics */}
       {progress && (
         <div className="border-b border-line px-5 py-4">
+          {(config?.expectStatus.trim() || config?.expectBody.trim()) && (
+            <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px]">
+              <span className="font-semibold uppercase tracking-wider text-ink-4">
+                Validating
+              </span>
+              {config?.expectStatus.trim() && (
+                <span
+                  className="rounded bg-bg-muted px-2 py-0.5 font-mono text-ink-2"
+                  title="Expected status code(s)"
+                >
+                  status&nbsp;=&nbsp;{config.expectStatus}
+                </span>
+              )}
+              {config?.expectBody.trim() && (
+                <span
+                  className="max-w-[240px] truncate rounded bg-bg-muted px-2 py-0.5 font-mono text-ink-2"
+                  title={`Response body must contain: ${config.expectBody}`}
+                >
+                  body ⊃ &quot;{config.expectBody}&quot;
+                </span>
+              )}
+            </div>
+          )}
           <div className="mb-3 h-1.5 w-full overflow-hidden rounded-full bg-bg-muted">
             <div
               className="h-full bg-accent transition-[width] duration-100"
