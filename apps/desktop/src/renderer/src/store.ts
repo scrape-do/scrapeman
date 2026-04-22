@@ -130,10 +130,20 @@ export interface Tab {
   dirty: boolean;
   execution: ExecutionState;
   loadTest: LoadTestState;
+  activePane: BuilderPane;
   responseSearch: string;
   responseMode: ResponseBodyMode | null;
   sourceHistoryId?: string;
 }
+
+export type BuilderPane =
+  | 'params'
+  | 'headers'
+  | 'auth'
+  | 'body'
+  | 'settings'
+  | 'code'
+  | 'load';
 
 interface AppState {
   workspace: WorkspaceInfo | null;
@@ -167,10 +177,10 @@ interface AppState {
   focusSearchTick: number;
   focusSearch: () => void;
 
-  // Request builder active tab — stored here so it survives component remounts
-  // when the layout changes (e.g. response panel hides for load test).
-  requestBuilderTab: 'params' | 'headers' | 'auth' | 'body' | 'settings' | 'code' | 'load';
-  setRequestBuilderTab: (tab: AppState['requestBuilderTab']) => void;
+  // Active builder pane (Params / Headers / Body / Auth / Settings / Code / Load)
+  // is stored per-tab on Tab.activePane. This setter updates the currently
+  // active request tab.
+  setActivePane: (pane: BuilderPane) => void;
 
   // Bumped by ⌘⇧F (global) or ⌘F (sidebar focused); Sidebar watches and focuses its search input.
   focusSidebarSearchTick: number;
@@ -578,6 +588,7 @@ function emptyDraftTab(): Tab {
     dirty: false,
     execution: freshExecution(),
     loadTest: freshLoadTest(),
+    activePane: 'params',
     responseSearch: '',
     responseMode: null,
   };
@@ -594,6 +605,7 @@ function fileBackedTab(relPath: string, request: ScrapemanRequest): Tab {
     dirty: false,
     execution: freshExecution(),
     loadTest: freshLoadTest(),
+    activePane: 'params',
     responseSearch: '',
     responseMode: null,
   };
@@ -660,8 +672,7 @@ export const useAppStore = create<AppState>((set, get) => {
     saveDialogOpen: false,
     focusUrlTick: 0,
     focusSearchTick: 0,
-    requestBuilderTab: 'params',
-    setRequestBuilderTab: (tab) => set({ requestBuilderTab: tab }),
+    setActivePane: (pane) => mutateActive((tab) => ({ ...tab, activePane: pane })),
     focusSidebarSearchTick: 0,
     importCurlTick: 0,
     loadTestTick: 0,
@@ -882,6 +893,7 @@ export const useAppStore = create<AppState>((set, get) => {
         dirty: false,
         execution: freshExecution(),
         loadTest: freshLoadTest(),
+    activePane: 'params',
         responseSearch: '',
         responseMode: null,
       };
@@ -1536,6 +1548,7 @@ export const useAppStore = create<AppState>((set, get) => {
         dirty: false,
         execution,
         loadTest: freshLoadTest(),
+    activePane: 'params',
         responseSearch: '',
         responseMode: null,
         sourceHistoryId: entry.id,

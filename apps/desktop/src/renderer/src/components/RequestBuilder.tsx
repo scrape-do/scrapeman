@@ -42,8 +42,10 @@ export function RequestBuilder(): JSX.Element {
   const importCurl = useAppStore((s) => s.importCurlIntoActive);
   const newTab = useAppStore((s) => s.newTab);
 
-  const tab = useAppStore((s) => s.requestBuilderTab);
-  const setTab = useAppStore((s) => s.setRequestBuilderTab);
+  const tab = useAppStore(
+    (s) => s.tabs.find((t) => t.id === s.activeTabId)?.activePane ?? 'params',
+  );
+  const setTab = useAppStore((s) => s.setActivePane);
   const [importOpen, setImportOpen] = useState(false);
 
   // Ephemeral toast message shown in the body bar. Auto-clears after 3s.

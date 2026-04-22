@@ -38,7 +38,9 @@ export function App(): JSX.Element {
   const toggleHiddenRequest = useAppStore((s) => s.toggleHiddenRequest);
   const tabs = useAppStore((s) => s.tabs);
   const isRepo = useAppStore((s) => s.gitStatus?.isRepo === true);
-  const hideResponsePanel = useAppStore((s) => s.requestBuilderTab === 'load');
+  const hideResponsePanel = useAppStore(
+    (s) => s.tabs.find((t) => t.id === s.activeTabId)?.activePane === 'load',
+  );
 
   const guard = useDirtyTabGuard();
 
