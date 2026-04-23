@@ -162,4 +162,26 @@ describe('parseCurlCommand', () => {
     );
     expect(req.proxy?.url).toBe('http://p:3128');
   });
+
+  it("handles bash ANSI-C quoting ($'...') in --data-raw", () => {
+    // Chrome's "Copy as cURL (bash)" emits $'...' when the payload contains
+    // characters that single-quotes cannot express. GraphQL clients commonly
+    // use \\u0021 for "!" (non-null marker) inside the query string.
+    const cmd =
+      "curl 'https://api.example.com/graph' " +
+      "--data-raw $'[{\"query\":\"type Foo { id: ID\\u0021 }\",\"n\":\"\\u00e7\"}]'";
+    const req = parseCurlCommand(cmd);
+    const body = req.body as { type: string; content?: string };
+    expect(body.type).toBe('json');
+    expect(body.content).toBe('[{"query":"type Foo { id: ID! }","n":"ç"}]');
+  });
+
+  it("expands ANSI-C escape sequences inside $'...' (\\n, \\t, \\xHH, \\\\)", () => {
+    const cmd =
+      "curl https://api.example.com/x " +
+      "--data-raw $'a\\tb\\nc\\x21\\\\d'";
+    const req = parseCurlCommand(cmd);
+    const body = req.body as { content?: string };
+    expect(body.content).toBe('a\tb\nc!\\d');
+  });
 });
