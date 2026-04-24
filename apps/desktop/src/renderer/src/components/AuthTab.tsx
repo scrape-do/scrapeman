@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { AuthConfig, InheritedAuthInfo, OAuth2TokenResult } from '@scrapeman/shared-types';
+import { bridge } from '../bridge.js';
 import { useAppStore } from '../store.js';
 import { HighlightedInput } from '../ui/HighlightedInput.js';
 import { CellContextMenu } from '../ui/CellContextMenu.js';
@@ -266,7 +267,7 @@ function OAuth2Section({
     if (!isAuthCode) return;
     setTokenState({ result: null, error: null, pending: true });
 
-    void window.scrapeman
+    void bridge
       .oauth2StartAuthCodeFlow({
         authUrl: auth.authUrl ?? '',
         tokenUrl: auth.tokenUrl,
@@ -290,7 +291,7 @@ function OAuth2Section({
     // Re-trigger the IPC flow with the same config; the main process will
     // use the refresh token path when it finds one in the oauth2Client cache.
     setTokenState({ ...tokenState, pending: true, error: null });
-    void window.scrapeman
+    void bridge
       .oauth2StartAuthCodeFlow({
         authUrl: auth.authUrl ?? '',
         tokenUrl: auth.tokenUrl,
@@ -317,7 +318,7 @@ function OAuth2Section({
     if (!auth.discoveryUrl) return;
     setDiscoveryLoading(true);
     setDiscoveryError(null);
-    void window.scrapeman
+    void bridge
       .oauth2Discover(auth.discoveryUrl)
       .then((doc) => {
         setAuth({

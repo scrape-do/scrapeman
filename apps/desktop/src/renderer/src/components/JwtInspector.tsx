@@ -1,6 +1,32 @@
 import { useEffect, useRef, useState } from 'react';
 import type { JwtDecoded } from '@scrapeman/shared-types';
-import { ChevronDown, ChevronRight, Clock } from 'lucide-react';
+import { bridge } from '../bridge.js';
+
+function ChevronDown(props: { className?: string; size?: number }): JSX.Element {
+  const s = props.size ?? 14;
+  return (
+    <svg className={props.className} width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  );
+}
+function ChevronRight(props: { className?: string; size?: number }): JSX.Element {
+  const s = props.size ?? 14;
+  return (
+    <svg className={props.className} width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <polyline points="9 6 15 12 9 18" />
+    </svg>
+  );
+}
+function Clock(props: { className?: string; size?: number }): JSX.Element {
+  const s = props.size ?? 12;
+  return (
+    <svg className={props.className} width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="12" cy="12" r="10" />
+      <polyline points="12 6 12 12 16 14" />
+    </svg>
+  );
+}
 
 interface Props {
   label: string;
@@ -20,7 +46,7 @@ export function JwtInspector({ label, token }: Props): JSX.Element | null {
       setDecoded(null);
       return;
     }
-    void window.scrapeman.oauth2DecodeJwt(token).then((result) => {
+    void bridge.oauth2DecodeJwt(token).then((result) => {
       setDecoded(result);
     });
   }, [token]);
