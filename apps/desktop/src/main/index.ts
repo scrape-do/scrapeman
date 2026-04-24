@@ -15,6 +15,9 @@ import {
   HistoryStore,
   generateCode,
   OAuth2Client,
+  runAuthCodeFlow,
+  decodeJwt,
+  fetchOidcDiscovery,
   composeScrapeDoRequest,
   WorkspaceCookieJar,
   runLoad,
@@ -37,13 +40,16 @@ import type {
   HistoryListOptions,
   ImportCurlResult,
   InheritedAuthInfo,
+  JwtDecoded,
   LoadProgress,
   LoadRunStartInput,
+  OAuth2DiscoveryResult,
+  OAuth2TokenResult,
+  OpenApiFetchResult,
+  OpenApiParseResult,
   RunnerExportFormat,
   RunnerResult,
   RunnerStartInput,
-  OpenApiFetchResult,
-  OpenApiParseResult,
   ScrapemanRequest,
 } from '@scrapeman/shared-types';
 import { WorkspaceManager } from './workspace-manager.js';
@@ -1107,6 +1113,80 @@ app.whenReady().then(() => {
       requestRelPath: string,
     ): Promise<InheritedAuthInfo | null> =>
       workspaceManager.resolveInheritedAuth(workspacePath, requestRelPath),
+  );
+
+  // OAuth2 IPC handlers
+  ipcMain.handle(
+    'oauth2:startAuthCodeFlow',
+    async (
+      _e,
+      params: {
+        authUrl: string;
+        tokenUrl: string;
+        clientId: string;
+        clientSecret?: string;
+        scope?: string;
+        usePkce: boolean;
+        audience?: string;
+      },
+    ): Promise<OAuth2TokenResult> => {
+      const token = await runAuthCodeFlow({
+        authUrl: params.authUrl,
+        tokenUrl: params.tokenUrl,
+        clientId: params.clientId,
+        ...(params.clientSecret ? { clientSecret: params.clientSecret } : {}),
+        ...(params.scope ? { scope: params.scope } : {}),
+        usePkce: params.usePkce,
+        openBrowser: (url) => {
+          void shell.openExternal(url);
+        },
+      });
+      // Store in the shared oauth2 client so subsequent sends use the cache.
+      oauth2Client.storeToken(
+        {
+          tokenUrl: params.tokenUrl,
+          clientId: params.clientId,
+          ...(params.scope ? { scope: params.scope } : {}),
+          ...(params.audience ? { audience: params.audience } : {}),
+        },
+        token,
+      );
+      return {
+        accessToken: token.accessToken,
+        tokenType: token.tokenType,
+        expiresAt: token.expiresAt,
+        ...(token.scope ? { scope: token.scope } : {}),
+        ...(token.idToken ? { idToken: token.idToken } : {}),
+        ...(token.refreshToken ? { refreshToken: token.refreshToken } : {}),
+      };
+    },
+  );
+
+  ipcMain.handle(
+    'oauth2:discover',
+    async (_e, discoveryUrl: string): Promise<OAuth2DiscoveryResult> => {
+      const doc = await fetchOidcDiscovery(discoveryUrl);
+      return {
+        tokenUrl: doc.tokenUrl,
+        authUrl: doc.authUrl,
+        ...(doc.scopesSupported ? { scopesSupported: doc.scopesSupported } : {}),
+        ...(doc.endSessionEndpoint ? { endSessionEndpoint: doc.endSessionEndpoint } : {}),
+      };
+    },
+  );
+
+  ipcMain.handle(
+    'oauth2:decodeJwt',
+    (_e, token: string): JwtDecoded | null => {
+      const result = decodeJwt(token);
+      if (!result) return null;
+      return {
+        header: result.header,
+        payload: result.payload,
+        rawHeader: result.rawHeader,
+        rawPayload: result.rawPayload,
+      };
+    },
   );
 
   const mainWindow = createWindow();

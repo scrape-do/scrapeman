@@ -1,4 +1,9 @@
-import type { AuthConfig, ScrapemanRequest } from '@scrapeman/shared-types';
+import type {
+  AuthConfig,
+  BodyConfig,
+  OAuth2TokenPlacement,
+  ScrapemanRequest,
+} from '@scrapeman/shared-types';
 import { signAwsSigV4 } from './sigv4.js';
 import { OAuth2Client } from './oauth2.js';
 
@@ -31,6 +36,7 @@ export async function applyAuth(
   const headers = { ...(request.headers ?? {}) };
   const params = { ...(request.params ?? {}) };
   const url = request.url;
+  let body: BodyConfig | undefined = request.body;
 
   switch (auth.type) {
     case 'basic': {
@@ -54,21 +60,48 @@ export async function applyAuth(
       break;
     }
     case 'oauth2': {
-      // Only client_credentials is wired here. authorizationCode (T043) must
-      // be handled upstream by an interactive flow and then re-enter this
-      // function as bearer.
-      if (auth.flow !== 'clientCredentials') {
-        break;
+      // authorizationCode / authorizationCodePkce flows are handled upstream
+      // by an interactive flow (IPC channel oauth2:startAuthCodeFlow). Tokens
+      // are stored in the OAuth2Client cache via storeToken(). We read from
+      // that cache here via getCachedToken() so requests go out with a token
+      // automatically once the user has authorised at least once.
+      if (auth.flow === 'clientCredentials') {
+        const client = options.oauth2Client ?? defaultOAuth2Client;
+        const token = await client.getToken({
+          tokenUrl: auth.tokenUrl,
+          clientId: auth.clientId,
+          clientSecret: auth.clientSecret,
+          ...(auth.scope ? { scope: auth.scope } : {}),
+          ...(auth.audience ? { audience: auth.audience } : {}),
+        });
+        body = applyTokenPlacement(
+          token.accessToken,
+          token.tokenType,
+          auth.accessTokenPlacement,
+          headers,
+          params,
+          request,
+        );
+      } else {
+        const client = options.oauth2Client ?? defaultOAuth2Client;
+        const cached = client.getCachedToken({
+          tokenUrl: auth.tokenUrl,
+          clientId: auth.clientId,
+          ...(auth.scope ? { scope: auth.scope } : {}),
+          ...(auth.audience ? { audience: auth.audience } : {}),
+        });
+        if (cached) {
+          body = applyTokenPlacement(
+            cached.accessToken,
+            cached.tokenType,
+            auth.accessTokenPlacement,
+            headers,
+            params,
+            request,
+          );
+        }
+        // No cached token: request goes out without auth. User must "Get token" first.
       }
-      const client = options.oauth2Client ?? defaultOAuth2Client;
-      const token = await client.getToken({
-        tokenUrl: auth.tokenUrl,
-        clientId: auth.clientId,
-        clientSecret: auth.clientSecret,
-        ...(auth.scope ? { scope: auth.scope } : {}),
-        ...(auth.audience ? { audience: auth.audience } : {}),
-      });
-      headers['Authorization'] = `Bearer ${token.accessToken}`;
       break;
     }
     case 'awsSigV4': {
@@ -91,7 +124,53 @@ export async function applyAuth(
   const out: ScrapemanRequest = { ...request, url };
   if (Object.keys(headers).length > 0) out.headers = headers;
   if (Object.keys(params).length > 0) out.params = params;
+  if (body !== request.body && body !== undefined) out.body = body;
   return out;
+}
+
+/**
+ * Apply the OAuth2 access token to headers/params per the placement config.
+ * Returns a new BodyConfig when `in: 'body'` placement is used and the body
+ * needs updating, otherwise returns the original body unchanged.
+ * Never mutates the incoming request or its body.
+ */
+function applyTokenPlacement(
+  accessToken: string,
+  tokenType: string,
+  placement: OAuth2TokenPlacement | undefined,
+  headers: Record<string, string>,
+  params: Record<string, string>,
+  request: ScrapemanRequest,
+): BodyConfig | undefined {
+  if (!placement || placement.in === 'header') {
+    const headerName =
+      placement?.in === 'header' && placement.name ? placement.name : 'Authorization';
+    const prefix =
+      placement?.in === 'header' && placement.prefix !== undefined
+        ? placement.prefix
+        : tokenType;
+    headers[headerName] = prefix ? `${prefix} ${accessToken}` : accessToken;
+    return request.body;
+  }
+
+  if (placement.in === 'query') {
+    params[placement.name] = accessToken;
+    return request.body;
+  }
+
+  // placement.in === 'body'
+  const method = request.method.toUpperCase();
+  const allowsBody = method === 'POST' || method === 'PUT' || method === 'PATCH';
+  if (allowsBody && request.body?.type === 'formUrlEncoded') {
+    // Build a new body object with the token added — never mutate.
+    return {
+      type: 'formUrlEncoded',
+      fields: { ...request.body.fields, [placement.name]: accessToken },
+    };
+  }
+  // Fall back to Authorization header.
+  headers['Authorization'] = `${tokenType} ${accessToken}`;
+  return request.body;
 }
 
 export function needsTokenAcquisition(auth: AuthConfig): boolean {

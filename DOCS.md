@@ -237,14 +237,63 @@ Provide a `token` string. Sent as `Authorization: Bearer <token>`. The token can
 
 Provide `key`, `value`, and `placement` (header or query). If placement is `header`, the key-value pair is injected as a request header. If `query`, it is appended to the URL as a query parameter.
 
-### OAuth 2.0 Client Credentials
+### OAuth 2.0
 
-Configure:
-- **Token URL** — the authorization server endpoint
-- **Client ID** and **Client Secret**
-- **Scope** (optional)
+Three flows are supported. Select from the Flow dropdown in the Auth tab.
 
-Scrapeman fetches the token automatically before sending the request. Tokens are cached until they expire, then refreshed in the background. Concurrent requests share one in-flight token fetch (no hammering the token endpoint).
+**Client credentials**
+
+Configure: Token URL, Client ID, Client Secret, Scope (optional), Audience (optional).
+
+Scrapeman fetches the token automatically before sending the request. Tokens are cached until expiry and then refreshed. Concurrent requests share one in-flight token fetch.
+
+**Authorization code / Authorization code + PKCE**
+
+Configure: Token URL, Auth URL, Client ID, Client Secret (optional for PKCE flows), Scope, Audience (optional).
+
+Click "Get token" to start the flow. Scrapeman opens your default browser to the auth URL, spins up a local loopback server on a random port, and waits for the redirect callback. Once the code arrives, Scrapeman exchanges it for a token and caches the result. The token is then applied automatically to all subsequent requests.
+
+Authorization code + PKCE generates a code_verifier / code_challenge pair using S256. No client secret is required for pure PKCE flows.
+
+The redirect URI is always `http://127.0.0.1:<port>/callback` (ephemeral port). Register this pattern in your authorization server if it requires an exact match.
+
+**OIDC discovery**
+
+Set the Discovery URL field to a `.well-known/openid-configuration` endpoint and click "Load". Scrapeman reads the document and auto-fills Token URL, Auth URL, and the supported scopes list.
+
+**Token placement**
+
+By default the access token is sent as `Authorization: Bearer <token>`. The `accessTokenPlacement` field in the `.sman` file accepts three variants:
+
+```yaml
+auth:
+  type: oauth2
+  # Default — sends as Authorization: Bearer <token>
+  accessTokenPlacement:
+    in: header
+    name: Authorization
+    prefix: Bearer
+
+  # Custom header name / prefix
+  accessTokenPlacement:
+    in: header
+    name: X-Auth-Token
+    prefix: ""
+
+  # Query parameter
+  accessTokenPlacement:
+    in: query
+    name: access_token
+
+  # Form body (POST/PUT/PATCH with formUrlEncoded body only)
+  accessTokenPlacement:
+    in: body
+    name: access_token
+```
+
+**Token inspector**
+
+When the token response contains an `access_token` or `id_token` that is a JWT, Scrapeman shows a collapsible Token Inspector panel below the token management buttons. The inspector decodes the header and payload and shows a live countdown to the `exp` claim. No signature is verified — the panel is for display only.
 
 ### AWS Signature v4
 

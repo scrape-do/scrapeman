@@ -113,6 +113,8 @@ function authKeyOrder(auth: AuthConfig): string[] {
         'scope',
         'audience',
         'usePkce',
+        'discoveryUrl',
+        'accessTokenPlacement',
       ];
     case 'awsSigV4':
       return [

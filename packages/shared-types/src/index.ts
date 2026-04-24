@@ -32,6 +32,11 @@ export interface RequestMeta {
 
 export type KeyValue = Record<string, string>;
 
+export type OAuth2TokenPlacement =
+  | { in: 'header'; name?: string; prefix?: string }
+  | { in: 'query'; name: string }
+  | { in: 'body'; name: string };
+
 export type AuthConfig =
   | { type: 'none' }
   | { type: 'basic'; username: string; password: string }
@@ -39,14 +44,22 @@ export type AuthConfig =
   | { type: 'apiKey'; key: string; value: string; in: 'header' | 'query' }
   | {
       type: 'oauth2';
-      flow: 'clientCredentials' | 'authorizationCode';
+      flow: 'clientCredentials' | 'authorizationCode' | 'authorizationCodePkce';
       tokenUrl: string;
       authUrl?: string;
       clientId: string;
       clientSecret: string;
       scope?: string;
       audience?: string;
+      /** Only relevant for authorizationCode / authorizationCodePkce flows. */
       usePkce?: boolean;
+      /** OIDC discovery endpoint. When set, tokenUrl/authUrl can be auto-filled. */
+      discoveryUrl?: string;
+      /**
+       * Where to attach the access token. Defaults to Authorization header.
+       * `in: 'body'` is only applied on POST / PUT / PATCH with a form body.
+       */
+      accessTokenPlacement?: OAuth2TokenPlacement;
     }
   | {
       type: 'awsSigV4';
@@ -839,4 +852,55 @@ export interface ScrapemanBridge {
 
   // File picker (used by runner CSV upload)
   pickFile: (options: { filters?: Array<{ name: string; extensions: string[] }> }) => Promise<string | null>;
+
+  // OAuth2
+  /**
+   * Kick off the authorization_code flow. Opens the user's browser, spins up
+   * a loopback callback server, exchanges the code, and returns the cached token.
+   * Rejects with a string error message on timeout / state mismatch / server error.
+   */
+  oauth2StartAuthCodeFlow: (params: {
+    authUrl: string;
+    tokenUrl: string;
+    clientId: string;
+    clientSecret?: string;
+    scope?: string;
+    usePkce: boolean;
+    /** For display / cache key only — not sent as a param (redirect_uri is auto). */
+    audience?: string;
+  }) => Promise<OAuth2TokenResult>;
+  /**
+   * Fetch and return the OIDC discovery document from `discoveryUrl`.
+   * Returns only the fields Scrapeman uses.
+   */
+  oauth2Discover: (discoveryUrl: string) => Promise<OAuth2DiscoveryResult>;
+  /**
+   * Decode a JWT (header + payload). Display only — no signature verification.
+   * Returns null when `token` is not a syntactically valid JWT.
+   */
+  oauth2DecodeJwt: (token: string) => Promise<JwtDecoded | null>;
+}
+
+export interface OAuth2TokenResult {
+  accessToken: string;
+  tokenType: string;
+  expiresAt: number;
+  scope?: string;
+  idToken?: string;
+  refreshToken?: string;
+}
+
+export interface OAuth2DiscoveryResult {
+  tokenUrl: string;
+  authUrl: string;
+  scopesSupported?: string[];
+  endSessionEndpoint?: string;
+}
+
+export interface JwtDecoded {
+  header: Record<string, unknown>;
+  payload: Record<string, unknown>;
+  /** Raw segments preserved for display. */
+  rawHeader: string;
+  rawPayload: string;
 }

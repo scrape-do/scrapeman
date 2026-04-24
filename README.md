@@ -80,9 +80,13 @@ The full marketing site lives at **[scrapeman.app](https://scrapeman.app)** and 
 
 ### Auth helpers
 - None / Basic / Bearer / API Key (header or query)
-- OAuth 2.0 client credentials (with token cache + auto-refresh)
+- OAuth 2.0 client credentials — token cache, auto-refresh, concurrent-dedup
+- OAuth 2.0 authorization code — browser-based flow with local loopback callback, state validation
+- OAuth 2.0 authorization code + PKCE — S256 code_challenge, no client secret required
+- OIDC discovery — loads Token URL + Auth URL from `.well-known/openid-configuration`
+- Access-token placement: Authorization header (default), query param, or form body field
+- JWT token inspector — decodes header + payload, live `exp` countdown (display only, no signature check)
 - AWS Signature v4 (via `aws4`)
-- OAuth 2.0 authorization code flow — planned
 
 ### Environment variables and scoped variables
 - Per-workspace environments stored as `.env.yaml` files under `.scrapeman/environments/`

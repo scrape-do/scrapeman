@@ -16,8 +16,11 @@ import type {
   HistoryListOptions,
   ImportCurlResult,
   InheritedAuthInfo,
+  JwtDecoded,
   LoadProgress,
   LoadRunStartInput,
+  OAuth2DiscoveryResult,
+  OAuth2TokenResult,
   OpenApiFetchResult,
   OpenApiParseResult,
   RecentWorkspace,
@@ -345,6 +348,23 @@ const api: ScrapemanBridge = {
 
   pickFile: (options: { filters?: Array<{ name: string; extensions: string[] }> }) =>
     ipcRenderer.invoke('app:pickFile', options) as Promise<string | null>,
+
+  oauth2StartAuthCodeFlow: (params: {
+    authUrl: string;
+    tokenUrl: string;
+    clientId: string;
+    clientSecret?: string;
+    scope?: string;
+    usePkce: boolean;
+    audience?: string;
+  }) =>
+    ipcRenderer.invoke('oauth2:startAuthCodeFlow', params) as Promise<OAuth2TokenResult>,
+
+  oauth2Discover: (discoveryUrl: string) =>
+    ipcRenderer.invoke('oauth2:discover', discoveryUrl) as Promise<OAuth2DiscoveryResult>,
+
+  oauth2DecodeJwt: (token: string) =>
+    ipcRenderer.invoke('oauth2:decodeJwt', token) as Promise<JwtDecoded | null>,
 };
 
 contextBridge.exposeInMainWorld('scrapeman', api);
