@@ -162,7 +162,7 @@ export class WorkspaceFs {
       method: 'GET',
       url: 'https://example.com',
     };
-    const { yaml } = serializeRequest(stub, safeName);
+    const { yaml } = serializeRequest(stub, leafName);
     await atomicWrite(absPath, yaml);
     return this.toRel(absPath);
   }
