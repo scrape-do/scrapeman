@@ -420,6 +420,33 @@ Search within the response body with highlight, previous/next navigation. The se
 
 Every response shows: HTTP status, TTFB (time to first byte), download time, body size, and protocol (HTTP/1.1 or h2).
 
+### Dev Tools tab
+
+The Dev Tools tab appears next to Body and Headers after every response. It shows:
+
+**Timing waterfall** — horizontal bar chart with one segment per measured phase: DNS lookup, TCP connect, TLS handshake, time to first byte, and download. Each segment is proportional to its share of total time and labelled with its exact millisecond value.
+
+**Request metadata**
+
+| Field | Description |
+|---|---|
+| URL | The final URL after variable resolution, Scrape.do composition, and auth |
+| HTTP version | Protocol used for the response (http/1.1 or h2) |
+| Remote address | IP and port of the server that answered |
+| Compression | Wire size from Content-Length vs decoded size, e.g. `12.4 KB → 48.1 KB (3.9× decoded)`. Shown only when Content-Length is present and differs from decoded size. |
+
+**Sent headers** — all headers actually sent on the wire after auto-header merge and auth injection.
+
+**Redirect chain** — each 3xx hop before the final response, shown as a vertical list:
+```
+301  https://example.com/old  →  /new
+302  https://example.com/new  →  /final
+```
+
+**TLS certificate** — subject CN, issuer CN, validity dates, and SHA-256 fingerprint. Days-remaining warning appears when fewer than 30 days remain. Shown only for HTTPS responses. Displays "TLS info unavailable" when the certificate could not be read (e.g. resumed TLS session).
+
+**Script console** — output from pre/post-request scripts (issue #20, not yet shipped). Shows "No script output" when no script was attached or the script produced no output.
+
 ---
 
 ## Code Export

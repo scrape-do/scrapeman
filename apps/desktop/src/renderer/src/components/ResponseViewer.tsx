@@ -13,8 +13,9 @@ import { useAppStore } from '../store.js';
 import { JsonTree } from './JsonTree.js';
 import { CodeMirrorViewer, HtmlEditor } from './HtmlEditor.js';
 import { SseEventsView } from './SseEventsView.js';
+import { DevToolsPanel } from './DevToolsPanel.js';
 
-type Tab = 'body' | 'headers';
+type Tab = 'body' | 'headers' | 'devtools';
 
 type ContentKind = 'json' | 'html' | 'xml' | 'javascript' | 'css' | 'image' | 'pdf' | 'text' | 'binary';
 type BodyMode = 'raw' | 'pretty' | 'tree' | 'preview' | 'events';
@@ -204,6 +205,9 @@ export function ResponseViewer(): JSX.Element {
             {response.headers.length}
           </span>
         </TabButton>
+        <TabButton active={tab === 'devtools'} onClick={() => setTab('devtools')}>
+          Dev Tools
+        </TabButton>
       </div>
 
       <div className="flex-1 overflow-hidden">
@@ -215,6 +219,7 @@ export function ResponseViewer(): JSX.Element {
           />
         )}
         {tab === 'headers' && <HeadersPanel response={response} />}
+        {tab === 'devtools' && <DevToolsPanel response={response} />}
       </div>
     </div>
   );

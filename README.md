@@ -69,6 +69,7 @@ The full marketing site lives at **[scrapeman.app](https://scrapeman.app)** and 
 - Proxy: HTTP / HTTPS with basic auth (SOCKS5 planned)
 - Timeouts: connect / read / total with AbortSignal cancellation
 - 200 MB response body cap, TTFB + download latency measurement
+- Dev Tools tab: timing waterfall, sent URL/headers, redirect chain, TLS cert info, remote IP
 
 ### Request building
 - URL bar with `{{var}}` syntax highlighting (overlay technique)

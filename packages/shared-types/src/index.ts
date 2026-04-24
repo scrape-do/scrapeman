@@ -200,6 +200,31 @@ export interface SseEvent {
   retry?: number;
 }
 
+// A single hop in a redirect chain.
+export interface RedirectHop {
+  url: string;
+  status: number;
+  location: string;
+}
+
+// TLS certificate info extracted from the peer certificate.
+export interface TlsCertInfo {
+  subjectCN: string;
+  issuerCN: string;
+  validFrom: string;
+  validTo: string;
+  fingerprint256: string;
+}
+
+// A single entry emitted by a pre/post-request script (issue #20 scaffold).
+// Scripts are not shipped yet; the console section in DevToolsPanel reads
+// this array and renders "No script output" when it is empty or absent.
+export interface ScriptConsoleEntry {
+  level: 'log' | 'info' | 'warn' | 'error';
+  message: string;
+  timestamp: string;
+}
+
 export interface ExecutedResponse {
   status: number;
   statusText: string;
@@ -216,6 +241,9 @@ export interface ExecutedResponse {
   // of the UI-truncated slice). This is the correct value for the "Size"
   // metric in the UI.
   sizeBytes: number;
+  // Wire size of the response body as reported by Content-Length (i.e., the
+  // compressed size when gzip/br is in use). Absent when the header is missing.
+  compressedSize?: number;
   contentType?: string;
   timings: ResponseTimings;
   sentAt: string;
@@ -233,6 +261,23 @@ export interface ExecutedResponse {
   sseEvents?: SseEvent[];
   // Populated by the executor when the response matches an anti-bot pattern.
   antiBotSignal?: AntiBotSignal;
+
+  // Dev Tools fields — populated by the executor when available.
+  // The final URL after variable resolution, scrape-do composition, and auth.
+  sentUrl?: string;
+  // The actual headers sent on the wire (after auto-headers merge and auth injection).
+  sentHeaders?: Array<[string, string]>;
+  // Each redirect hop that occurred before the final response.
+  redirectChain?: RedirectHop[];
+  // TLS peer certificate info. Absent for plain HTTP or when unavailable.
+  tlsCert?: TlsCertInfo;
+  // Remote host IP and port from the TCP socket.
+  remoteAddress?: string;
+  remotePort?: number;
+  // Script console output. Empty array means the script ran but produced no
+  // output. Absent when no script was attached (scripts are not shipped yet —
+  // see issue #20). DevToolsPanel renders "No script output" in both cases.
+  scriptConsole?: ScriptConsoleEntry[];
 }
 
 export type ExecutorErrorKind =

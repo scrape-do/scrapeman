@@ -12,11 +12,15 @@ import {
   inflateRawSync,
   inflateSync,
 } from 'node:zlib';
+import diagnosticsChannel from 'node:diagnostics_channel';
+import type { TLSSocket } from 'node:tls';
 import type {
   BodyConfig,
   ExecutedResponse,
-  ScrapemanRequest,
+  RedirectHop,
+  TlsCertInfo,
 } from '@scrapeman/shared-types';
+import type { ScrapemanRequest } from '@scrapeman/shared-types';
 import type { RequestExecutor } from '../executor.js';
 import { ExecutorError } from '../errors.js';
 import { buildAutoHeaders, mergeHeaders } from '../auto-headers.js';
@@ -81,6 +85,11 @@ export class UndiciExecutor implements RequestExecutor {
     const maxRedirects = requestWithProxy.options?.redirect?.maxCount ?? DEFAULT_MAX_REDIRECTS;
     const requestedHttpVersion = requestWithProxy.options?.httpVersion ?? 'auto';
 
+    // Flat list of headers actually sent on the wire, for Dev Tools.
+    const sentHeaders: Array<[string, string]> = flattenHeaders(
+      headers as Record<string, string | string[] | undefined>,
+    );
+
     const timeoutController = new AbortController();
     let timedOut = false;
     const timeoutId = setTimeout(() => {
@@ -92,9 +101,70 @@ export class UndiciExecutor implements RequestExecutor {
     const sentAt = new Date().toISOString();
     const startedNs = process.hrtime.bigint();
 
+    // Capture socket info via diagnostics_channel. The `undici:client:connected`
+    // event fires when the TCP/TLS socket is ready. We subscribe once before
+    // the request so we collect only the socket for this particular call.
+    let remoteAddress: string | undefined;
+    let remotePort: number | undefined;
+    let tlsCert: TlsCertInfo | undefined;
+
+    const socketListener = (evt: unknown): void => {
+      // Guard against unexpected shapes — diagnostics_channel is untyped.
+      if (
+        evt === null ||
+        typeof evt !== 'object' ||
+        !('socket' in evt) ||
+        evt.socket === null ||
+        typeof evt.socket !== 'object'
+      ) {
+        return;
+      }
+      const sock = evt.socket as Record<string, unknown>;
+      if (typeof sock.remoteAddress === 'string') {
+        remoteAddress = sock.remoteAddress;
+      }
+      if (typeof sock.remotePort === 'number') {
+        remotePort = sock.remotePort;
+      }
+      // Attempt to extract TLS peer certificate. `getPeerCertificate` is
+      // present only on TLS sockets; on plain TCP sockets it is absent.
+      if (typeof (sock as { getPeerCertificate?: unknown }).getPeerCertificate === 'function') {
+        try {
+          const cert = (sock as unknown as TLSSocket).getPeerCertificate(false);
+          if (cert && cert.subject) {
+            tlsCert = {
+              subjectCN: (cert.subject as Record<string, string>).CN ?? '',
+              issuerCN:
+                cert.issuer !== undefined
+                  ? ((cert.issuer as Record<string, string>).CN ?? '')
+                  : '',
+              validFrom: cert.valid_from ?? '',
+              validTo: cert.valid_to ?? '',
+              fingerprint256: cert.fingerprint256 ?? '',
+            };
+          }
+        } catch {
+          // getPeerCertificate can throw on resumed sessions — degrade silently.
+        }
+      }
+    };
+
+    // `diagnostics_channel.subscribe` exists in Node ≥18.
+    const connectedChannel = diagnosticsChannel.channel('undici:client:connected');
+    connectedChannel.subscribe(socketListener);
+
+    // Redirect chain tracker. We wrap the redirect interceptor with our own
+    // shim that records each hop before following it. The redirect interceptor
+    // calls `onResponseStart` for every intermediate response; we intercept
+    // that to extract the status and Location header.
+    const redirectChain: RedirectHop[] = [];
+
     try {
       const baseDispatcher = buildBaseDispatcher(requestWithProxy, totalTimeout);
       const dispatcher = baseDispatcher.compose(
+        // Our redirect tracker runs inside the redirect interceptor so that
+        // each hop is captured before the redirect is followed.
+        createRedirectTracker(redirectChain),
         interceptors.redirect({
           maxRedirections: followRedirects ? maxRedirects : 0,
         }),
@@ -117,6 +187,12 @@ export class UndiciExecutor implements RequestExecutor {
       const isSse =
         contentType !== undefined &&
         contentType.toLowerCase().trimStart().startsWith('text/event-stream');
+
+      // Wire size: Content-Length gives the compressed byte count on the wire.
+      // Absent when chunked or when the header is missing entirely.
+      const contentLengthStr = pickHeader(headerPairs, 'content-length');
+      const compressedSize =
+        contentLengthStr !== undefined ? parseInt(contentLengthStr, 10) : undefined;
 
       let bytes: Uint8Array;
       let truncated = false;
@@ -176,12 +252,21 @@ export class UndiciExecutor implements RequestExecutor {
         sizeBytes: bytes.byteLength,
         fullBodyBytes: bytes,
         ...(contentType !== undefined ? { contentType } : {}),
+        ...(compressedSize !== undefined && !Number.isNaN(compressedSize)
+          ? { compressedSize }
+          : {}),
         timings: {
           ttfbMs: round2(ttfbMs),
           downloadMs: round2(downloadMs),
           totalMs: round2(totalMs),
         },
         sentAt,
+        sentUrl: url,
+        sentHeaders,
+        ...(redirectChain.length > 0 ? { redirectChain } : {}),
+        ...(remoteAddress !== undefined ? { remoteAddress } : {}),
+        ...(remotePort !== undefined ? { remotePort } : {}),
+        ...(tlsCert !== undefined ? { tlsCert } : {}),
         ...(sseEvents !== undefined ? { sseEvents } : {}),
         ...(antiBotSignal !== null ? { antiBotSignal } : {}),
       };
@@ -192,6 +277,7 @@ export class UndiciExecutor implements RequestExecutor {
       throw toExecutorError(err);
     } finally {
       clearTimeout(timeoutId);
+      connectedChannel.unsubscribe(socketListener);
     }
   }
 }
@@ -225,6 +311,82 @@ function resolveRotatingProxy(
     ...request,
     proxy: { ...request.proxy, url: chosenUrl },
   };
+}
+
+/**
+ * Returns a dispatcher interceptor that appends one `RedirectHop` to `chain`
+ * for every intermediate redirect response (3xx with Location).
+ *
+ * The interceptor sits *outside* the built-in redirect interceptor in the
+ * compose chain so its `onResponseStart` fires for each 3xx before undici
+ * internally re-dispatches to the next hop.
+ */
+function createRedirectTracker(chain: RedirectHop[]): Dispatcher.DispatcherComposeInterceptor {
+  return (dispatch) =>
+    (opts, handler): boolean => {
+      // Build the handler with only the properties that are present on the
+      // original handler. exactOptionalPropertyTypes requires we do not set
+      // optional fields to `undefined`.
+      const trackerHandler: Dispatcher.DispatchHandler = {
+        onResponseStart: (
+          controller: Dispatcher.DispatchController,
+          statusCode: number,
+          // IncomingHttpHeaders is a Record<string, string | string[] | undefined>
+          headers: Record<string, string | string[] | undefined>,
+          statusMessage?: string,
+        ) => {
+          if (statusCode >= 300 && statusCode < 400) {
+            const raw = headers['location'];
+            const location = Array.isArray(raw) ? (raw[0] ?? '') : (raw ?? '');
+            if (location) {
+              chain.push({
+                url: opts.origin
+                  ? `${opts.origin.toString()}${opts.path ?? ''}`
+                  : (opts.path ?? ''),
+                status: statusCode,
+                location,
+              });
+            }
+          }
+          handler.onResponseStart?.(controller, statusCode, headers, statusMessage);
+        },
+        // Forward all other hooks when the original handler has them.
+        ...(handler.onRequestStart !== undefined
+          ? { onRequestStart: handler.onRequestStart.bind(handler) }
+          : {}),
+        ...(handler.onRequestUpgrade !== undefined
+          ? { onRequestUpgrade: handler.onRequestUpgrade.bind(handler) }
+          : {}),
+        ...(handler.onResponseData !== undefined
+          ? { onResponseData: handler.onResponseData.bind(handler) }
+          : {}),
+        ...(handler.onResponseEnd !== undefined
+          ? { onResponseEnd: handler.onResponseEnd.bind(handler) }
+          : {}),
+        ...(handler.onResponseError !== undefined
+          ? { onResponseError: handler.onResponseError.bind(handler) }
+          : {}),
+        ...(handler.onConnect !== undefined
+          ? { onConnect: handler.onConnect.bind(handler) }
+          : {}),
+        ...(handler.onError !== undefined
+          ? { onError: handler.onError.bind(handler) }
+          : {}),
+        ...(handler.onUpgrade !== undefined
+          ? { onUpgrade: handler.onUpgrade.bind(handler) }
+          : {}),
+        ...(handler.onHeaders !== undefined
+          ? { onHeaders: handler.onHeaders.bind(handler) }
+          : {}),
+        ...(handler.onData !== undefined
+          ? { onData: handler.onData.bind(handler) }
+          : {}),
+        ...(handler.onComplete !== undefined
+          ? { onComplete: handler.onComplete.bind(handler) }
+          : {}),
+      };
+      return dispatch(opts, trackerHandler);
+    };
 }
 
 function buildUrl(request: ScrapemanRequest): string {
