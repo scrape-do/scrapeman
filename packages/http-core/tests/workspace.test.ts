@@ -27,6 +27,33 @@ function makeRequest(name: string): ScrapemanRequest {
 }
 
 describe('WorkspaceFs', () => {
+  it('creates a request from a /-separated path (#69)', async () => {
+    // User types "api/users/list" in the save dialog. Missing folders are
+    // auto-created; the leaf "list" becomes the request file.
+    const relPath = await fs.createRequest('', 'api/users/list');
+    expect(relPath).toMatch(/api\/users\/list\.sman$/);
+
+    const tree = await fs.readTree();
+    // api folder exists
+    const api = tree.root.children.find((c) => c.name === 'api');
+    expect(api?.kind).toBe('folder');
+    // api/users folder exists
+    const users = api && api.kind === 'folder'
+      ? api.children.find((c) => c.name === 'users')
+      : null;
+    expect(users?.kind).toBe('folder');
+    // api/users/list request exists
+    const leaf = users && users.kind === 'folder'
+      ? users.children.find((c) => c.name === 'list')
+      : null;
+    expect(leaf?.kind).toBe('request');
+  });
+
+  it('rejects path traversal segments in request name (#69)', async () => {
+    await expect(fs.createRequest('', '../evil')).rejects.toThrow();
+    await expect(fs.createRequest('', 'a/../b')).rejects.toThrow();
+  });
+
   it('creates a request and reads it back', async () => {
     const relPath = await fs.createRequest('', 'Health check');
     expect(relPath).toMatch(/\.sman$/);

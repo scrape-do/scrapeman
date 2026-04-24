@@ -458,8 +458,8 @@ export function RequestBuilder(): JSX.Element {
       <PromptDialog
         open={saveDialogOpen}
         title="Save request"
-        description="Pick a name. The request will be saved to the workspace root — you can move it from the sidebar afterwards."
-        placeholder="Get user profile"
+        description="Pick a name. Use slashes to create folders — e.g. api/users/list saves under api/users/."
+        placeholder="api/users/list"
         initialValue={activeTab.name === 'Untitled' ? '' : activeTab.name}
         confirmLabel="Save"
         onConfirm={(name) => void saveActiveAs('', name)}

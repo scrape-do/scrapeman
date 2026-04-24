@@ -137,10 +137,24 @@ export class WorkspaceFs {
   }
 
   async createRequest(parentRelPath: string, name: string): Promise<string> {
-    const safeName = slugify(name);
-    const parentAbs = this.resolveSafe(parentRelPath);
+    // Accept `name` as either a bare request name or a `/`-separated path
+    // (#69). When it contains separators, treat every segment except the last
+    // as a folder to auto-create under `parentRelPath`. resolveSafe keeps the
+    // final path inside the workspace root, so path traversal is contained.
+    const rawSegments = name.split(/[\\/]/).map((s) => s.trim()).filter(Boolean);
+    // Reject `..` / `.` segments explicitly — slugify would normalise them
+    // to `.-.`, which round-trips poorly and masks user intent.
+    if (rawSegments.some((s) => s === '..' || s === '.')) {
+      throw new Error(`Invalid request name: ${name}`);
+    }
+    const segments = rawSegments.map((s) => slugify(s));
+    const leafName = segments.pop() ?? slugify(name);
+    const folderRel = segments.length > 0
+      ? (parentRelPath ? `${parentRelPath}/${segments.join('/')}` : segments.join('/'))
+      : parentRelPath;
+    const parentAbs = this.resolveSafe(folderRel);
     await fsp.mkdir(parentAbs, { recursive: true });
-    const finalName = await uniqueName(parentAbs, safeName, REQUEST_EXT);
+    const finalName = await uniqueName(parentAbs, leafName, REQUEST_EXT);
     const absPath = join(parentAbs, finalName + REQUEST_EXT);
     const stub: ScrapemanRequest = {
       scrapeman: FORMAT_VERSION,
