@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import type { ExecutedResponse } from '@scrapeman/shared-types';
+import type { AntiBotSignal, ExecutedResponse } from '@scrapeman/shared-types';
 import { bridge } from '../bridge.js';
 import { useAppStore } from '../store.js';
 import { JsonTree } from './JsonTree.js';
@@ -65,6 +65,14 @@ export function ResponseViewer(): JSX.Element {
     return active?.builder.settings.validateBody ?? '';
   });
   const [tab, setTab] = useState<Tab>('body');
+  const [antiBotDismissed, setAntiBotDismissed] = useState(false);
+
+  // Reset dismissed state whenever the response changes so a fresh request
+  // shows its anti-bot signal again.
+  const responseKey = execution?.response?.sentAt ?? null;
+  useEffect(() => {
+    setAntiBotDismissed(false);
+  }, [responseKey]);
 
   const focusSearchTick = useAppStore((s) => s.focusSearchTick);
   useEffect(() => {
@@ -130,6 +138,12 @@ export function ResponseViewer(): JSX.Element {
 
   return (
     <div className="flex h-full flex-col">
+      {response.antiBotSignal && !antiBotDismissed && (
+        <AntiBotBanner
+          signal={response.antiBotSignal}
+          onDismiss={() => setAntiBotDismissed(true)}
+        />
+      )}
       <div className="relative z-10 flex h-10 items-center gap-4 border-b border-line bg-bg-canvas px-4">
         <StatusBadge status={response.status} />
         <Metric label="Time" value={`${Math.round(durationMs)} ms`} />
@@ -1071,6 +1085,58 @@ function Metric({ label, value }: { label: string; value: string }): JSX.Element
         {label}
       </span>
       <span className="font-mono text-xs text-ink-2">{value}</span>
+    </div>
+  );
+}
+
+const ANTI_BOT_LABELS: Record<AntiBotSignal['type'], string> = {
+  cloudflare: 'Cloudflare',
+  ratelimit: 'Rate limited',
+  captcha: 'CAPTCHA',
+  botblock: 'Bot block',
+};
+
+const ANTI_BOT_COLORS: Record<AntiBotSignal['type'], string> = {
+  cloudflare: 'bg-[#F4811F]/10 text-[#F4811F] border-[#F4811F]/30',
+  ratelimit: 'bg-status-redirect/10 text-status-redirect border-status-redirect/30',
+  captcha: 'bg-method-delete/10 text-method-delete border-method-delete/30',
+  botblock: 'bg-method-delete/10 text-method-delete border-method-delete/30',
+};
+
+function AntiBotBanner({
+  signal,
+  onDismiss,
+}: {
+  signal: AntiBotSignal;
+  onDismiss: () => void;
+}): JSX.Element {
+  const colors = ANTI_BOT_COLORS[signal.type];
+  const label = ANTI_BOT_LABELS[signal.type];
+  return (
+    <div
+      className={`flex items-center gap-3 border-b px-4 py-2 text-xs ${colors}`}
+      role="alert"
+    >
+      <span className="font-semibold">{label}</span>
+      <span className="flex-1 text-inherit/80">
+        {signal.detail}
+        {signal.retryAfter !== undefined && (
+          <span className="ml-2 font-mono">
+            retry after {signal.retryAfter}s
+          </span>
+        )}
+        {signal.confidence === 'likely' && (
+          <span className="ml-2 opacity-60">(likely)</span>
+        )}
+      </span>
+      <button
+        onClick={onDismiss}
+        className="ml-auto rounded px-1.5 py-0.5 text-[11px] opacity-60 hover:opacity-100"
+        title="Dismiss"
+        aria-label="Dismiss anti-bot warning"
+      >
+        ×
+      </button>
     </div>
   );
 }

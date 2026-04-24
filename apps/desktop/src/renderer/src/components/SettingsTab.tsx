@@ -1,16 +1,66 @@
+import { useState } from 'react';
 import type { HttpVersion } from '@scrapeman/shared-types';
 import type { SettingsState } from '../store.js';
 import { useAppStore } from '../store.js';
 import { HighlightedInput } from '../ui/HighlightedInput.js';
 
+// UA preset display names — kept in the renderer so we avoid importing
+// http-core (which drags undici into the browser bundle).
+const UA_PRESET_OPTIONS: Array<{ key: string; label: string; ua: string }> = [
+  { key: 'scrapeman', label: 'Scrapeman (default)', ua: 'Scrapeman/<version> (<platform>)' },
+  {
+    key: 'chrome-macos',
+    label: 'Chrome 124 macOS',
+    ua: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  },
+  {
+    key: 'chrome-windows',
+    label: 'Chrome 124 Windows',
+    ua: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  },
+  {
+    key: 'firefox-macos',
+    label: 'Firefox 125 macOS',
+    ua: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:125.0) Gecko/20100101 Firefox/125.0',
+  },
+  {
+    key: 'firefox-windows',
+    label: 'Firefox 125 Windows',
+    ua: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0',
+  },
+  {
+    key: 'safari-macos',
+    label: 'Safari 17 macOS',
+    ua: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3 Safari/605.1.15',
+  },
+  {
+    key: 'safari-ios',
+    label: 'Safari 17 iOS',
+    ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+  },
+  {
+    key: 'googlebot',
+    label: 'Googlebot 2.1',
+    ua: 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+  },
+  { key: 'curl', label: 'curl 8.7', ua: 'curl/8.7.1' },
+];
+
 export function SettingsTab(): JSX.Element {
   const activeTab = useAppStore((s) => s.tabs.find((t) => t.id === s.activeTabId) ?? null);
   const updateSettings = useAppStore((s) => s.updateSettings);
+  const [rotateInput, setRotateInput] = useState('');
 
   if (!activeTab) return <div />;
   const s = activeTab.builder.settings;
 
   const patch = (next: Partial<SettingsState>): void => updateSettings(next);
+
+  const rotateUrls = s.proxy.rotate?.urls ?? [];
+  const rotateStrategy = s.proxy.rotate?.strategy ?? 'round-robin';
+  const rotateEnabled = rotateUrls.length > 0;
+
+  const selectedPreset = UA_PRESET_OPTIONS.find((o) => o.key === s.uaPreset) ?? UA_PRESET_OPTIONS[0]!;
 
   return (
     <div className="divide-y divide-line">
@@ -26,7 +76,7 @@ export function SettingsTab(): JSX.Element {
             onChange={(e) => patch({ proxy: { ...s.proxy, url: e.target.value } })}
             placeholder="http://proxy:8080  socks5://host:1080  https://{{proxyHost}}"
             variant="field"
-            className="flex-1"
+            className={`flex-1 ${rotateEnabled ? 'opacity-40' : ''}`}
           />
         </Row>
         <Row label="Username">
@@ -68,6 +118,170 @@ export function SettingsTab(): JSX.Element {
             className="flex-1"
           />
         </Row>
+
+        <div className="mt-1 border-t border-line-subtle pt-2">
+          <Toggle
+            label="Rotate through multiple proxies"
+            checked={rotateEnabled}
+            onChange={(on) => {
+              if (on) {
+                patch({
+                  proxy: {
+                    ...s.proxy,
+                    rotate: { urls: [], strategy: rotateStrategy },
+                  },
+                });
+              } else {
+                const { rotate: _omit, ...rest } = s.proxy as typeof s.proxy & { rotate?: unknown };
+                patch({ proxy: rest as typeof s.proxy });
+              }
+            }}
+          />
+          {rotateEnabled && (
+            <div className="mt-2 flex flex-col gap-2">
+              <Row label="Strategy">
+                <select
+                  value={rotateStrategy}
+                  onChange={(e) =>
+                    patch({
+                      proxy: {
+                        ...s.proxy,
+                        rotate: { urls: rotateUrls, strategy: e.target.value as 'round-robin' | 'random' },
+                      },
+                    })
+                  }
+                  className="field w-36 cursor-pointer"
+                >
+                  <option value="round-robin">Round-robin</option>
+                  <option value="random">Random</option>
+                </select>
+              </Row>
+              <div className="flex flex-col gap-1">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-4">
+                  Proxy list ({rotateUrls.length})
+                </div>
+                {rotateUrls.map((url, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <span className="w-4 shrink-0 text-right font-mono text-[10px] text-ink-4">
+                      {i + 1}
+                    </span>
+                    <input
+                      type="text"
+                      value={url}
+                      onChange={(e) => {
+                        const next = [...rotateUrls];
+                        next[i] = e.target.value;
+                        patch({ proxy: { ...s.proxy, rotate: { urls: next, strategy: rotateStrategy } } });
+                      }}
+                      className="field flex-1 font-mono text-xs"
+                    />
+                    <button
+                      onClick={() => {
+                        const next = rotateUrls.filter((_, j) => j !== i);
+                        patch({ proxy: { ...s.proxy, rotate: { urls: next, strategy: rotateStrategy } } });
+                      }}
+                      className="text-ink-4 hover:text-method-delete"
+                      title="Remove"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={rotateInput}
+                    onChange={(e) => setRotateInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && rotateInput.trim()) {
+                        patch({
+                          proxy: {
+                            ...s.proxy,
+                            rotate: { urls: [...rotateUrls, rotateInput.trim()], strategy: rotateStrategy },
+                          },
+                        });
+                        setRotateInput('');
+                      }
+                    }}
+                    placeholder="http://proxy:port  (Enter to add)"
+                    className="field flex-1 font-mono text-xs"
+                  />
+                  <button
+                    onClick={() => {
+                      if (!rotateInput.trim()) return;
+                      patch({
+                        proxy: {
+                          ...s.proxy,
+                          rotate: { urls: [...rotateUrls, rotateInput.trim()], strategy: rotateStrategy },
+                        },
+                      });
+                      setRotateInput('');
+                    }}
+                    className="rounded px-2 py-1 text-[11px] font-medium text-ink-2 hover:bg-bg-hover"
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </Section>
+
+      <Section
+        title="User-Agent"
+        description="Preset UA string sent as the User-Agent header. Overridden if you set User-Agent manually in the Headers tab."
+      >
+        <Row label="Preset">
+          <select
+            value={s.uaPreset}
+            onChange={(e) => patch({ uaPreset: e.target.value })}
+            className="field w-48 cursor-pointer"
+          >
+            {UA_PRESET_OPTIONS.map((o) => (
+              <option key={o.key} value={o.key}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </Row>
+        <div className="mt-1 truncate font-mono text-[10px] text-ink-4" title={selectedPreset.ua}>
+          {selectedPreset.ua}
+        </div>
+      </Section>
+
+      <Section
+        title="Rate limit"
+        description="Delay between requests in the Collection Runner and Load Runner. No-op on single send."
+      >
+        <Toggle
+          label="Enable rate limit"
+          checked={s.rateLimit.enabled}
+          onChange={(enabled) => patch({ rateLimit: { ...s.rateLimit, enabled } })}
+        />
+        <NumberRow
+          label="Fixed delay"
+          value={s.rateLimit.fixedDelayMs || null}
+          onChange={(v) => patch({ rateLimit: { ...s.rateLimit, fixedDelayMs: v ?? 0 } })}
+        />
+        <NumberRow
+          label="Jitter min"
+          value={s.rateLimit.jitterMinMs ?? null}
+          onChange={(v) => {
+            const next = { ...s.rateLimit };
+            if (v !== null) { next.jitterMinMs = v; } else { delete (next as Partial<typeof next>).jitterMinMs; }
+            patch({ rateLimit: next });
+          }}
+        />
+        <NumberRow
+          label="Jitter max"
+          value={s.rateLimit.jitterMaxMs ?? null}
+          onChange={(v) => {
+            const next = { ...s.rateLimit };
+            if (v !== null) { next.jitterMaxMs = v; } else { delete (next as Partial<typeof next>).jitterMaxMs; }
+            patch({ rateLimit: next });
+          }}
+        />
       </Section>
 
       <Section title="Timeout" description="All values in milliseconds. Empty = engine default.">

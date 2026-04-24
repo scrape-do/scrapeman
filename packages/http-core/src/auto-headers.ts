@@ -5,6 +5,7 @@ import type {
   BodyConfig,
   ScrapemanRequest,
 } from '@scrapeman/shared-types';
+import { UA_PRESETS } from './ua-presets.js';
 
 export interface AutoHeader {
   key: string;
@@ -30,12 +31,28 @@ export function contentTypeForBody(body: BodyConfig | undefined): string | null 
   return null;
 }
 
+/**
+ * Resolve the User-Agent string for a request.
+ * When `uaPreset` is set and refers to a known preset, return that string.
+ * The `scrapeman` key is a special case — it expands to the full versioned UA.
+ * Any unknown preset key falls back to the default versioned UA.
+ */
+export function resolveUserAgent(
+  request: ScrapemanRequest,
+  env: AutoHeaderEnv,
+): string {
+  const defaultUa = `Scrapeman/${env.version} (${env.platform})`;
+  if (!request.uaPreset || request.uaPreset === 'scrapeman') return defaultUa;
+  const preset = UA_PRESETS[request.uaPreset as keyof typeof UA_PRESETS];
+  return preset ?? defaultUa;
+}
+
 export function buildAutoHeaders(
   request: ScrapemanRequest,
   env: AutoHeaderEnv,
 ): AutoHeader[] {
   const headers: AutoHeader[] = [
-    { key: 'User-Agent', value: `Scrapeman/${env.version} (${env.platform})` },
+    { key: 'User-Agent', value: resolveUserAgent(request, env) },
     { key: 'Accept', value: '*/*' },
     { key: 'Accept-Encoding', value: 'gzip, deflate, br' },
     { key: 'Cache-Control', value: 'no-cache' },

@@ -18,6 +18,8 @@ export * from './scrapeDo/index.js';
 export * from './cookies/index.js';
 export * from './load/index.js';
 export * from './auto-headers.js';
+export * from './ua-presets.js';
+export * from './anti-bot.js';
 export * from './sse-reader.js';
 export * from './git/index.js';
 export * from './import/index.js';

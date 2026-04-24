@@ -94,6 +94,24 @@ export interface ProxyConfig {
   url: string;
   auth?: { username: string; password: string };
   bypass?: string[];
+  rotate?: {
+    urls: string[];
+    strategy: 'round-robin' | 'random';
+  };
+}
+
+export interface RateLimitConfig {
+  enabled: boolean;
+  fixedDelayMs: number;
+  jitterMinMs?: number;
+  jitterMaxMs?: number;
+}
+
+export interface AntiBotSignal {
+  type: 'cloudflare' | 'ratelimit' | 'captcha' | 'botblock';
+  confidence: 'certain' | 'likely';
+  detail: string;
+  retryAfter?: number;
 }
 
 export interface ScrapeDoConfig {
@@ -141,6 +159,12 @@ export interface ScrapemanRequest {
   scrapeDo?: ScrapeDoConfig;
   options?: RequestOptions;
   disabledAutoHeaders?: string[];
+  /** Key into UA_PRESETS. When set, overrides the default Scrapeman UA
+   *  unless the user has also set User-Agent manually in headers. */
+  uaPreset?: string;
+  /** Per-request rate-limit applied by runners between requests. No-op on
+   *  single-send. */
+  rateLimit?: RateLimitConfig;
 }
 
 /**
@@ -207,6 +231,8 @@ export interface ExecutedResponse {
   // Populated only when the response was `text/event-stream`. The stream
   // is consumed exactly once; this array is shared between UI and scripts.
   sseEvents?: SseEvent[];
+  // Populated by the executor when the response matches an anti-bot pattern.
+  antiBotSignal?: AntiBotSignal;
 }
 
 export type ExecutorErrorKind =

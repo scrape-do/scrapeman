@@ -23,6 +23,7 @@ Complete reference for every feature in Scrapeman. For installation and project 
 >>>>>>> ed92491 (feat: collection runner — sequential/parallel, CSV iterations, JSON/CSV/HTML export)
 - [Import and Export](#import-and-export)
 - [Proxy and Scrape.do Mode](#proxy-and-scrapedo-mode)
+- [Scraping-first features](#scraping-first-features)
 - [Cookie Jar](#cookie-jar)
 - [In-App Git Integration](#in-app-git-integration)
 - [Collection Search](#collection-search)
@@ -676,6 +677,68 @@ Flip the Scrape.do toggle in the Settings tab to route the request through Scrap
 - **Ban retry** — automatic retry on detection/block responses
 
 The main process rewrites the URL to `api.scrape.do` and injects the configured parameters. Your Scrape.do token is stored as a secret environment variable.
+
+---
+
+## Scraping-first features
+
+### User-Agent presets
+
+The Settings tab has a "User-Agent" section with a preset picker. Select a preset to change the User-Agent header sent with every request.
+
+| Preset key | Label |
+|---|---|
+| `scrapeman` | Scrapeman \<version\> (default) |
+| `chrome-macos` | Chrome 124 macOS |
+| `chrome-windows` | Chrome 124 Windows |
+| `firefox-macos` | Firefox 125 macOS |
+| `firefox-windows` | Firefox 125 Windows |
+| `safari-macos` | Safari 17 macOS |
+| `safari-ios` | Safari 17 iOS |
+| `googlebot` | Googlebot 2.1 |
+| `curl` | curl 8.7 |
+
+The selected UA string is shown as a preview below the picker. If you manually set a `User-Agent` header in the Headers tab, that value overrides the preset.
+
+### Anti-bot detection
+
+After every request, Scrapeman checks the response for anti-bot signals and displays a banner above the response body when one is found. The banner is dismissable and resets on the next send.
+
+Detected signals:
+
+| Signal | Trigger |
+|---|---|
+| Cloudflare | `cf-ray` header present, or HTTP 403 with Cloudflare browser-check body |
+| Rate limited | HTTP 429 or `Retry-After` header |
+| CAPTCHA | Body contains `hcaptcha`, `recaptcha`, `captcha-container`, or `turnstile` |
+| Bot block | HTTP 403 with body matching `access denied`, `bot detected`, `automated access`, or `automated request` |
+
+When a `Retry-After` header is present, the number of seconds to wait is shown in the banner.
+
+Cloudflare is checked before ratelimit, ratelimit before CAPTCHA, CAPTCHA before bot block. Only one signal is shown per response.
+
+### Rate limiting
+
+Per-request rate limiting controls the delay the Collection Runner and Load Runner insert between requests. It has no effect on single-send.
+
+Configure in the Settings tab under "Rate limit":
+- **Fixed delay** — wait this many milliseconds after each request.
+- **Jitter min / max** — add a random extra delay between min and max ms on top of the fixed delay.
+
+Run-level delay (from the Load Runner config) and per-request rate limit stack: if the run-level delay is greater than 0, the request rate limit is not added on top.
+
+Example: fixed delay `500ms`, jitter `0–200ms` → each request waits 500-700ms before the next.
+
+### Rotating proxy
+
+Supply multiple proxy URLs and let Scrapeman rotate through them automatically.
+
+In the Settings tab, toggle "Rotate through multiple proxies" and add proxy URLs one per line. Choose a strategy:
+
+- **Round-robin** — cycles through the list in order; the position is shared across all concurrent slots in a run.
+- **Random** — picks a random proxy for each request.
+
+When a rotate list is non-empty, the single "URL" field is ignored. If the list is empty, the single URL is used as before.
 
 ---
 

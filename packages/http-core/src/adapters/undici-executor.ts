@@ -22,6 +22,7 @@ import { ExecutorError } from '../errors.js';
 import { buildAutoHeaders, mergeHeaders } from '../auto-headers.js';
 import { readSseStream, type SseEvent } from '../sse-reader.js';
 import { normalizeUrl } from '../url/normalize.js';
+import { detectAntiBot } from '../anti-bot.js';
 
 const DEFAULT_MAX_REDIRECTS = 10;
 const DEFAULT_TOTAL_TIMEOUT_MS = 120_000;
@@ -40,12 +41,17 @@ export interface UndiciExecutorOptions {
   // should leave this at the default.
   uiBodyLimit?: number;
   autoHeaderEnv?: { version: string; platform: string };
+  // Shared mutable counter for round-robin proxy rotation. Pass the same
+  // object instance across requests in a single run so the index advances
+  // correctly across concurrent slots.
+  rotateCounter?: { value: number };
 }
 
 export class UndiciExecutor implements RequestExecutor {
   private readonly maxResponseBytes: number;
   private readonly uiBodyLimit: number;
   private readonly autoHeaderEnv: { version: string; platform: string };
+  private readonly rotateCounter: { value: number };
 
   constructor(options: UndiciExecutorOptions = {}) {
     this.maxResponseBytes = options.maxResponseBytes ?? DEFAULT_MAX_RESPONSE_BYTES;
@@ -54,21 +60,26 @@ export class UndiciExecutor implements RequestExecutor {
       version: '0.0.0',
       platform: `${process.platform} ${process.arch}`,
     };
+    this.rotateCounter = options.rotateCounter ?? { value: 0 };
   }
 
   async execute(
     request: ScrapemanRequest,
     options: { signal?: AbortSignal } = {},
   ): Promise<ExecutedResponse> {
-    const url = buildUrl(request);
-    const auto = buildAutoHeaders(request, this.autoHeaderEnv);
-    const disabled = new Set(request.disabledAutoHeaders ?? []);
-    const headers = mergeHeaders(auto, request.headers, disabled);
-    const body = buildBody(request.body);
-    const totalTimeout = request.options?.timeout?.total ?? DEFAULT_TOTAL_TIMEOUT_MS;
-    const followRedirects = request.options?.redirect?.follow ?? true;
-    const maxRedirects = request.options?.redirect?.maxCount ?? DEFAULT_MAX_REDIRECTS;
-    const requestedHttpVersion = request.options?.httpVersion ?? 'auto';
+    // Resolve rotating proxy before anything else so buildBaseDispatcher sees
+    // the selected URL in request.proxy.url.
+    const requestWithProxy = resolveRotatingProxy(request, this.rotateCounter);
+
+    const url = buildUrl(requestWithProxy);
+    const auto = buildAutoHeaders(requestWithProxy, this.autoHeaderEnv);
+    const disabled = new Set(requestWithProxy.disabledAutoHeaders ?? []);
+    const headers = mergeHeaders(auto, requestWithProxy.headers, disabled);
+    const body = buildBody(requestWithProxy.body);
+    const totalTimeout = requestWithProxy.options?.timeout?.total ?? DEFAULT_TOTAL_TIMEOUT_MS;
+    const followRedirects = requestWithProxy.options?.redirect?.follow ?? true;
+    const maxRedirects = requestWithProxy.options?.redirect?.maxCount ?? DEFAULT_MAX_REDIRECTS;
+    const requestedHttpVersion = requestWithProxy.options?.httpVersion ?? 'auto';
 
     const timeoutController = new AbortController();
     let timedOut = false;
@@ -82,7 +93,7 @@ export class UndiciExecutor implements RequestExecutor {
     const startedNs = process.hrtime.bigint();
 
     try {
-      const baseDispatcher = buildBaseDispatcher(request, totalTimeout);
+      const baseDispatcher = buildBaseDispatcher(requestWithProxy, totalTimeout);
       const dispatcher = baseDispatcher.compose(
         interceptors.redirect({
           maxRedirections: followRedirects ? maxRedirects : 0,
@@ -143,6 +154,18 @@ export class UndiciExecutor implements RequestExecutor {
         uiTruncated = true;
       }
 
+      // Anti-bot detection uses a text preview of the body so we avoid
+      // decoding the full buffer again. The body preview is the first 64 KB
+      // of decoded bytes, which is enough for any challenge page.
+      const bodyPreviewText = new TextDecoder('utf-8', { fatal: false }).decode(
+        bytes.byteLength > 65536 ? bytes.subarray(0, 65536) : bytes,
+      );
+      const antiBotSignal = detectAntiBot({
+        status: result.statusCode,
+        headers: headerPairs,
+        bodyText: bodyPreviewText,
+      });
+
       return {
         status: result.statusCode,
         statusText: '',
@@ -160,6 +183,7 @@ export class UndiciExecutor implements RequestExecutor {
         },
         sentAt,
         ...(sseEvents !== undefined ? { sseEvents } : {}),
+        ...(antiBotSignal !== null ? { antiBotSignal } : {}),
       };
     } catch (err) {
       if (timedOut) {
@@ -170,6 +194,37 @@ export class UndiciExecutor implements RequestExecutor {
       clearTimeout(timeoutId);
     }
   }
+}
+
+/**
+ * When the proxy has a `rotate` config, pick the next URL from the list and
+ * return a shallow-cloned request with proxy.url set to the chosen entry.
+ * Mutates `counter.value` for round-robin so callers sharing the counter
+ * across concurrent slots each get a different slot.
+ */
+function resolveRotatingProxy(
+  request: ScrapemanRequest,
+  counter: { value: number },
+): ScrapemanRequest {
+  const rotate = request.proxy?.rotate;
+  if (!request.proxy?.enabled || !rotate || rotate.urls.length === 0) return request;
+
+  let chosenUrl: string;
+  if (rotate.strategy === 'random') {
+    const idx = Math.floor(Math.random() * rotate.urls.length);
+    chosenUrl = rotate.urls[idx]!;
+  } else {
+    // round-robin: advance counter atomically before reading so concurrent
+    // callers get distinct indices.
+    const idx = counter.value % rotate.urls.length;
+    counter.value += 1;
+    chosenUrl = rotate.urls[idx]!;
+  }
+
+  return {
+    ...request,
+    proxy: { ...request.proxy, url: chosenUrl },
+  };
 }
 
 function buildUrl(request: ScrapemanRequest): string {

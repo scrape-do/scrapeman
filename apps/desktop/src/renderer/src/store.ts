@@ -17,6 +17,7 @@ import type {
   LoadEvent,
   LoadProgress,
   ProxyConfig,
+  RateLimitConfig,
   RecentWorkspace,
   RequestOptions,
   RunnerEventPayload,
@@ -91,6 +92,9 @@ export interface SettingsState {
   scrapeDo: ScrapeDoConfig;
   /** If non-empty, response body is expected to contain this substring. */
   validateBody: string;
+  /** Key from UA_PRESETS. 'scrapeman' = default versioned UA. */
+  uaPreset: string;
+  rateLimit: RateLimitConfig;
 }
 
 export interface BuilderState {
@@ -455,6 +459,8 @@ function freshSettings(): SettingsState {
     httpVersion: 'auto',
     scrapeDo: { enabled: false, token: '' },
     validateBody: '',
+    uaPreset: 'scrapeman',
+    rateLimit: { enabled: false, fixedDelayMs: 0 },
   };
 }
 
@@ -608,6 +614,12 @@ function builderFromRequest(request: ScrapemanRequest): BuilderState {
   if (request.scrapeDo) {
     settings.scrapeDo = { ...request.scrapeDo };
   }
+  if (request.uaPreset) {
+    settings.uaPreset = request.uaPreset;
+  }
+  if (request.rateLimit) {
+    settings.rateLimit = { ...request.rateLimit };
+  }
 
   return {
     method: request.method,
@@ -674,11 +686,20 @@ function buildRequest(
   }
 
   const s = builder.settings;
-  if (s.proxy.enabled && s.proxy.url.trim()) {
+  // Proxy: include when enabled and either a single URL or a rotate list is set.
+  const hasRotate =
+    s.proxy.rotate && s.proxy.rotate.urls.length > 0;
+  if (s.proxy.enabled && (s.proxy.url.trim() || hasRotate)) {
     request.proxy = { ...s.proxy };
   }
   if (s.scrapeDo.enabled && s.scrapeDo.token.trim()) {
     request.scrapeDo = { ...s.scrapeDo };
+  }
+  if (s.uaPreset && s.uaPreset !== 'scrapeman') {
+    request.uaPreset = s.uaPreset;
+  }
+  if (s.rateLimit.enabled) {
+    request.rateLimit = { ...s.rateLimit };
   }
   const options: RequestOptions = {};
   const timeoutEntries: Record<string, number> = {};

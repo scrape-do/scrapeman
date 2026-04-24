@@ -115,6 +115,12 @@ The full marketing site lives at **[scrapeman.app](https://scrapeman.app)** and 
 - Sidebar panel with clear/delete, method badges, status pills, relative time
 - Cookies inspector (workspace × env scoped via `tough-cookie`) — filter by domain, add/edit cookies manually, httpOnly masking with reveal toggle, export JSON or Netscape cookies.txt, import from `document.cookie` string or cookies.txt
 
+### Scraping-first features
+- **User-Agent presets** — 9 presets (Scrapeman, Chrome 124 macOS/Windows, Firefox 125 macOS/Windows, Safari 17 macOS/iOS, Googlebot, curl). Custom UA in the Headers tab always overrides.
+- **Anti-bot detection** — banner above the response body on Cloudflare challenges, HTTP 429, CAPTCHA markers, and generic bot-block pages. Includes Retry-After countdown. Dismissable per response.
+- **Rate limiting** — per-request `fixedDelayMs` + optional random jitter range applied by the Collection Runner and Load Runner between requests. No-op on single send.
+- **Rotating proxy** — supply a list of proxy URLs with round-robin or random strategy. Collection Runner rotates per request; Load Runner rotates per concurrent slot.
+
 ### Response viewer
 - Content-kind detection: JSON / HTML / XML / image / PDF / text / binary
 - Per-kind view modes:

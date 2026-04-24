@@ -177,8 +177,24 @@ export async function runLoad(
       inflight--;
       onProgress(snapshot(event, false));
 
-      if (input.perIterDelayMs && input.perIterDelayMs > 0) {
-        await new Promise((resolve) => setTimeout(resolve, input.perIterDelayMs));
+      // Per-run delay (from the UI load-test config) + per-request rate-limit.
+      // They stack: run-level delay is the baseline, request rate-limit adds
+      // on top only when the run-level delay is 0.
+      const runDelay = input.perIterDelayMs ?? 0;
+      const rl = input.request.rateLimit;
+      let rlDelay = 0;
+      if (rl?.enabled && runDelay === 0) {
+        const jitterMin = rl.jitterMinMs ?? 0;
+        const jitterMax = rl.jitterMaxMs ?? 0;
+        const jitter =
+          jitterMax > jitterMin
+            ? Math.floor(Math.random() * (jitterMax - jitterMin)) + jitterMin
+            : 0;
+        rlDelay = rl.fixedDelayMs + jitter;
+      }
+      const totalDelay = runDelay + rlDelay;
+      if (totalDelay > 0) {
+        await new Promise((resolve) => setTimeout(resolve, totalDelay));
       }
     }
   };
