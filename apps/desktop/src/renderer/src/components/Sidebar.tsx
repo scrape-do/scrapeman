@@ -17,6 +17,7 @@ import { SplitPane } from './SplitPane.js';
 import { FolderSettingsDialog } from './FolderSettingsDialog.js';
 import { CollectionSettingsDialog } from './CollectionSettingsDialog.js';
 import { GlobalsDialog } from './GlobalsDialog.js';
+import { WorkspaceSwitcher } from './WorkspaceSwitcher.js';
 
 const METHOD_COLOR: Record<string, string> = {
   GET: 'text-method-get',
@@ -118,6 +119,7 @@ export function Sidebar(): JSX.Element {
 
   return (
     <div className="flex h-full flex-col">
+      <WorkspaceSwitcher />
       <div className="flex h-8 items-stretch border-b border-line">
         <button
           onClick={() => setView('files')}
@@ -383,7 +385,7 @@ function FilesView({
       onKeyDown={onSidebarKeyDown}
     >
       <div className="flex h-10 items-center gap-1 border-b border-line px-2">
-        <div className="flex-1 truncate px-1.5 text-xs font-semibold text-ink-1">
+        <div className="flex-1 truncate px-1.5 text-[10px] font-medium uppercase tracking-wide text-ink-3">
           {workspaceName}
         </div>
         <button title="New request" onClick={onNewRequest} className="icon-btn text-lg">
@@ -423,7 +425,7 @@ function FilesView({
             </DropdownMenu.Content>
           </DropdownMenu.Portal>
         </DropdownMenu.Root>
-        <button title="Switch workspace" onClick={onPick} className="icon-btn text-lg">
+        <button title="Open another workspace" onClick={onPick} className="icon-btn text-lg">
           ⇄
         </button>
       </div>

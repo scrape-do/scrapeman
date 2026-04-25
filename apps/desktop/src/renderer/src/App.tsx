@@ -24,8 +24,10 @@ export function App(): JSX.Element {
   const loadRecents = useAppStore((s) => s.loadRecents);
   const refreshTree = useAppStore((s) => s.refreshTree);
   const openWorkspace = useAppStore((s) => s.openWorkspace);
+  const bootRestoreWorkspaces = useAppStore((s) => s.bootRestoreWorkspaces);
   const loadEnvironments = useAppStore((s) => s.loadEnvironments);
   const recents = useAppStore((s) => s.recents);
+  const openWorkspaces = useAppStore((s) => s.openWorkspaces);
   const newTab = useAppStore((s) => s.newTab);
   const duplicateTab = useAppStore((s) => s.duplicateTab);
   const activateTabByIndex = useAppStore((s) => s.activateTabByIndex);
@@ -51,11 +53,20 @@ export function App(): JSX.Element {
     void loadRecents();
   }, [loadRecents]);
 
+  // Boot: rehydrate the open-workspaces list from localStorage and reopen
+  // the last-active workspace. Fall back to recents[0] only if there is no
+  // persisted multi-workspace state (covers first-run after the upgrade).
   useEffect(() => {
-    if (!workspace && recents.length > 0) {
-      void openWorkspace(recents[0]!.path);
-    }
-  }, [workspace, recents, openWorkspace]);
+    if (workspace) return;
+    if (openWorkspaces.length > 0) return;
+    void (async () => {
+      await bootRestoreWorkspaces();
+      const after = useAppStore.getState();
+      if (!after.workspace && after.openWorkspaces.length === 0 && recents.length > 0) {
+        await openWorkspace(recents[0]!.path);
+      }
+    })();
+  }, [workspace, openWorkspaces.length, recents, bootRestoreWorkspaces, openWorkspace]);
 
   useEffect(() => {
     const unsubscribe = bridge.onWorkspaceEvent((event) => {
@@ -285,8 +296,19 @@ export function App(): JSX.Element {
           <div className="text-[13px] font-semibold text-ink-1">Scrapeman</div>
         </div>
         <div className="mx-4 h-3 w-px bg-line-strong" />
-        <div className="truncate text-xs text-ink-3">
+        <div
+          className={`truncate text-xs ${
+            workspace && openWorkspaces.length > 1
+              ? 'font-semibold text-ink-1'
+              : 'text-ink-3'
+          }`}
+        >
           {workspace ? workspace.name : 'No workspace'}
+          {workspace && openWorkspaces.length > 1 && (
+            <span className="ml-1.5 text-[10px] font-normal text-ink-4">
+              ({openWorkspaces.length} open)
+            </span>
+          )}
         </div>
         <div className="ml-auto flex items-center gap-2">
           <button

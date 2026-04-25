@@ -342,6 +342,22 @@ Payloads 4KB or larger are automatically promoted to a sidecar file under `files
 
 Scrapeman writes only inside the workspace folder you choose. History, cookies, and state live in the app data directory, never the workspace. The workspace is safe to commit to git.
 
+### Multiple workspaces
+
+You can keep more than one workspace open in the same window and switch between them from the sidebar header. Click the workspace name (just above the Files / Git tab strip) to drop down a list of every workspace you have opened this session.
+
+The dropdown lets you:
+
+- Switch to another open workspace (the current workspace's open tabs, active environment, and sidebar view get snapshotted in memory and restored when you switch back).
+- Open another workspace folder via the standard picker.
+- Close the current workspace, or close any other open workspace from its row (× on hover).
+
+When more than one workspace is open, the title bar shows the active workspace name in bold along with an "(N open)" counter.
+
+Persistence: the list of open workspaces and the last-active path persist to localStorage, so the same set reopens on next launch. Per-workspace UI snapshots (open tabs, active env, sidebar view) live in memory only — they are not saved across restarts. File-backed tabs reopen because they live on disk; unsaved draft tabs do not survive a quit.
+
+Out of scope for now: side-by-side workspace columns, dragging requests between workspaces, workspace-specific keyboard shortcuts. The undo-close-tab stack (`⌘⇧T`) is shared across workspaces in this release.
+
 ### Per-request git sync toggle
 
 Right-click a request in the sidebar and select "Stop syncing to git" to exclude it from version control. Backed by `.git/info/exclude` (never pushed to remote). Shortcut: `Cmd+Shift+H` on the active tab. A crossed-eye icon marks unsynced requests.

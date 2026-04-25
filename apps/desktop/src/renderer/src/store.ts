@@ -40,8 +40,16 @@ const inflightRequestIds = new Map<string, string>();
 
 // LIFO stack of recently closed tabs for ⌘⇧T reopen. Bounded so a
 // user who mass-closes tabs doesn't stash unbounded memory.
+// Note: this stack is process-global (not per-workspace) for Phase 1
+// multi-workspace support. Reopening a closed tab from another workspace
+// would land it in the active workspace, which is a known sharp edge —
+// Phase 2 will key the stack by workspace.
 const CLOSED_TAB_STACK_LIMIT = 10;
 const closedTabStack: Array<{ tab: Tab; index: number }> = [];
+
+// localStorage keys for multi-workspace persistence (issue #61, Phase 1).
+const LS_OPEN_WORKSPACES = 'workspaces:open';
+const LS_LAST_ACTIVE_WORKSPACE = 'workspaces:lastActive';
 
 /**
  * Abort any running load test and clean up the inflight-request entry for a tab
@@ -221,10 +229,33 @@ export interface WsTabState {
   error: string | null;
 }
 
+/**
+ * Per-workspace UI state captured when the user switches away from a
+ * workspace, so we can restore the same tabs / active env / sidebar view
+ * when they switch back. Phase 1 of multi-workspace (issue #61).
+ *
+ * Snapshots are kept in memory only — they intentionally do NOT persist
+ * across app restarts. The list of open workspaces does persist; their
+ * tab state is rehydrated from disk on next boot.
+ */
+export interface WorkspaceSnapshot {
+  tabs: Tab[];
+  activeTabId: string | null;
+  activeEnvironment: string | null;
+  sidebarView: 'files' | 'git';
+}
+
 interface AppState {
   workspace: WorkspaceInfo | null;
   root: CollectionFolderNode | null;
   recents: RecentWorkspace[];
+
+  // Multi-workspace, Phase 1 (issue #61). The renderer still mirrors a single
+  // active workspace (workspace/root/tabs/...) but tracks the set of open
+  // workspaces so the user can switch between them via the sidebar header.
+  // openWorkspaces persists to localStorage; workspaceSnapshots do not.
+  openWorkspaces: WorkspaceInfo[];
+  workspaceSnapshots: Record<string, WorkspaceSnapshot>;
 
   environments: Environment[];
   activeEnvironment: string | null;
@@ -238,6 +269,11 @@ interface AppState {
   loadRecents: () => Promise<void>;
   pickAndOpenWorkspace: () => Promise<void>;
   openWorkspace: (path: string) => Promise<void>;
+  switchWorkspace: (path: string) => Promise<void>;
+  closeWorkspace: (path: string) => Promise<void>;
+  /** Rehydrate openWorkspaces + lastActive from localStorage and open the
+   *  last-active workspace. Called once at app boot from App.tsx. */
+  bootRestoreWorkspaces: () => Promise<void>;
   refreshTree: () => Promise<void>;
 
   // Tabs
@@ -768,6 +804,69 @@ function fileBackedTab(relPath: string, request: ScrapemanRequest): Tab {
   };
 }
 
+/**
+ * Read the persisted list of open workspaces from localStorage. Tolerant
+ * of malformed JSON (returns []) so a corrupted entry can never wedge boot.
+ */
+export function readPersistedOpenWorkspaces(): WorkspaceInfo[] {
+  if (typeof localStorage === 'undefined') return [];
+  const raw = localStorage.getItem(LS_OPEN_WORKSPACES);
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const out: WorkspaceInfo[] = [];
+    for (const item of parsed) {
+      if (
+        item &&
+        typeof item === 'object' &&
+        typeof (item as { path?: unknown }).path === 'string' &&
+        typeof (item as { name?: unknown }).name === 'string'
+      ) {
+        const w = item as WorkspaceInfo;
+        out.push({ path: w.path, name: w.name });
+      }
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+export function readPersistedLastActiveWorkspace(): string | null {
+  if (typeof localStorage === 'undefined') return null;
+  return localStorage.getItem(LS_LAST_ACTIVE_WORKSPACE);
+}
+
+function persistOpenWorkspaces(list: WorkspaceInfo[]): void {
+  if (typeof localStorage === 'undefined') return;
+  localStorage.setItem(LS_OPEN_WORKSPACES, JSON.stringify(list));
+}
+
+function persistLastActiveWorkspace(path: string | null): void {
+  if (typeof localStorage === 'undefined') return;
+  if (path === null) localStorage.removeItem(LS_LAST_ACTIVE_WORKSPACE);
+  else localStorage.setItem(LS_LAST_ACTIVE_WORKSPACE, path);
+}
+
+/**
+ * Capture the per-workspace UI state from a slice of the store. Pure so it
+ * can be unit-tested without instantiating Zustand.
+ */
+export function captureWorkspaceSnapshot(state: {
+  tabs: Tab[];
+  activeTabId: string | null;
+  activeEnvironment: string | null;
+  sidebarView: 'files' | 'git';
+}): WorkspaceSnapshot {
+  return {
+    tabs: state.tabs,
+    activeTabId: state.activeTabId,
+    activeEnvironment: state.activeEnvironment,
+    sidebarView: state.sidebarView,
+  };
+}
+
 export const useAppStore = create<AppState>((set, get) => {
   const mutateActive = (fn: (tab: Tab) => Tab): void => {
     const { activeTabId, tabs } = get();
@@ -798,6 +897,8 @@ export const useAppStore = create<AppState>((set, get) => {
     workspace: null,
     root: null,
     recents: [],
+    openWorkspaces: [],
+    workspaceSnapshots: {},
     environments: [],
     activeEnvironment: null,
     globals: { variables: [] },
@@ -855,9 +956,17 @@ export const useAppStore = create<AppState>((set, get) => {
 
     openWorkspace: async (path: string) => {
       const tree = await bridge.workspaceOpen(path);
+      // Add to openWorkspaces if not already there. We splice in place so the
+      // sidebar dropdown order stays stable across reopens.
+      const existingOpen = get().openWorkspaces;
+      const alreadyOpen = existingOpen.some((w) => w.path === tree.workspace.path);
+      const nextOpen = alreadyOpen
+        ? existingOpen
+        : [...existingOpen, tree.workspace];
       set({
         workspace: tree.workspace,
         root: tree.root,
+        openWorkspaces: nextOpen,
         tabs: [],
         activeTabId: null,
         environments: [],
@@ -871,6 +980,8 @@ export const useAppStore = create<AppState>((set, get) => {
         gitError: null,
         hiddenRequests: new Set<string>(),
       });
+      persistOpenWorkspaces(nextOpen);
+      persistLastActiveWorkspace(tree.workspace.path);
       await get().loadRecents();
       await get().loadEnvironments();
       await get().loadGlobals();
@@ -878,6 +989,125 @@ export const useAppStore = create<AppState>((set, get) => {
       await get().loadHistory();
       await get().loadGitStatus();
       await get().loadHiddenRequests();
+      // Hydrate from snapshot if we have one — this overwrites the freshly
+      // built defaults (loadEnvironments set activeEnvironment from disk;
+      // we want the user's last in-session choice to win).
+      const snap = get().workspaceSnapshots[tree.workspace.path];
+      if (snap) {
+        const patch: {
+          tabs: Tab[];
+          activeTabId: string | null;
+          sidebarView: 'files' | 'git';
+          activeEnvironment?: string | null;
+        } = {
+          tabs: snap.tabs,
+          activeTabId: snap.activeTabId,
+          sidebarView: snap.sidebarView,
+        };
+        // Only restore the env if it still exists on disk; otherwise keep
+        // whatever loadEnvironments resolved to.
+        const envs = get().environments;
+        if (
+          snap.activeEnvironment === null ||
+          envs.some((e) => e.name === snap.activeEnvironment)
+        ) {
+          patch.activeEnvironment = snap.activeEnvironment;
+          // Push the restored env back to disk so subsequent sends pick it
+          // up. envSetActive is fire-and-forget — the renderer cache is the
+          // source of truth in-session.
+          if (snap.activeEnvironment !== get().activeEnvironment) {
+            void bridge.envSetActive(tree.workspace.path, snap.activeEnvironment);
+          }
+        }
+        set(patch);
+      }
+    },
+
+    switchWorkspace: async (path: string) => {
+      const current = get().workspace;
+      if (current && current.path === path) return;
+      // Snapshot the outgoing workspace's UI state before openWorkspace
+      // wipes it. Capture from the live store, not from a stale closure.
+      if (current) {
+        const snap = captureWorkspaceSnapshot({
+          tabs: get().tabs,
+          activeTabId: get().activeTabId,
+          activeEnvironment: get().activeEnvironment,
+          sidebarView: get().sidebarView,
+        });
+        set({
+          workspaceSnapshots: {
+            ...get().workspaceSnapshots,
+            [current.path]: snap,
+          },
+        });
+      }
+      await get().openWorkspace(path);
+    },
+
+    closeWorkspace: async (path: string) => {
+      const { workspace, openWorkspaces, workspaceSnapshots } = get();
+      const nextOpen = openWorkspaces.filter((w) => w.path !== path);
+      // Drop the snapshot — closing means we don't preserve UI state.
+      const nextSnaps = { ...workspaceSnapshots };
+      delete nextSnaps[path];
+      const wasActive = workspace?.path === path;
+
+      // Persist + commit the new open list immediately so the dropdown
+      // updates even if we don't switch (e.g. closing a non-active one).
+      persistOpenWorkspaces(nextOpen);
+      set({ openWorkspaces: nextOpen, workspaceSnapshots: nextSnaps });
+
+      if (!wasActive) return;
+
+      if (nextOpen.length === 0) {
+        // No remaining workspaces — fall back to the empty-state picker.
+        persistLastActiveWorkspace(null);
+        set({
+          workspace: null,
+          root: null,
+          tabs: [],
+          activeTabId: null,
+          environments: [],
+          activeEnvironment: null,
+          history: [],
+          gitStatus: null,
+          gitLoaded: false,
+          gitError: null,
+          hiddenRequests: new Set<string>(),
+        });
+        return;
+      }
+      // Switch to the next workspace in the open list. We don't track
+      // recency separately in Phase 1 — most-recent-used would require
+      // either an LRU array or a per-workspace lastTouchedAt; the issue
+      // says "most recently used" but Phase 1 keeps it simple by using
+      // the rightmost remaining one (the most recently added).
+      const fallback = nextOpen[nextOpen.length - 1]!;
+      await get().openWorkspace(fallback.path);
+    },
+
+    bootRestoreWorkspaces: async () => {
+      const persisted = readPersistedOpenWorkspaces();
+      if (persisted.length === 0) return;
+      // Seed openWorkspaces synchronously so the dropdown can render even
+      // before the active workspace finishes loading from disk.
+      set({ openWorkspaces: persisted });
+      const lastActive = readPersistedLastActiveWorkspace();
+      const target =
+        lastActive && persisted.some((w) => w.path === lastActive)
+          ? lastActive
+          : persisted[0]!.path;
+      try {
+        await get().openWorkspace(target);
+      } catch (err) {
+        // If the target is gone (deleted folder, permission revoked) drop it
+        // from openWorkspaces so the user isn't stuck in a boot loop.
+        const remaining = get().openWorkspaces.filter((w) => w.path !== target);
+        persistOpenWorkspaces(remaining);
+        set({ openWorkspaces: remaining, workspace: null, root: null });
+        console.error('[scrapeman] bootRestoreWorkspaces failed for', target, err);
+      }
     },
 
     refreshTree: async () => {

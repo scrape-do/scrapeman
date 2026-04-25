@@ -104,6 +104,7 @@ The full marketing site lives at **[scrapeman.app](https://scrapeman.app)** and 
 - Custom YAML format (`*.sman`), one file per request, stable key order → clean git diffs (legacy `*.req.yaml` files remain readable and are migrated to `.sman` on next save)
 - Body sidecar: payloads >= 4KB auto-promoted to `files/<slug>.body.<ext>`
 - Variable + collection tree lives in a user-chosen workspace folder — scrapeman never writes outside it
+- **Multiple workspaces**: open several workspaces in one window and switch between them from the sidebar header. Open tabs, active environment, and sidebar view per workspace are remembered while the app runs; the open-list persists across restarts
 - Live file-watcher (chokidar) reloads external edits with self-write suppression
 - **Per-request sync toggle**: right-click a request → "Stop syncing to git" to keep it local only. Backed by `.git/info/exclude` (never pushed) + `git rm --cached`, so teammates never see it. `⌘⇧H` toggles on the active tab. A crossed-eye icon marks unsynced requests in the sidebar and on the tab. If you later `git add` the file yourself, scrapeman notices and the icon clears automatically
 - **Pull**: supports fast-forward, rebase, and merge strategies. If local and remote branches have diverged, a dialog prompts you to choose Rebase or Merge commit before proceeding.
