@@ -10,11 +10,8 @@ import { CodePanel } from './CodePanel.js';
 import { ImportCurlDialog } from './ImportCurlDialog.js';
 import { ImportOpenApiDialog } from './ImportOpenApiDialog.js';
 import { LoadTestPanel } from './LoadTestPanel.js';
-<<<<<<< HEAD
 import { WebSocketPanel } from './WebSocketPanel.js';
-=======
 import { ScriptsTab } from './scripts/ScriptsTab.js';
->>>>>>> 0541c7f (feat(scripts): pre-request and post-response script sandbox)
 import { HighlightedInput } from '../ui/HighlightedInput.js';
 import { CellContextMenu } from '../ui/CellContextMenu.js';
 import { PromptDialog } from '../ui/Dialog.js';
@@ -23,11 +20,7 @@ import { formatJson } from '../utils/json-format.js';
 import { ScreenshotModal } from './ScreenshotModal.js';
 import { bridge } from '../bridge.js';
 
-<<<<<<< HEAD
-type Tab = 'params' | 'headers' | 'auth' | 'body' | 'settings' | 'code' | 'load' | 'websocket';
-=======
-type Tab = 'params' | 'headers' | 'auth' | 'body' | 'settings' | 'scripts' | 'code' | 'load';
->>>>>>> 0541c7f (feat(scripts): pre-request and post-response script sandbox)
+type Tab = 'params' | 'headers' | 'auth' | 'body' | 'settings' | 'scripts' | 'code' | 'load' | 'websocket';
 
 export function RequestBuilder(): JSX.Element {
   const activeTab = useAppStore((s) => s.tabs.find((t) => t.id === s.activeTabId) ?? null);

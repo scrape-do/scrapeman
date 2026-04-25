@@ -17,27 +17,20 @@ import type { TLSSocket } from 'node:tls';
 import type {
   BodyConfig,
   ExecutedResponse,
-<<<<<<< HEAD
   RedirectHop,
-  TlsCertInfo,
-=======
   ScrapemanRequest,
   ScriptConsoleEntry,
   ScriptResult,
->>>>>>> 0541c7f (feat(scripts): pre-request and post-response script sandbox)
+  TlsCertInfo,
 } from '@scrapeman/shared-types';
-import type { ScrapemanRequest } from '@scrapeman/shared-types';
 import type { RequestExecutor } from '../executor.js';
 import { ExecutorError } from '../errors.js';
 import { buildAutoHeaders, mergeHeaders } from '../auto-headers.js';
 import { readSseStream, type SseEvent } from '../sse-reader.js';
 import { normalizeUrl } from '../url/normalize.js';
-<<<<<<< HEAD
 import { detectAntiBot } from '../anti-bot.js';
-=======
 import { runScript } from '../scripts/sandbox.js';
 import { buildReqProxy, buildResProxy, buildBruObject, type BruCallbacks, type MutableRequest } from '../scripts/bru-api.js';
->>>>>>> 0541c7f (feat(scripts): pre-request and post-response script sandbox)
 
 const DEFAULT_MAX_REDIRECTS = 10;
 const DEFAULT_TOTAL_TIMEOUT_MS = 120_000;

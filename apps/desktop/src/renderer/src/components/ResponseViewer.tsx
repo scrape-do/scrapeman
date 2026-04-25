@@ -15,11 +15,7 @@ import { CodeMirrorViewer, HtmlEditor } from './HtmlEditor.js';
 import { SseEventsView } from './SseEventsView.js';
 import { DevToolsPanel } from './DevToolsPanel.js';
 
-<<<<<<< HEAD
-type Tab = 'body' | 'headers' | 'devtools';
-=======
-type Tab = 'body' | 'headers' | 'scripts';
->>>>>>> 0541c7f (feat(scripts): pre-request and post-response script sandbox)
+type Tab = 'body' | 'headers' | 'devtools' | 'scripts';
 
 type ContentKind = 'json' | 'html' | 'xml' | 'javascript' | 'css' | 'image' | 'pdf' | 'text' | 'binary';
 type BodyMode = 'raw' | 'pretty' | 'tree' | 'preview' | 'events';
@@ -214,11 +210,9 @@ export function ResponseViewer(): JSX.Element {
             {response.headers.length}
           </span>
         </TabButton>
-<<<<<<< HEAD
         <TabButton active={tab === 'devtools'} onClick={() => setTab('devtools')}>
           Dev Tools
         </TabButton>
-=======
         {(response.scriptConsole !== undefined || response.scriptResult !== undefined) && (
           <TabButton active={tab === 'scripts'} onClick={() => setTab('scripts')}>
             Scripts
@@ -229,7 +223,6 @@ export function ResponseViewer(): JSX.Element {
             )}
           </TabButton>
         )}
->>>>>>> 0541c7f (feat(scripts): pre-request and post-response script sandbox)
       </div>
 
       <div className="flex-1 overflow-hidden">
@@ -241,16 +234,13 @@ export function ResponseViewer(): JSX.Element {
           />
         )}
         {tab === 'headers' && <HeadersPanel response={response} />}
-<<<<<<< HEAD
         {tab === 'devtools' && <DevToolsPanel response={response} />}
-=======
         {tab === 'scripts' && (
           <ScriptConsolePanel
             console={response.scriptConsole ?? []}
             result={response.scriptResult}
           />
         )}
->>>>>>> 0541c7f (feat(scripts): pre-request and post-response script sandbox)
       </div>
     </div>
   );

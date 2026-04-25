@@ -194,7 +194,7 @@ function ScriptConsole({
             {entry.level}
           </span>
           <span className={`flex-1 break-all font-mono text-xs ${CONSOLE_LEVEL_STYLE[entry.level]}`}>
-            {entry.message}
+            {entry.args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ')}
           </span>
           <span className="font-mono text-[10px] text-ink-4">
             {new Date(entry.timestamp).toLocaleTimeString()}
