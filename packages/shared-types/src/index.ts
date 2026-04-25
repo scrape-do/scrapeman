@@ -141,6 +141,11 @@ export interface RequestOptions {
   httpVersion?: HttpVersion;
 }
 
+export interface RequestScripts {
+  preRequest?: string;
+  postResponse?: string;
+}
+
 export interface ScrapemanRequest {
   // Accepts any version the parser understands; writers always emit
   // FORMAT_VERSION. Kept wide so a request read from a `.req.yaml` file
@@ -165,6 +170,7 @@ export interface ScrapemanRequest {
   /** Per-request rate-limit applied by runners between requests. No-op on
    *  single-send. */
   rateLimit?: RateLimitConfig;
+  scripts?: RequestScripts;
 }
 
 /**
@@ -216,13 +222,28 @@ export interface TlsCertInfo {
   fingerprint256: string;
 }
 
-// A single entry emitted by a pre/post-request script (issue #20 scaffold).
-// Scripts are not shipped yet; the console section in DevToolsPanel reads
-// this array and renders "No script output" when it is empty or absent.
+export type ScriptConsoleLevel = 'log' | 'info' | 'warn' | 'error';
+
+// A single entry emitted by a pre/post-request script.
 export interface ScriptConsoleEntry {
-  level: 'log' | 'info' | 'warn' | 'error';
+  level: ScriptConsoleLevel;
+  args: unknown[];
+  timestamp: number;
+}
+
+export interface ScriptAssertionFailure {
+  name: string;
   message: string;
-  timestamp: string;
+}
+
+export interface ScriptResult {
+  failedAssertions: ScriptAssertionFailure[];
+  durationMs: number;
+}
+
+export interface RequestScripts {
+  preRequest?: string;
+  postResponse?: string;
 }
 
 export interface ExecutedResponse {
@@ -274,10 +295,9 @@ export interface ExecutedResponse {
   // Remote host IP and port from the TCP socket.
   remoteAddress?: string;
   remotePort?: number;
-  // Script console output. Empty array means the script ran but produced no
-  // output. Absent when no script was attached (scripts are not shipped yet —
-  // see issue #20). DevToolsPanel renders "No script output" in both cases.
+  // Script console output — populated by executeWithScripts when scripts ran.
   scriptConsole?: ScriptConsoleEntry[];
+  scriptResult?: ScriptResult;
 }
 
 export type ExecutorErrorKind =

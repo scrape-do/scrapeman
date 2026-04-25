@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import type { AntiBotSignal, ExecutedResponse } from '@scrapeman/shared-types';
+import type { AntiBotSignal, ExecutedResponse, ScriptConsoleEntry, ScriptResult } from '@scrapeman/shared-types';
 import { bridge } from '../bridge.js';
 import { useAppStore } from '../store.js';
 import { JsonTree } from './JsonTree.js';
@@ -15,7 +15,11 @@ import { CodeMirrorViewer, HtmlEditor } from './HtmlEditor.js';
 import { SseEventsView } from './SseEventsView.js';
 import { DevToolsPanel } from './DevToolsPanel.js';
 
+<<<<<<< HEAD
 type Tab = 'body' | 'headers' | 'devtools';
+=======
+type Tab = 'body' | 'headers' | 'scripts';
+>>>>>>> 0541c7f (feat(scripts): pre-request and post-response script sandbox)
 
 type ContentKind = 'json' | 'html' | 'xml' | 'javascript' | 'css' | 'image' | 'pdf' | 'text' | 'binary';
 type BodyMode = 'raw' | 'pretty' | 'tree' | 'preview' | 'events';
@@ -210,9 +214,22 @@ export function ResponseViewer(): JSX.Element {
             {response.headers.length}
           </span>
         </TabButton>
+<<<<<<< HEAD
         <TabButton active={tab === 'devtools'} onClick={() => setTab('devtools')}>
           Dev Tools
         </TabButton>
+=======
+        {(response.scriptConsole !== undefined || response.scriptResult !== undefined) && (
+          <TabButton active={tab === 'scripts'} onClick={() => setTab('scripts')}>
+            Scripts
+            {response.scriptResult && response.scriptResult.failedAssertions.length > 0 && (
+              <span className="ml-1.5 rounded-full bg-method-delete/10 px-1.5 text-[10px] font-semibold text-method-delete">
+                {response.scriptResult.failedAssertions.length}
+              </span>
+            )}
+          </TabButton>
+        )}
+>>>>>>> 0541c7f (feat(scripts): pre-request and post-response script sandbox)
       </div>
 
       <div className="flex-1 overflow-hidden">
@@ -224,7 +241,16 @@ export function ResponseViewer(): JSX.Element {
           />
         )}
         {tab === 'headers' && <HeadersPanel response={response} />}
+<<<<<<< HEAD
         {tab === 'devtools' && <DevToolsPanel response={response} />}
+=======
+        {tab === 'scripts' && (
+          <ScriptConsolePanel
+            console={response.scriptConsole ?? []}
+            result={response.scriptResult}
+          />
+        )}
+>>>>>>> 0541c7f (feat(scripts): pre-request and post-response script sandbox)
       </div>
     </div>
   );
@@ -1248,6 +1274,113 @@ function TabButton({
       {children}
     </button>
   );
+}
+
+// ─── Script console panel ─────────────────────────────────────────────────────
+
+const CONSOLE_LEVEL_STYLE: Record<ScriptConsoleEntry['level'], string> = {
+  log: 'text-ink-2',
+  info: 'text-status-ok',
+  warn: 'text-method-post',
+  error: 'text-method-delete',
+};
+
+const CONSOLE_LEVEL_PREFIX: Record<ScriptConsoleEntry['level'], string> = {
+  log: 'log',
+  info: 'info',
+  warn: 'warn',
+  error: 'err',
+};
+
+function ScriptConsolePanel({
+  console: entries,
+  result,
+}: {
+  console: ScriptConsoleEntry[];
+  result: ScriptResult | undefined;
+}): JSX.Element {
+  const hasAssertions =
+    result !== undefined &&
+    (result.failedAssertions.length > 0 ||
+      // There may be passed assertions: we count those from console "test" calls.
+      // For now only show a summary if there are any failures.
+      false);
+
+  if (entries.length === 0 && !hasAssertions) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <div className="text-center">
+          <div className="text-sm font-semibold text-ink-1">No output</div>
+          <div className="mt-1 text-xs text-ink-3">
+            Scripts ran but produced no console output or assertions.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-full overflow-y-auto font-mono text-xs">
+      {/* Assertions summary */}
+      {result && result.failedAssertions.length > 0 && (
+        <div className="border-b border-line px-4 py-3">
+          <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-ink-4">
+            Assertions
+          </div>
+          {result.failedAssertions.map((a, i) => (
+            <div key={i} className="flex items-start gap-2 py-0.5">
+              <span className="mt-0.5 text-method-delete" aria-label="failed">
+                ✗
+              </span>
+              <div>
+                <span className="font-semibold text-method-delete">{a.name}</span>
+                {a.message && (
+                  <div className="text-ink-3">{a.message}</div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Console entries */}
+      {entries.length > 0 && (
+        <div className="px-4 py-3">
+          {result && result.failedAssertions.length > 0 && (
+            <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-ink-4">
+              Console
+            </div>
+          )}
+          {entries.map((entry, i) => (
+            <div
+              key={i}
+              className={`flex items-start gap-2 py-0.5 ${CONSOLE_LEVEL_STYLE[entry.level]}`}
+            >
+              <span className="w-8 shrink-0 text-right text-[10px] uppercase tracking-wider text-ink-4">
+                {CONSOLE_LEVEL_PREFIX[entry.level]}
+              </span>
+              <span className="break-all">{formatConsoleArgs(entry.args)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function formatConsoleArgs(args: unknown[]): string {
+  return args
+    .map((a) => {
+      if (a === null) return 'null';
+      if (a === undefined) return 'undefined';
+      if (typeof a === 'string') return a;
+      try {
+        return JSON.stringify(a, null, 2);
+      } catch {
+        return String(a);
+      }
+    })
+    .join(' ');
 }
 
 const MIME_EXT: Record<string, string> = {

@@ -4,6 +4,7 @@ import type {
   MultipartPart,
   ProxyConfig,
   RequestOptions,
+  RequestScripts,
   ScrapeDoConfig,
   ScrapemanRequest,
 } from '@scrapeman/shared-types';
@@ -65,6 +66,10 @@ export function serializeRequest(
 
   if (request.options) {
     writeOptionsBlock(lines, request.options);
+  }
+
+  if (request.scripts) {
+    writeScriptsBlock(lines, request.scripts);
   }
 
   return {
@@ -266,6 +271,35 @@ function writeOptionsBlock(lines: string[], options: RequestOptions): void {
   }
   if (options.httpVersion !== undefined) {
     lines.push(`  httpVersion: ${yamlString(options.httpVersion)}`);
+  }
+}
+
+function writeScriptsBlock(lines: string[], scripts: RequestScripts): void {
+  const hasPreRequest = typeof scripts.preRequest === 'string' && scripts.preRequest.length > 0;
+  const hasPostResponse = typeof scripts.postResponse === 'string' && scripts.postResponse.length > 0;
+  if (!hasPreRequest && !hasPostResponse) return;
+
+  lines.push('scripts:');
+  if (hasPreRequest) {
+    writeScriptLiteral(lines, 'preRequest', scripts.preRequest!);
+  }
+  if (hasPostResponse) {
+    writeScriptLiteral(lines, 'postResponse', scripts.postResponse!);
+  }
+}
+
+/**
+ * Emits a multi-line script using YAML literal block scalar (|/-|) so
+ * git diffs show line-level changes rather than the whole string as one blob.
+ */
+function writeScriptLiteral(lines: string[], key: string, code: string): void {
+  const chomp = code.endsWith('\n') ? '|' : '|-';
+  lines.push(`  ${key}: ${chomp}`);
+  const codeLines = code.endsWith('\n')
+    ? code.slice(0, -1).split('\n')
+    : code.split('\n');
+  for (const line of codeLines) {
+    lines.push(`    ${line}`);
   }
 }
 

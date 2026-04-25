@@ -10,7 +10,11 @@ import { CodePanel } from './CodePanel.js';
 import { ImportCurlDialog } from './ImportCurlDialog.js';
 import { ImportOpenApiDialog } from './ImportOpenApiDialog.js';
 import { LoadTestPanel } from './LoadTestPanel.js';
+<<<<<<< HEAD
 import { WebSocketPanel } from './WebSocketPanel.js';
+=======
+import { ScriptsTab } from './scripts/ScriptsTab.js';
+>>>>>>> 0541c7f (feat(scripts): pre-request and post-response script sandbox)
 import { HighlightedInput } from '../ui/HighlightedInput.js';
 import { CellContextMenu } from '../ui/CellContextMenu.js';
 import { PromptDialog } from '../ui/Dialog.js';
@@ -19,7 +23,11 @@ import { formatJson } from '../utils/json-format.js';
 import { ScreenshotModal } from './ScreenshotModal.js';
 import { bridge } from '../bridge.js';
 
+<<<<<<< HEAD
 type Tab = 'params' | 'headers' | 'auth' | 'body' | 'settings' | 'code' | 'load' | 'websocket';
+=======
+type Tab = 'params' | 'headers' | 'auth' | 'body' | 'settings' | 'scripts' | 'code' | 'load';
+>>>>>>> 0541c7f (feat(scripts): pre-request and post-response script sandbox)
 
 export function RequestBuilder(): JSX.Element {
   const activeTab = useAppStore((s) => s.tabs.find((t) => t.id === s.activeTabId) ?? null);
@@ -171,6 +179,9 @@ export function RequestBuilder(): JSX.Element {
   const paramCount = builder.params.filter((p) => p.enabled && p.key).length;
   const bodyFilled = builder.bodyType !== 'none' && builder.body.trim().length > 0;
   const authActive = builder.auth.type !== 'none';
+  const scriptsActive =
+    builder.preRequestScript.trim().length > 0 ||
+    builder.postResponseScript.trim().length > 0;
   const settingsActive =
     builder.settings.proxy.enabled ||
     builder.settings.scrapeDo.enabled ||
@@ -317,6 +328,10 @@ export function RequestBuilder(): JSX.Element {
           Settings
           {settingsActive && <span className="ml-1.5 h-1.5 w-1.5 rounded-full bg-accent" />}
         </TabButton>
+        <TabButton active={tab === 'scripts'} onClick={() => setTab('scripts')}>
+          Scripts
+          {scriptsActive && <span className="ml-1.5 h-1.5 w-1.5 rounded-full bg-accent" />}
+        </TabButton>
         <TabButton active={tab === 'code'} onClick={() => setTab('code')}>
           Code
         </TabButton>
@@ -359,6 +374,7 @@ export function RequestBuilder(): JSX.Element {
         )}
         {tab === 'auth' && <AuthTab />}
         {tab === 'settings' && <SettingsTabPanel />}
+        {tab === 'scripts' && <ScriptsTab />}
         {tab === 'code' && <CodePanel />}
         {tab === 'body' && (
           <div className="flex h-full flex-col">

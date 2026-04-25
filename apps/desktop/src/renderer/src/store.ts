@@ -115,6 +115,8 @@ export interface BuilderState {
   auth: AuthConfig;
   settings: SettingsState;
   disabledAutoHeaders: string[];
+  preRequestScript: string;
+  postResponseScript: string;
 }
 
 export interface ExecutionState {
@@ -213,6 +215,7 @@ export type BuilderPane =
   | 'auth'
   | 'body'
   | 'settings'
+  | 'scripts'
   | 'code'
   | 'load'
   | 'websocket';
@@ -370,6 +373,8 @@ interface AppState {
   updateSettings: (patch: Partial<SettingsState>) => void;
   setAuth: (auth: AuthConfig) => void;
   setDisabledAutoHeaders: (keys: string[]) => void;
+  setPreRequestScript: (code: string) => void;
+  setPostResponseScript: (code: string) => void;
 
   send: () => Promise<void>;
   cancelSend: () => void;
@@ -667,6 +672,8 @@ function builderFromRequest(request: ScrapemanRequest): BuilderState {
     auth: request.auth ?? { type: 'none' },
     settings,
     disabledAutoHeaders: request.disabledAutoHeaders ?? [],
+    preRequestScript: request.scripts?.preRequest ?? '',
+    postResponseScript: request.scripts?.postResponse ?? '',
   };
 }
 
@@ -757,6 +764,15 @@ function buildRequest(
     request.disabledAutoHeaders = [...builder.disabledAutoHeaders];
   }
 
+  const hasPreRequest = builder.preRequestScript.trim().length > 0;
+  const hasPostResponse = builder.postResponseScript.trim().length > 0;
+  if (hasPreRequest || hasPostResponse) {
+    request.scripts = {
+      ...(hasPreRequest ? { preRequest: builder.preRequestScript } : {}),
+      ...(hasPostResponse ? { postResponse: builder.postResponseScript } : {}),
+    };
+  }
+
   return request;
 }
 
@@ -777,6 +793,8 @@ function emptyDraftTab(): Tab {
       auth: { type: 'none' },
       settings: freshSettings(),
       disabledAutoHeaders: [],
+      preRequestScript: '',
+      postResponseScript: '',
     },
     dirty: false,
     execution: freshExecution(),
@@ -1620,6 +1638,14 @@ export const useAppStore = create<AppState>((set, get) => {
       }));
     },
 
+    setPreRequestScript: (code) => {
+      patchBuilder({ preRequestScript: code });
+    },
+
+    setPostResponseScript: (code) => {
+      patchBuilder({ postResponseScript: code });
+    },
+
     send: async () => {
       const { activeTabId, tabs } = get();
       if (!activeTabId) return;
@@ -2118,6 +2144,8 @@ export const useAppStore = create<AppState>((set, get) => {
           auth: { type: 'none' },
           settings: freshSettings(),
           disabledAutoHeaders: [],
+          preRequestScript: '',
+          postResponseScript: '',
         },
         dirty: false,
         execution,

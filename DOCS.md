@@ -525,6 +525,7 @@ Set expected status codes (e.g., `200, 201`) and an optional body-contains subst
 ---
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 ## WebSocket
 
 The "WebSocket" tab on any request tab opens a bidirectional WebSocket client. It does not replace the HTTP request builder — both live in the same tab.
@@ -640,6 +641,109 @@ The native file-save dialog prompts for a destination on each export.
 
 If a request in the folder has `scrapeDo.enabled: true`, the runner honours it — just as the single-request executor does. The runner does not force Scrape.do on globally; per-request settings are respected.
 >>>>>>> ed92491 (feat: collection runner — sequential/parallel, CSV iterations, JSON/CSV/HTML export)
+=======
+## Scripts
+
+Each request has two optional JavaScript scripts: one that runs before the request is sent and one that runs after the response is received. Open the **Scripts** tab in the request builder to write them.
+
+### Pre-request script
+
+The script runs after variable resolution and auth wiring, immediately before the HTTP send. Use the `req` object to mutate the request on the fly.
+
+```js
+// Add a computed header.
+req.setHeader("X-Timestamp", String(bru.timestamp()));
+
+// Read a request-scoped variable set by a previous step.
+const token = bru.getVar("authToken");
+req.setHeader("Authorization", "Bearer " + token);
+```
+
+### Post-response script
+
+The script runs after the full response body has been received. Use the `res` object to inspect the result and write assertions or variables.
+
+```js
+// Assert the status code.
+test("status is 200", () => {
+  expect(res.getStatus()).toBe(200);
+});
+
+// Store a value from the response body for the next request.
+const body = res.getBody(); // auto-parsed JSON when content-type is application/json
+await bru.setEnvVar("userId", body.id);
+```
+
+### API reference
+
+**`req` (pre-request only)**
+
+| Method | Description |
+|---|---|
+| `req.url` | Current request URL (read) |
+| `req.method` | HTTP method (read) |
+| `req.getHeader(key)` | Get a request header value (case-insensitive) |
+| `req.setHeader(key, value)` | Set or overwrite a request header |
+| `req.getBody()` | Get the raw body string (text/json/xml modes) |
+| `req.setBody(value)` | Replace the request body |
+
+**`res` (post-response only)**
+
+| Method | Description |
+|---|---|
+| `res.getStatus()` | HTTP status code |
+| `res.getHeader(key)` | Get a response header (case-insensitive) |
+| `res.getHeaders()` | All response headers as a key→value object |
+| `res.getBody()` | Response body — auto-parsed JSON when content-type includes "json" |
+
+**`bru` (both scripts)**
+
+| Method | Description |
+|---|---|
+| `bru.getVar(name)` | Get a request-scoped variable (cleared after the request) |
+| `bru.setVar(name, value)` | Set a request-scoped variable |
+| `bru.getEnvVar(name)` | Get a variable from the active environment |
+| `bru.setEnvVar(name, value)` | Write a variable to the active environment file |
+| `bru.getCollectionVar(name)` | Get a collection-level variable |
+| `bru.setCollectionVar(name, value)` | Set a collection-level variable |
+| `bru.getGlobalVar(name)` | Get a global variable |
+| `bru.setGlobalVar(name, value)` | Set a global variable |
+| `bru.sendRequest({ method, url, headers?, body? })` | Fire a sub-request; returns `{ status, headers, body }` |
+| `bru.random()` | Random alphanumeric string |
+| `bru.timestamp()` | Current Unix timestamp in ms |
+| `bru.isoDate()` | Current date as ISO 8601 string |
+| `bru.randomInt(min?, max?)` | Random integer in range |
+
+**`console`**
+
+`console.log`, `.info`, `.warn`, `.error` — all output appears in the **Scripts** tab of the response panel after the request completes.
+
+**`test` and `expect`**
+
+```js
+test("name", () => {
+  expect(value).toBe(expected);
+  expect(value).toEqual(expected);  // deep equality
+  expect(value).toBeTruthy();
+  expect(value).toBeFalsy();
+  expect(str).toContain(substr);
+});
+```
+
+Failed assertions render in the Scripts response tab with a red marker and the failure message. The request itself is not aborted when an assertion fails.
+
+### Sandbox
+
+JavaScript runs in a Node `vm` context with a scoped API. `require`, `process`, and `import` are not available. The timeout is 5000 ms per script; an infinite loop is killed after that.
+
+Scripts are stored in the `.sman` file under the `scripts:` key as YAML literal blocks, so multi-line code produces clean git diffs.
+
+### Out of scope (not built)
+
+- `bru.runRequest("Other request name")` — chaining by request name.
+- TypeScript inside scripts.
+- Visualizer (`vis.set(...)`) API.
+>>>>>>> 0541c7f (feat(scripts): pre-request and post-response script sandbox)
 
 ---
 

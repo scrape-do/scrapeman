@@ -4,6 +4,7 @@ import type {
 } from '@scrapeman/shared-types';
 
 export * from './executor.js';
+export * from './scripts/index.js';
 export * from './errors.js';
 export { UndiciExecutor, BODY_UI_LIMIT } from './adapters/undici-executor.js';
 export type { UndiciExecutorOptions } from './adapters/undici-executor.js';

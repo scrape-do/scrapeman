@@ -21,12 +21,16 @@ import {
   composeScrapeDoRequest,
   WorkspaceCookieJar,
   runLoad,
+<<<<<<< HEAD
   runCollection,
   exportRunnerJson,
   exportRunnerCsv,
   exportRunnerHtml,
   parseCsvIterations,
   importOpenApiSpec,
+=======
+  type BruCallbacks,
+>>>>>>> 0541c7f (feat(scripts): pre-request and post-response script sandbox)
 } from '@scrapeman/http-core';
 import type {
   AutoHeadersPreview,
@@ -204,6 +208,71 @@ function installContentSecurityPolicy(): void {
   });
 }
 
+/**
+ * Builds a BruCallbacks object that reads/writes environment and collection
+ * files via the WorkspaceManager. Used by executeWithScripts so script
+ * sandboxes can call bru.getEnvVar() / bru.setEnvVar() etc.
+ */
+function buildBruCallbacks(
+  workspacePath: string | null,
+  activeEnvironment: string | null,
+): BruCallbacks {
+  return {
+    getEnvVars: async () => {
+      if (!workspacePath || !activeEnvironment) return {};
+      const env = await workspaceManager.readEnvironment(workspacePath, activeEnvironment);
+      if (!env) return {};
+      const map: Record<string, string> = {};
+      for (const v of env.variables) {
+        if (v.enabled) map[v.key] = v.value;
+      }
+      return map;
+    },
+    setEnvVar: async (name: string, value: string) => {
+      if (!workspacePath || !activeEnvironment) return;
+      const env = await workspaceManager.readEnvironment(workspacePath, activeEnvironment);
+      if (!env) return;
+      const idx = env.variables.findIndex((v) => v.key === name);
+      if (idx >= 0) {
+        env.variables[idx] = { ...env.variables[idx]!, value };
+      } else {
+        env.variables.push({ key: name, value, enabled: true, secret: false });
+      }
+      await workspaceManager.writeEnvironment(workspacePath, env);
+    },
+    getCollectionVars: async () => ({}),
+    setCollectionVar: async () => { /* collection vars not yet implemented */ },
+    getGlobalVars: async () => ({}),
+    setGlobalVar: async () => { /* global vars not yet implemented */ },
+    sendRequest: async (opts: { method: string; url: string; headers?: Record<string, string>; body?: string }) => {
+      const subRequest: ScrapemanRequest = {
+        scrapeman: '2.0',
+        meta: { name: 'sub-request' },
+        method: opts.method.toUpperCase(),
+        url: opts.url,
+        ...(opts.headers ? { headers: opts.headers } : {}),
+        ...(opts.body !== undefined ? { body: { type: 'text' as const, content: opts.body } } : {}),
+      };
+      const response = await executor.execute(subRequest);
+      const headerMap: Record<string, string> = {};
+      for (const [key, value] of response.headers) {
+        headerMap[key] = value;
+      }
+      const bodyText = Buffer.from(response.bodyBase64, 'base64').toString('utf8');
+      const ct = (response.contentType ?? '').toLowerCase();
+      let body: string | unknown = bodyText;
+      if (ct.includes('json')) {
+        try {
+          body = JSON.parse(bodyText);
+        } catch {
+          body = bodyText;
+        }
+      }
+      return { status: response.status, headers: headerMap, body };
+    },
+  };
+}
+
 app.whenReady().then(() => {
   installContentSecurityPolicy();
 
@@ -268,9 +337,17 @@ app.whenReady().then(() => {
           }
         }
 
-        const response = await executor.execute(resolved, {
-          signal: controller.signal,
-        });
+        const hasScripts = Boolean(
+          request.scripts?.preRequest || request.scripts?.postResponse,
+        );
+        const response = hasScripts
+          ? await executor.executeWithScripts(resolved, {
+              signal: controller.signal,
+              callbacks: buildBruCallbacks(workspacePath, activeEnvironment),
+            })
+          : await executor.execute(resolved, {
+              signal: controller.signal,
+            });
 
         // Capture Set-Cookie response headers into the jar for next time.
         if (workspacePath && cookieJar) {

@@ -7,6 +7,7 @@ import {
   type MultipartPart,
   type ProxyConfig,
   type RequestOptions,
+  type RequestScripts,
   type ScrapeDoConfig,
   type ScrapemanRequest,
 } from '@scrapeman/shared-types';
@@ -103,6 +104,10 @@ export async function parseRequest(
   }
   if (isObject(raw['options'])) {
     request.options = parseOptions(raw['options']);
+  }
+  if (isObject(raw['scripts'])) {
+    const parsed = parseScripts(raw['scripts']);
+    if (parsed) request.scripts = parsed;
   }
 
   return request;
@@ -288,6 +293,16 @@ function parseOptions(raw: Record<string, unknown>): RequestOptions {
     options.httpVersion = raw['httpVersion'];
   }
   return options;
+}
+
+function parseScripts(raw: Record<string, unknown>): RequestScripts | null {
+  const preRequest = typeof raw['preRequest'] === 'string' ? raw['preRequest'] : undefined;
+  const postResponse = typeof raw['postResponse'] === 'string' ? raw['postResponse'] : undefined;
+  if (!preRequest && !postResponse) return null;
+  return {
+    ...(preRequest !== undefined ? { preRequest } : {}),
+    ...(postResponse !== undefined ? { postResponse } : {}),
+  };
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

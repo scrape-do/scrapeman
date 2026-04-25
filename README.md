@@ -74,7 +74,7 @@ The full marketing site lives at **[scrapeman.app](https://scrapeman.app)** and 
 ### Request building
 - URL bar with `{{var}}` syntax highlighting (overlay technique)
 - **Params** tab with two-way URL ↔ params sync
-- **Headers** / **Auth** / **Body** / **Settings** / **Code** tabs
+- **Params** / **Headers** / **Auth** / **Body** / **Settings** / **Scripts** / **Code** tabs
 - Per-request settings: proxy, timeout, redirect, TLS, HTTP version, Scrape.do native mode
 - `{{var}}` autocomplete popover — env variables + built-in dynamics (`{{random}}`, `{{timestamp}}`, `{{isoDate}}`, `{{randomInt}}`)
 - Right-click cell context menu: URL/Base64 encode-decode, copy, paste, clear
@@ -134,6 +134,16 @@ The full marketing site lives at **[scrapeman.app](https://scrapeman.app)** and 
 - **Lazy parse** — Raw default, JSON.parse only when user picks Tree/Pretty
 - **Response body search** with highlight, prev/next navigation, persists across sends (auto re-runs)
 - Status / TTFB / download / size / protocol metrics
+
+### Scripts
+
+- **Pre-request script** — JavaScript that runs before the HTTP send. Mutate the request via `req.setHeader()`, `req.setBody()`, or `req.url`
+- **Post-response script** — JavaScript that runs after the response is received. Inspect `res.getStatus()`, `res.getBody()` (auto-parsed JSON), run assertions with `test()` / `expect()`
+- `bru` object for reading/writing environment, collection, and global variables, plus `bru.sendRequest()` for sub-requests
+- `console.log/info/warn/error` output visible in the **Scripts** tab of the response panel
+- Failed assertions render with a red marker; passing tests are silent
+- Sandbox: Node `vm` context — no `require`, `process`, or `import`. 5 s timeout kills infinite loops
+- Scripts stored as YAML literal blocks in the `.sman` file — clean git diffs
 
 ### Code export
 - Hand-written generators (fast, dependency-free): curl, JS fetch, Python requests, Go net/http

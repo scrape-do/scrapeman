@@ -17,8 +17,14 @@ import type { TLSSocket } from 'node:tls';
 import type {
   BodyConfig,
   ExecutedResponse,
+<<<<<<< HEAD
   RedirectHop,
   TlsCertInfo,
+=======
+  ScrapemanRequest,
+  ScriptConsoleEntry,
+  ScriptResult,
+>>>>>>> 0541c7f (feat(scripts): pre-request and post-response script sandbox)
 } from '@scrapeman/shared-types';
 import type { ScrapemanRequest } from '@scrapeman/shared-types';
 import type { RequestExecutor } from '../executor.js';
@@ -26,7 +32,12 @@ import { ExecutorError } from '../errors.js';
 import { buildAutoHeaders, mergeHeaders } from '../auto-headers.js';
 import { readSseStream, type SseEvent } from '../sse-reader.js';
 import { normalizeUrl } from '../url/normalize.js';
+<<<<<<< HEAD
 import { detectAntiBot } from '../anti-bot.js';
+=======
+import { runScript } from '../scripts/sandbox.js';
+import { buildReqProxy, buildResProxy, buildBruObject, type BruCallbacks, type MutableRequest } from '../scripts/bru-api.js';
+>>>>>>> 0541c7f (feat(scripts): pre-request and post-response script sandbox)
 
 const DEFAULT_MAX_REDIRECTS = 10;
 const DEFAULT_TOTAL_TIMEOUT_MS = 120_000;
@@ -280,6 +291,97 @@ export class UndiciExecutor implements RequestExecutor {
       connectedChannel.unsubscribe(socketListener);
     }
   }
+
+  /**
+   * Wraps `execute()` with pre-request and post-response script lifecycle.
+   *
+   * 1. Runs `scripts.preRequest` with a mutable `req` proxy. Mutations to
+   *    url / method / headers / body are applied to the request before send.
+   * 2. Calls `execute()` to send the (possibly mutated) request.
+   * 3. Runs `scripts.postResponse` with a read-only `res` proxy.
+   * 4. Attaches `scriptConsole` and `scriptResult` to the returned response.
+   *
+   * `callbacks` is provided by the main process so scripts can reach
+   * environment and collection files without the sandbox needing direct FS
+   * access.
+   */
+  async executeWithScripts(
+    request: ScrapemanRequest,
+    options: { signal?: AbortSignal; callbacks?: BruCallbacks } = {},
+  ): Promise<ExecutedResponse> {
+    const { signal, callbacks } = options;
+    const consoleEntries: ScriptConsoleEntry[] = [];
+    const failedAssertions: ScriptResult['failedAssertions'] = [];
+    let totalScriptMs = 0;
+
+    const requestVars = new Map<string, string>();
+    const bru = buildBruObject(
+      requestVars,
+      callbacks ?? buildNoopCallbacks(),
+    );
+
+    let resolved: ScrapemanRequest = request;
+
+    // ── Pre-request script ─────────────────────────────────────────────── //
+    if (request.scripts?.preRequest) {
+      const mutable: MutableRequest = {
+        url: resolved.url,
+        method: resolved.method,
+        ...(resolved.headers ? { headers: { ...resolved.headers } } : {}),
+        ...(resolved.body ? { body: resolved.body } : {}),
+      };
+      const reqProxy = buildReqProxy(resolved, mutable);
+      const ctx = { bru, req: reqProxy };
+      const preResult = await runScript(request.scripts.preRequest, ctx);
+      consoleEntries.push(...preResult.consoleEntries);
+      failedAssertions.push(...preResult.failedAssertions);
+      totalScriptMs += preResult.durationMs;
+
+      // Apply mutations back to the resolved request.
+      resolved = {
+        ...resolved,
+        url: mutable.url,
+        method: mutable.method,
+        ...(mutable.headers !== undefined ? { headers: mutable.headers } : {}),
+        ...(mutable.body !== undefined ? { body: mutable.body } : {}),
+      };
+    }
+
+    // ── Execute ─────────────────────────────────────────────────────────── //
+    const response = await this.execute(
+      resolved,
+      signal !== undefined ? { signal } : {},
+    );
+
+    // ── Post-response script ─────────────────────────────────────────────── //
+    if (request.scripts?.postResponse) {
+      const resProxy = buildResProxy(response);
+      const ctx = { bru, res: resProxy };
+      const postResult = await runScript(request.scripts.postResponse, ctx);
+      consoleEntries.push(...postResult.consoleEntries);
+      failedAssertions.push(...postResult.failedAssertions);
+      totalScriptMs += postResult.durationMs;
+    }
+
+    return {
+      ...response,
+      scriptConsole: consoleEntries,
+      scriptResult: { failedAssertions, durationMs: totalScriptMs },
+    };
+  }
+}
+
+/** No-op callbacks for when no workspace path is available. */
+function buildNoopCallbacks(): BruCallbacks {
+  return {
+    getEnvVars: async () => ({}),
+    setEnvVar: async () => { /* noop */ },
+    getCollectionVars: async () => ({}),
+    setCollectionVar: async () => { /* noop */ },
+    getGlobalVars: async () => ({}),
+    setGlobalVar: async () => { /* noop */ },
+    sendRequest: async () => ({ status: 0, headers: {}, body: '' }),
+  };
 }
 
 /**
