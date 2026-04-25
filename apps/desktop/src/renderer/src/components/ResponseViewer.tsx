@@ -32,19 +32,24 @@ const MODE_LABEL: Record<BodyMode, string> = {
 const LARGE_BODY_BYTES = 500 * 1024;
 
 function modesForKind(kind: ContentKind): BodyMode[] {
+  // First entry is the default when the user has not picked a mode for this
+  // response yet (see effective-mode computation below). For JSON and HTML we
+  // surface the structured view first because that's what users almost always
+  // want to read.
   switch (kind) {
     case 'json':
-      return ['raw', 'pretty', 'tree'];
+      return ['tree', 'pretty', 'raw'];
     case 'html':
-      return ['raw', 'pretty', 'preview'];
+      return ['pretty', 'raw', 'preview'];
     case 'xml':
+      return ['pretty', 'raw'];
     case 'javascript':
     case 'css':
-      return ['raw', 'pretty'];
+      return ['pretty', 'raw'];
     case 'image':
-      return ['raw', 'preview'];
+      return ['preview', 'raw'];
     case 'pdf':
-      return ['raw', 'preview'];
+      return ['preview', 'raw'];
     case 'text':
     case 'binary':
     default:
@@ -376,9 +381,9 @@ function BodyPanel({
     if (kind === 'json' && parsed.ok) {
       return JSON.stringify(parsed.value, null, 2);
     }
-    // HTML pretty is handled by CodeMirror — return raw text here so it is
-    // available for plain-text search when the editor is not shown.
-    if (kind === 'html') return text;
+    if (kind === 'html') {
+      return formatHtml(text);
+    }
     if (kind === 'xml') {
       return formatXml(text);
     }
@@ -840,9 +845,11 @@ function renderBody({
       kind === 'css')
   ) {
     const active = matchAll[activeMatchIndex];
-    // For HTML pass raw text; for other kinds pass the formatted pretty string
-    // so CodeMirror's gutter line numbers align with the search match offsets.
-    const cmContent = kind === 'html' ? text : pretty;
+    // Always pass the formatted `pretty` string — for HTML this means the
+    // indented version produced by formatHtml. CodeMirror's gutter line numbers
+    // align with the search match offsets because both are computed from the
+    // same source.
+    const cmContent = pretty;
     const activeMatchProp = active
       ? { lineIndex: active.lineIndex, start: active.start, end: active.end }
       : null;
@@ -1011,6 +1018,65 @@ function formatXml(input: string): string {
     }
   }
   return output.trim();
+}
+
+// HTML void elements that never have a closing tag — depth must not advance for these.
+const VOID_HTML_TAGS = new Set([
+  'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
+  'link', 'meta', 'param', 'source', 'track', 'wbr',
+]);
+
+/**
+ * Lightweight HTML pretty-printer. Splits at every `>` `<` boundary and
+ * indents based on tag nesting. Inline `<script>` / `<style>` content is left
+ * on a single line to avoid mangling JS / CSS. Comments and DOCTYPE are passed
+ * through unchanged. Not a full parser — good enough for response bodies the
+ * user wants to read.
+ */
+function formatHtml(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) return input;
+  // If the body has no real tags, return as-is.
+  if (!/</.test(trimmed)) return trimmed;
+
+  // Insert a newline at every boundary between a closing > and the next <,
+  // unless the next < is part of a script/style we want to keep intact.
+  const withBreaks = trimmed.replace(/>\s*</g, '>\n<');
+  const lines = withBreaks.split('\n');
+  let depth = 0;
+  const out: string[] = [];
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    const isClosing = /^<\//.test(line);
+    const isComment = /^<!--/.test(line);
+    const isDoctype = /^<!doctype/i.test(line);
+    const tagMatch = line.match(/^<\/?([a-zA-Z][a-zA-Z0-9-]*)/);
+    const tagName = tagMatch?.[1]?.toLowerCase() ?? '';
+    const isVoid = VOID_HTML_TAGS.has(tagName);
+    const isSelfClosing = /\/>\s*$/.test(line);
+    // A line that opens AND closes the same tag (`<p>text</p>`) does not
+    // change depth.
+    const opensAndCloses =
+      !isClosing &&
+      tagName !== '' &&
+      new RegExp(`</${tagName}\\s*>\\s*$`, 'i').test(line);
+
+    if (isClosing) depth = Math.max(0, depth - 1);
+    out.push('  '.repeat(depth) + line);
+    if (
+      !isClosing &&
+      !isComment &&
+      !isDoctype &&
+      !isVoid &&
+      !isSelfClosing &&
+      !opensAndCloses &&
+      tagName !== ''
+    ) {
+      depth += 1;
+    }
+  }
+  return out.join('\n');
 }
 
 // ─── UI primitives ───────────────────────────────────────────────────────────
