@@ -2,6 +2,31 @@
 
 All notable changes land here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [SemVer](https://semver.org/).
 
+## [0.5.0] — 2026-04-26
+
+Big-feature release. Eleven previously-open issues land in this cut.
+
+### Added
+- **WebSocket client** (#24). New `WebSocketPanel` mounted as a builder pane: URL bar, status dot, connect/disconnect, message timeline with ↓ / ↑ / ● / ○ row badges, JSON expand, send box, auto-scroll toggle, export timeline as JSON. Core wraps undici's WebSocket with reconnect, ping latency, per-connection proxy, and a shared timeline. Per-tab `Tab.websocket` state survives tab switches.
+- **Collection runner** (#21). New `RunnerPanel` (Radix dialog, opened from sidebar folder context-menu "Run folder…"). Sequential or parallel modes with concurrency, per-request delay, optional iterations, CSV-driven iteration. Live pass/fail rows with expand-for-details, abort mid-run. Export the run as JSON, CSV, or HTML.
+- **Cookie manager UI** (#23). Domain filter, manual add / inline edit, httpOnly value masking with reveal toggle, JSON + Netscape exports, paste-import that accepts both `document.cookie` strings and Netscape `cookies.txt` bodies. New `cookies:set` IPC backed by `WorkspaceCookieJar.setCookie`.
+- **OpenAPI / Swagger import** (#27). Parse OpenAPI 3.0.x / 3.1.x and Swagger 2.0 from file or URL. Tags become folders, paths/methods become requests, security schemes become auth, server URLs go to `{{base_url}}`. Local `$ref` resolved one hop. New `ImportOpenApiDialog` and command-palette entry.
+- **Pre-request / post-response scripts** (#20). Node `vm` sandbox with a `bru` API (`getVar` / `setVar` / `getEnvVar` / `setEnvVar` / `sendRequest` / built-in dynamics), `req` mutable proxy, `res` read-only proxy with auto-JSON body parse, captured `console.*`, minimal `test()` / `expect().toBe()`. New Scripts pane with two CodeMirror editors and a Scripts response tab that renders the console + assertion failures. Scripts round-trip through `.sman` as YAML literal blocks.
+- **Multi-workspace Phase 1** (#61). `WorkspaceSwitcher` dropdown above the sidebar tab strip lists every open workspace with active check and per-row close. Switching snapshots the previous workspace's UI state (tabs, activeTabId, closedTabStack, activeEnvironment, responseSearch) and restores the destination's snapshot. `openWorkspaces` and `lastActiveWorkspace` persist to localStorage.
+- **Dev Tools panel** (#28). New response tab next to Body / Headers: timing waterfall (DNS / TCP / TLS / TTFB / Download), the actual sent URL and headers (post variable resolve, scrape-do compose, auth), redirect chain with statuses + Location, TLS peer cert (subject CN, issuer CN, validFrom / validTo, fingerprint256), remote IP / port, HTTP version, compressed vs decoded size. Script console section reads `ExecutedResponse.scriptConsole`.
+- **OAuth 2.0 + OpenID Connect** (#37). Authorization Code and Authorization Code + PKCE in addition to client_credentials. Refresh-token flow with proactive 30s-before-expiry refresh. Loopback callback listener via Electron's `net` module, `state` and PKCE `code_verifier` verified on callback. OIDC discovery via `.well-known/openid-configuration` auto-fills endpoints + scopes. `accessTokenPlacement` chooses between `Authorization` header, query param, or form body. JWT inspector decodes the access token and id_token header + payload (display only) with a live `exp` countdown.
+- **Scraping-first features** (#31). Per-request `rateLimit` (fixed delay + optional jitter min/max) honoured by Collection Runner and Load Runner. UA preset picker (Scrapeman default, Chrome / Firefox / Safari / Mobile Safari / Googlebot / curl). Anti-bot signal detection (Cloudflare, 429, CAPTCHA, bot-block) populates `ExecutedResponse.antiBotSignal`; renderer shows a dismissable banner above the body. Rotating proxy: `ProxyConfig.rotate.{ urls, strategy }` with round-robin or random selection.
+- **Scoped variables + folder-level auth inheritance** (#30). Resolution order Request > Folder > Collection > Environment > Global. New file format files: `.scrapeman/globals.yaml`, `.scrapeman/collection.yaml`, `_folder.yaml` per folder. Folder + collection settings dialogs (Variables / Auth tabs); `AuthTab` shows `Inherited from /<folder>` when a request inherits.
+- **SSE Events mode** in response viewer (#25). Detects `text/event-stream` (or `sseEvents` populated) and adds an Events mode that renders one block per event with id / event / retry pills and the `data` field as JSON tree (when JSON) or monospace. Export as JSON.
+- **Path-in-name save** (#69). The save dialog accepts `api/users/list`-style names; missing folders are auto-created under the workspace root. `..` and `.` segments are rejected; the final path goes through `resolveSafe`.
+- **Response viewer polish**: HTML pretty mode now actually indents the output (new `formatHtml` tag-aware printer); default mode for JSON / HTML / XML / JS / CSS / image / pdf flips to the structured view (Tree / Pretty / Preview) when the user has not pinned a mode; raw stays one click away.
+
+### Fixed
+- **bash ANSI-C curl import**. `curl ... --data-raw $'[{"q":"\\u0021"}]'` (Chrome's "Copy as cURL (bash)") now expands `!` → `!`, `\n` → newline, `\t` → tab, `\xHH`, `\NNN` octal, `\\` `\'` `\"`. Previously the body landed with a stray `$` prefix and unresolved escapes, so GraphQL servers rejected it with a parse error. Two regression tests cover the GraphQL-style and mixed-escape cases.
+
+### Tests
+- 548 passing in `http-core`, 35 in `apps/desktop`. 7 skipped. Typecheck clean across all three packages.
+
 ## [0.4.1] — 2026-04-22
 
 ### Added
