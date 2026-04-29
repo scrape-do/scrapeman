@@ -1953,7 +1953,30 @@ export const useAppStore = create<AppState>((set, get) => {
     renameNode: async (relPath: string, newName: string) => {
       const workspace = get().workspace;
       if (!workspace) return;
-      await bridge.workspaceRename(workspace.path, relPath, newName);
+      const newRelPath = await bridge.workspaceRename(workspace.path, relPath, newName);
+      // If the renamed node is open as a file-backed tab, update its id /
+      // relPath / display name in place so the tab strip stays in sync.
+      // Mirrors the moveNode pattern; without this the tab keeps the old
+      // name and tries to save against a path that no longer exists.
+      const oldId = `file:${relPath}`;
+      const newId = `file:${newRelPath}`;
+      const tabs = get().tabs;
+      if (tabs.some((t) => t.id === oldId)) {
+        set({
+          tabs: tabs.map((t) =>
+            t.id === oldId
+              ? {
+                  ...t,
+                  id: newId,
+                  relPath: newRelPath,
+                  name: newName,
+                }
+              : t,
+          ),
+          activeTabId:
+            get().activeTabId === oldId ? newId : get().activeTabId,
+        });
+      }
       await get().refreshTree();
     },
 
