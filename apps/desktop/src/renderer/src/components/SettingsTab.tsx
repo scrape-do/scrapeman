@@ -349,6 +349,17 @@ export function SettingsTab(): JSX.Element {
         />
       </Section>
 
+      <Section
+        title="Cookies"
+        description="The workspace cookie jar attaches a Cookie header on send and stores Set-Cookie headers from the response. Mirrors Postman's per-request 'Send cookies' toggle."
+      >
+        <Toggle
+          label="Use cookie jar for this request"
+          checked={s.useCookieJar}
+          onChange={(useCookieJar) => patch({ useCookieJar })}
+        />
+      </Section>
+
       <Section title="Protocol">
         <Row label="HTTP version">
           <select

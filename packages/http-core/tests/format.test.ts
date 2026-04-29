@@ -187,6 +187,29 @@ describe('serialize + parse', () => {
     await expect(parseRequest(yaml)).rejects.toBeInstanceOf(FormatParseError);
   });
 
+  it('round-trips options.cookieJar.enabled', async () => {
+    const original: ScrapemanRequest = {
+      scrapeman: FORMAT_VERSION,
+      meta: { name: 'Cookie jar off' },
+      method: 'GET',
+      url: 'https://api.example.com/me',
+      options: { cookieJar: { enabled: false } },
+    };
+    const parsed = await roundTrip(original);
+    expect(parsed.options?.cookieJar).toEqual({ enabled: false });
+  });
+
+  it('omits options.cookieJar when not set', async () => {
+    const original: ScrapemanRequest = {
+      scrapeman: FORMAT_VERSION,
+      meta: { name: 'No cookie jar override' },
+      method: 'GET',
+      url: 'https://api.example.com/me',
+    };
+    const parsed = await roundTrip(original);
+    expect(parsed.options?.cookieJar).toBeUndefined();
+  });
+
   it('accepts legacy version 1.0 (pre-`.sman` files) and normalizes to current version', async () => {
     const yaml = `scrapeman: "1.0"\nmeta:\n  name: Legacy\nmethod: GET\nurl: https://example.com\n`;
     const parsed = await parseRequest(yaml);

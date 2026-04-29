@@ -272,6 +272,10 @@ function writeOptionsBlock(lines: string[], options: RequestOptions): void {
   if (options.httpVersion !== undefined) {
     lines.push(`  httpVersion: ${yamlString(options.httpVersion)}`);
   }
+  if (options.cookieJar) {
+    lines.push('  cookieJar:');
+    lines.push(`    enabled: ${options.cookieJar.enabled}`);
+  }
 }
 
 function writeScriptsBlock(lines: string[], scripts: RequestScripts): void {

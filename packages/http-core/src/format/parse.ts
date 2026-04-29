@@ -292,6 +292,12 @@ function parseOptions(raw: Record<string, unknown>): RequestOptions {
   if (raw['httpVersion'] === 'auto' || raw['httpVersion'] === 'http1' || raw['httpVersion'] === 'http2') {
     options.httpVersion = raw['httpVersion'];
   }
+  if (isObject(raw['cookieJar'])) {
+    const cj = raw['cookieJar'];
+    if (typeof cj['enabled'] === 'boolean') {
+      options.cookieJar = { enabled: cj['enabled'] };
+    }
+  }
   return options;
 }
 

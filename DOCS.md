@@ -78,7 +78,7 @@ An autocomplete popover appears when you type `{{` showing all available variabl
 - **Headers** — key-value table. Auto-headers (Content-Type, Accept-Encoding, User-Agent) are shown with a toggle to disable or override each one. A bulk-edit toggle (pencil icon, top-right of the table) switches the view to a textarea where each line is `Key: Value`. Prefix a line with `//` to disable it. Switching back to the table is lossless — disabled state and `{{var}}` placeholders are preserved.
 - **Body** — modes: none, raw (JSON, XML, HTML, text, JavaScript), form-urlencoded, multipart form-data, binary file, GraphQL (planned). When mode is **JSON**, a **Beautify** button appears in the type bar to format the body with 2-space indent. The shortcut **Shift+Cmd+F** (macOS) / **Shift+Ctrl+F** (Windows/Linux) triggers beautify while the body editor is focused. Bodies containing `{{variable}}` placeholders are not formatted (use environments to resolve them first).
 - **Auth** — see [Auth Schemes](#auth-schemes) below.
-- **Settings** — per-request proxy, timeout, redirect, TLS, HTTP version, and Scrape.do native mode. See [Proxy and Scrape.do Mode](#proxy-and-scrapedo-mode).
+- **Settings** — per-request proxy, timeout, redirect, TLS, HTTP version, **cookie jar toggle** (Postman-style "Send cookies" — when off the workspace cookie jar is bypassed for this request, no `Cookie` header on send and no `Set-Cookie` capture), and Scrape.do native mode. See [Proxy and Scrape.do Mode](#proxy-and-scrapedo-mode).
 - **Code** — see [Code Export](#code-export) below.
 
 ### Key-value table keyboard shortcuts

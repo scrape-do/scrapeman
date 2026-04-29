@@ -139,6 +139,14 @@ export interface RequestOptions {
     caFile?: string;
   };
   httpVersion?: HttpVersion;
+  /** Per-request cookie jar toggle. When `enabled: false`, the workspace
+   *  cookie jar is bypassed for this request — no `Cookie` header is added
+   *  on send and no `Set-Cookie` headers are written back to the jar.
+   *  Mirrors Postman's per-request "Send cookies" toggle.
+   *  Default behaviour (field absent or `enabled: true`): jar is used. */
+  cookieJar?: {
+    enabled: boolean;
+  };
 }
 
 export interface RequestScripts {

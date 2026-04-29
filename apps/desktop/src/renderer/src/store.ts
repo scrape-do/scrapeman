@@ -104,6 +104,10 @@ export interface SettingsState {
   /** Key from UA_PRESETS. 'scrapeman' = default versioned UA. */
   uaPreset: string;
   rateLimit: RateLimitConfig;
+  /** Per-request cookie jar toggle. true = the workspace cookie jar is used
+   *  (default); false = the jar is bypassed for this request, no Cookie
+   *  header is added on send and no Set-Cookie is captured. */
+  useCookieJar: boolean;
 }
 
 export interface BuilderState {
@@ -518,6 +522,7 @@ function freshSettings(): SettingsState {
     validateBody: '',
     uaPreset: 'scrapeman',
     rateLimit: { enabled: false, fixedDelayMs: 0 },
+    useCookieJar: true,
   };
 }
 
@@ -680,6 +685,9 @@ function builderFromRequest(request: ScrapemanRequest): BuilderState {
   if (request.rateLimit) {
     settings.rateLimit = { ...request.rateLimit };
   }
+  if (request.options?.cookieJar?.enabled === false) {
+    settings.useCookieJar = false;
+  }
 
   return {
     method: request.method,
@@ -777,6 +785,11 @@ function buildRequest(
   }
   if (s.httpVersion !== 'auto') {
     options.httpVersion = s.httpVersion;
+  }
+  // Persist cookieJar.enabled only when the user has turned it OFF — default
+  // is true, so the absence of the field means "use the jar".
+  if (!s.useCookieJar) {
+    options.cookieJar = { enabled: false };
   }
   if (Object.keys(options).length > 0) request.options = options;
   if (builder.disabledAutoHeaders.length > 0) {

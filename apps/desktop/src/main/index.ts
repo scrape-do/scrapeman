@@ -316,8 +316,14 @@ app.whenReady().then(() => {
         // oauth2Client so its token cache survives across IPC calls.
         resolved = await applyAuth(resolved, { oauth2Client });
 
+        // Per-request cookie jar toggle. Field absent OR enabled !== false
+        // means the jar is used (default behaviour). When the user has
+        // explicitly disabled the jar for this request, skip both the
+        // outgoing Cookie header and the incoming Set-Cookie capture below.
+        const useCookieJar = request.options?.cookieJar?.enabled !== false;
+
         // Inject Cookie header from the persistent jar (if any) before send.
-        if (workspacePath && cookieJar) {
+        if (workspacePath && cookieJar && useCookieJar) {
           const cookieHeader = await cookieJar.getCookieHeader(
             workspacePath,
             activeEnvironment,
@@ -347,7 +353,7 @@ app.whenReady().then(() => {
             });
 
         // Capture Set-Cookie response headers into the jar for next time.
-        if (workspacePath && cookieJar) {
+        if (workspacePath && cookieJar && useCookieJar) {
           const setCookies = response.headers
             .filter(([name]) => name.toLowerCase() === 'set-cookie')
             .map(([, value]) => value);
