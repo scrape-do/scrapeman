@@ -2,8 +2,10 @@ import type {
   LoadEvent,
   LoadFailedBodyEvent,
   ScrapemanRequest,
+  WatchedHeaderStats,
+  WatchedHeaderBucket,
+  WatchedHeaderNumericStats,
 } from '@scrapeman/shared-types';
-import type { ScrapemanRequest, WatchedHeaderStats, WatchedHeaderBucket, WatchedHeaderNumericStats } from '@scrapeman/shared-types';
 import { UndiciExecutor } from '../adapters/undici-executor.js';
 import { resolveRequest } from '../variables/resolve.js';
 import { applyAuth } from '../auth/apply.js';

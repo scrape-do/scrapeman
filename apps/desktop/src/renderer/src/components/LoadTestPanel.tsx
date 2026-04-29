@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FORMAT_VERSION, type LoadFailedBodyEvent } from '@scrapeman/shared-types';
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { FORMAT_VERSION } from '@scrapeman/shared-types';
-import type { WatchedHeaderStats } from '@scrapeman/shared-types';
+import {
+  FORMAT_VERSION,
+  type LoadEvent,
+  type LoadFailedBodyEvent,
+  type WatchedHeaderStats,
+} from '@scrapeman/shared-types';
 import { bridge } from '../bridge.js';
 import { useAppStore, type BuilderState } from '../store.js';
 import { Tooltip } from '../ui/Tooltip.js';
@@ -48,13 +50,11 @@ export function LoadTestPanel(): JSX.Element {
     String(config?.failedBodyLimit ?? 50),
   );
 
-  // When the active tab changes, sync raw inputs from the store.
-  const tabId = activeTab?.id ?? null;
-  // Chip input state for per-run watched headers
+  // Per-run chip input draft for watched headers.
   const [chipDraft, setChipDraft] = useState('');
 
-  // Auto-scroll the console to the bottom whenever a new event is appended.
-  const scrollRef = useRef<HTMLDivElement | null>(null);
+  // When the active tab changes, sync raw inputs from the store.
+  const tabId = activeTab?.id ?? null;
   useEffect(() => {
     if (!config) return;
     setRawTotal(String(config.total));
@@ -116,34 +116,6 @@ export function LoadTestPanel(): JSX.Element {
     if (starting) setAutoScroll(true);
   }, [starting]);
 
-  const addWatchedHeaderChip = useCallback(
-    (name: string) => {
-      if (!activeTab || !config) return;
-      const trimmed = name.trim();
-      if (!trimmed) return;
-      const existing = config.watchedHeaders ?? [];
-      if (existing.length >= WATCHED_HEADER_CAP) return;
-      const lc = trimmed.toLowerCase();
-      if (existing.some((h) => h.toLowerCase() === lc)) return;
-      updateLoadTestConfig(activeTab.id, {
-        watchedHeaders: [...existing, trimmed],
-      });
-    },
-    [activeTab, config, updateLoadTestConfig],
-  );
-
-  const removeWatchedHeaderChip = useCallback(
-    (name: string) => {
-      if (!activeTab || !config) return;
-      updateLoadTestConfig(activeTab.id, {
-        watchedHeaders: (config.watchedHeaders ?? []).filter(
-          (h) => h.toLowerCase() !== name.toLowerCase(),
-        ),
-      });
-    },
-    [activeTab, config, updateLoadTestConfig],
-  );
-
   const start = async (): Promise<void> => {
     if (!activeTab) return;
     const tabId = activeTab.id;
@@ -165,8 +137,6 @@ export function LoadTestPanel(): JSX.Element {
     resetLoadTestForStart(tabId, newRunId);
     try {
       const request = buildRequestFromBuilder(activeTab.builder, activeTab.name);
-      // Per-run override replaces workspace list when non-empty.
-      const hasPerRunOverride = cfg.watchedHeaders.length > 0;
       await bridge.loadStart({
         request,
         ...(workspace?.path ? { workspacePath: workspace.path } : {}),
@@ -186,9 +156,7 @@ export function LoadTestPanel(): JSX.Element {
           ...(cfg.expectBody.trim() ? { expectBodyContains: cfg.expectBody } : {}),
         },
         ...(cfg.saveFailedBodies ? { saveFailedBodies: true, failedBodyLimit } : {}),
-        // Send per-run override when the user filled it in. The main process
-        // treats a non-undefined value as a replacement for the workspace list.
-        ...(hasPerRunOverride ? { watchedHeaders: cfg.watchedHeaders } : {}),
+        ...(cfg.watchedHeaders.length > 0 ? { watchedHeaders: cfg.watchedHeaders } : {}),
       });
       setLoadTestRun(tabId, { starting: false });
     } catch (err) {
@@ -236,6 +204,42 @@ export function LoadTestPanel(): JSX.Element {
     [progress],
   );
 
+  const watchedStats = useMemo<WatchedHeaderStats[]>(
+    () =>
+      progress?.watchedHeaderStats
+        ? Object.values(progress.watchedHeaderStats)
+        : [],
+    [progress?.watchedHeaderStats],
+  );
+
+  const perRunChips = config?.watchedHeaders ?? [];
+  const atCap = perRunChips.length >= WATCHED_HEADER_CAP;
+
+  const addChip = useCallback(
+    (raw: string): void => {
+      if (!activeTab || !config) return;
+      const trimmed = raw.trim();
+      if (!trimmed) return;
+      if (perRunChips.length >= WATCHED_HEADER_CAP) return;
+      const lc = trimmed.toLowerCase();
+      if (perRunChips.some((h) => h.toLowerCase() === lc)) return;
+      updateLoadTestConfig(activeTab.id, {
+        watchedHeaders: [...perRunChips, trimmed],
+      });
+    },
+    [activeTab, config, perRunChips, updateLoadTestConfig],
+  );
+
+  const removeChip = useCallback(
+    (name: string): void => {
+      if (!activeTab) return;
+      updateLoadTestConfig(activeTab.id, {
+        watchedHeaders: perRunChips.filter((h) => h !== name),
+      });
+    },
+    [activeTab, perRunChips, updateLoadTestConfig],
+  );
+
   // Export failures as JSON.
   const exportFailures = useCallback((): void => {
     if (!activeTab || failedBodies.length === 0) return;
@@ -253,16 +257,6 @@ export function LoadTestPanel(): JSX.Element {
     a.click();
     URL.revokeObjectURL(href);
   }, [activeTab, failedBodies, runId]);
-  const watchedHeaderEntries = useMemo(
-    () =>
-      progress?.watchedHeaderStats
-        ? Object.values(progress.watchedHeaderStats).slice(0, WATCHED_HEADER_CAP)
-        : [],
-    [progress?.watchedHeaderStats],
-  );
-
-  const perRunChips = config?.watchedHeaders ?? [];
-  const atCap = perRunChips.length >= WATCHED_HEADER_CAP;
 
   return (
     <div className="flex h-full flex-col">
@@ -362,134 +356,17 @@ export function LoadTestPanel(): JSX.Element {
               label="Response body must contain"
               hint="Optional substring that every response must include"
             >
-        <div className="border-b border-line px-5 py-4">
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Total requests" hint="Total number of iterations">
-              <input
-                type="number"
-                min={1}
-                value={config.total}
-                onChange={(e) =>
-                  activeTab &&
-                  updateLoadTestConfig(activeTab.id, {
-                    total: Math.max(1, parseInt(e.target.value, 10) || 1),
-                  })
-                }
-                className="field w-full"
-              />
-            </Field>
-            <Field label="Concurrency" hint="Max parallel in-flight">
-              <input
-                type="number"
-                min={1}
-                value={config.concurrency}
-                onChange={(e) =>
-                  activeTab &&
-                  updateLoadTestConfig(activeTab.id, {
-                    concurrency: Math.max(1, parseInt(e.target.value, 10) || 1),
-                  })
-                }
-                className="field w-full"
-              />
-            </Field>
-            <Field label="Per-iteration delay (ms)" hint="Optional, 0 = no delay">
-              <input
-                type="number"
-                min={0}
-                value={config.delay}
-                onChange={(e) =>
-                  activeTab &&
-                  updateLoadTestConfig(activeTab.id, {
-                    delay: Math.max(0, parseInt(e.target.value, 10) || 0),
-                  })
-                }
-                className="field w-full"
-              />
-            </Field>
-            <Field label="Expected status codes" hint="Comma-separated, e.g. 200,201">
               <input
                 type="text"
-                value={config.expectStatus}
+                value={config.expectBody}
                 onChange={(e) =>
                   activeTab &&
-                  updateLoadTestConfig(activeTab.id, { expectStatus: e.target.value })
+                  updateLoadTestConfig(activeTab.id, { expectBody: e.target.value })
                 }
-                placeholder="200"
+                placeholder='{"success":true}'
                 className="field w-full font-mono"
               />
             </Field>
-            <div className="col-span-2">
-              <Field
-                label="Response body must contain"
-                hint="Optional substring that every response must include"
-              >
-                <input
-                  type="text"
-                  value={config.expectBody}
-                  onChange={(e) =>
-                    activeTab &&
-                    updateLoadTestConfig(activeTab.id, { expectBody: e.target.value })
-                  }
-                  placeholder='{"success":true}'
-                  className="field w-full font-mono"
-                />
-              </Field>
-            </div>
-
-            {/* Per-run watched headers override */}
-            <div className="col-span-2">
-              <Field
-                label="Watched headers (overrides collection)"
-                hint={
-                  atCap
-                    ? `Cap of ${WATCHED_HEADER_CAP} reached`
-                    : `Header names to track across iterations. Overrides the collection setting when non-empty. Cap: ${WATCHED_HEADER_CAP}.`
-                }
-              >
-                <div className="flex min-h-[34px] flex-wrap items-center gap-1.5 rounded-md border border-line bg-bg-canvas px-2 py-1.5">
-                  {perRunChips.map((chip) => (
-                    <span
-                      key={chip}
-                      className="flex items-center gap-1 rounded bg-bg-subtle px-2 py-0.5 font-mono text-[11px] text-ink-2"
-                    >
-                      {chip}
-                      <button
-                        type="button"
-                        onClick={() => removeWatchedHeaderChip(chip)}
-                        className="text-ink-4 hover:text-method-delete"
-                        aria-label={`Remove ${chip}`}
-                      >
-                        ×
-                      </button>
-                    </span>
-                  ))}
-                  {!atCap && (
-                    <input
-                      type="text"
-                      value={chipDraft}
-                      onChange={(e) => setChipDraft(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ',') {
-                          e.preventDefault();
-                          addWatchedHeaderChip(chipDraft);
-                          setChipDraft('');
-                        } else if (
-                          e.key === 'Backspace' &&
-                          chipDraft === '' &&
-                          perRunChips.length > 0
-                        ) {
-                          removeWatchedHeaderChip(perRunChips[perRunChips.length - 1]!);
-                        }
-                      }}
-                      placeholder={
-                        perRunChips.length === 0 ? 'Add header name, press Enter…' : ''
-                      }
-                      className="min-w-[160px] flex-1 bg-transparent font-mono text-xs text-ink-1 outline-none placeholder:text-ink-4"
-                    />
-                  )}
-                </div>
-              </Field>
-            </div>
           </div>
           {/* Task 3: save failed bodies config */}
           <div className="col-span-2 flex items-start gap-4">
@@ -520,6 +397,63 @@ export function LoadTestPanel(): JSX.Element {
                 />
               </Field>
             )}
+          </div>
+          {/* Watched headers — per-run override chips */}
+          <div className="col-span-2 flex flex-col gap-1.5">
+            <label className="text-[10px] font-semibold uppercase tracking-wider text-ink-3">
+              Watched headers (per-run)
+            </label>
+            <div className="flex min-h-[42px] flex-wrap items-center gap-1.5 rounded-md border border-line bg-bg-canvas px-2 py-1.5">
+              {perRunChips.map((chip) => (
+                <span
+                  key={chip}
+                  className="flex items-center gap-1 rounded bg-bg-subtle px-2 py-0.5 font-mono text-[11px] text-ink-2"
+                >
+                  {chip}
+                  <button
+                    type="button"
+                    onClick={() => removeChip(chip)}
+                    className="text-ink-4 hover:text-method-delete"
+                    aria-label={`Remove ${chip}`}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+              {!atCap && (
+                <input
+                  type="text"
+                  value={chipDraft}
+                  onChange={(e) => setChipDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ',') {
+                      e.preventDefault();
+                      addChip(chipDraft);
+                      setChipDraft('');
+                    } else if (
+                      e.key === 'Backspace' &&
+                      chipDraft === '' &&
+                      perRunChips.length > 0
+                    ) {
+                      removeChip(perRunChips[perRunChips.length - 1]!);
+                    }
+                  }}
+                  placeholder={
+                    perRunChips.length === 0
+                      ? 'Override workspace list — add header name, press Enter…'
+                      : ''
+                  }
+                  className="min-w-[200px] flex-1 bg-transparent font-mono text-xs text-ink-1 outline-none placeholder:text-ink-4"
+                />
+              )}
+            </div>
+            <div className="text-[10px] text-ink-4">
+              {atCap
+                ? `Cap of ${WATCHED_HEADER_CAP} reached.`
+                : perRunChips.length === 0
+                  ? `Empty = use workspace list. Cap: ${WATCHED_HEADER_CAP}.`
+                  : `Per-run override active. Cap: ${WATCHED_HEADER_CAP}.`}
+            </div>
           </div>
         </div>
       )}
@@ -672,6 +606,23 @@ export function LoadTestPanel(): JSX.Element {
               ))}
             </div>
           )}
+
+          {watchedStats.length > 0 && (
+            <div className="mt-4">
+              <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-ink-4">
+                Watched headers
+              </div>
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                {watchedStats.map((stats) => (
+                  <WatchedHeaderCard
+                    key={stats.name}
+                    stats={stats}
+                    total={progress.sent}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -699,32 +650,6 @@ export function LoadTestPanel(): JSX.Element {
             >
               Auto-scroll
             </button>
-      {/* Watched header cards */}
-      {watchedHeaderEntries.length > 0 && (
-        <div className="border-b border-line px-5 py-4">
-          <div className="mb-3 text-[10px] font-semibold uppercase tracking-wider text-ink-4">
-            Watched headers
-          </div>
-          <div className="flex flex-col gap-3">
-            {watchedHeaderEntries.map((stats) => (
-              <WatchedHeaderCard
-                key={stats.name}
-                stats={stats}
-                total={progress?.totalTarget ?? 0}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Console */}
-      <div
-        ref={scrollRef}
-        className="flex-1 overflow-y-auto bg-bg-subtle p-4 font-mono text-[11px] leading-[18px]"
-      >
-        {events.length === 0 && !progress && (
-          <div className="text-ink-4">
-            Configure the run above and press <span className="text-ink-2">Start</span>.
           </div>
         )}
         <div
@@ -761,8 +686,6 @@ export function LoadTestPanel(): JSX.Element {
     </div>
   );
 }
-
-import type { LoadEvent } from '@scrapeman/shared-types';
 
 function EventLine({ event }: { event: LoadEvent }): JSX.Element {
   const prefix = event.valid
@@ -932,7 +855,14 @@ function FailureRow({
               {failure.errorKind ? `No body captured (${failure.errorKind})` : 'Empty response body'}
             </div>
           )}
-// WatchedHeaderCard
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Watched header card (issue #79)
 // ---------------------------------------------------------------------------
 
 function WatchedHeaderCard({
@@ -944,22 +874,19 @@ function WatchedHeaderCard({
 }): JSX.Element | null {
   const [activeStatus, setActiveStatus] = useState<string>('all');
 
-  // Collect all status codes seen for this header
   const statusCodes = useMemo(
     () => Object.keys(stats.byStatus).sort(),
     [stats.byStatus],
   );
 
-  // Pick the active bucket
   const activeBucket = useMemo(
     () =>
       activeStatus === 'all'
         ? { unique: stats.unique, numeric: stats.numeric }
-        : (stats.byStatus[activeStatus] ?? { unique: [] }),
+        : (stats.byStatus[activeStatus] ?? { unique: [] as Array<[string, number]> }),
     [activeStatus, stats],
   );
 
-  // Collapse when seen = 0
   if (stats.seen === 0) return null;
 
   const seenPct = total > 0 ? ((stats.seen / total) * 100).toFixed(1) : '0.0';
@@ -968,7 +895,6 @@ function WatchedHeaderCard({
 
   return (
     <div className="rounded-md border border-line bg-bg-canvas px-3 py-2.5">
-      {/* Title row */}
       <div className="mb-2 flex items-center justify-between gap-2">
         <span className="font-mono text-xs font-semibold text-ink-1">{stats.name}</span>
         <span className="shrink-0 text-[10px] text-ink-4">
@@ -976,7 +902,6 @@ function WatchedHeaderCard({
         </span>
       </div>
 
-      {/* Status pills */}
       {statusCodes.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-1">
           <StatusPill
@@ -995,7 +920,6 @@ function WatchedHeaderCard({
         </div>
       )}
 
-      {/* Top-5 value bars */}
       <div className="flex flex-col gap-1">
         {top5.map(([value, count]) => (
           <div key={value} className="flex items-center gap-2">
@@ -1017,9 +941,8 @@ function WatchedHeaderCard({
         ))}
       </div>
 
-      {/* Numeric stats line */}
       {activeBucket.numeric && (
-        <div className="mt-2 flex flex-wrap gap-2 border-t border-line pt-2 text-[10px] font-mono text-ink-3">
+        <div className="mt-2 flex flex-wrap gap-2 border-t border-line pt-2 font-mono text-[10px] text-ink-3">
           <span>min {activeBucket.numeric.min.toFixed(2)}</span>
           <span>max {activeBucket.numeric.max.toFixed(2)}</span>
           <span>avg {activeBucket.numeric.avg.toFixed(2)}</span>
@@ -1032,9 +955,6 @@ function WatchedHeaderCard({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Shared small components
-// ---------------------------------------------------------------------------
 function StatusPill({
   label,
   active,
@@ -1058,6 +978,10 @@ function StatusPill({
     </button>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Shared small components
+// ---------------------------------------------------------------------------
 
 function Field({
   label,

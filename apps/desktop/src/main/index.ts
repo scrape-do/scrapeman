@@ -664,6 +664,7 @@ app.whenReady().then(() => {
               ...(input.saveFailedBodies === true ? { saveFailedBodies: true } : {}),
               ...(input.failedBodyLimit !== undefined
                 ? { failedBodyLimit: input.failedBodyLimit }
+                : {}),
               ...(effectiveWatchedHeaders !== undefined
                 ? { watchedHeaders: effectiveWatchedHeaders }
                 : {}),
