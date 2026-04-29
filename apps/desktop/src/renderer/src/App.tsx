@@ -130,59 +130,69 @@ export function App(): JSX.Element {
     localStorage.setItem('sidebar:visible', String(sidebarVisible));
   }, [sidebarVisible]);
 
+  // Wraps a shortcut handler so that any open top-level modal is dismissed
+  // before the action runs. The user's intent is the shortcut, not the modal.
+  // Reads state imperatively so this function itself needs no deps and is safe
+  // to use inside useMemo without adding it to the dependency array.
+  const withModalClose = (fn: () => void) => (): void => {
+    const state = useAppStore.getState();
+    if (state.screenshotUrl !== null) state.clearScreenshotUrl();
+    fn();
+  };
+
   const shortcuts = useMemo<Shortcut[]>(
     () => [
       {
         combo: 'mod+k',
         description: 'Command palette',
-        handler: () => setPaletteOpen((v) => !v),
+        handler: withModalClose(() => setPaletteOpen((v) => !v)),
       },
       ...(paletteOpen
         ? []
         : [
-            { combo: 'mod+t', description: 'New tab', handler: () => newTab() },
-            { combo: 'mod+n', description: 'New tab', handler: () => newTab() },
+            { combo: 'mod+t', description: 'New tab', handler: withModalClose(() => newTab()) },
+            { combo: 'mod+n', description: 'New tab', handler: withModalClose(() => newTab()) },
             {
               combo: 'mod+w',
               description: 'Close tab',
-              handler: () => guard.requestCloseActive(),
+              handler: withModalClose(() => guard.requestCloseActive()),
             },
             {
               combo: 'mod+shift+w',
               description: 'Close all tabs',
-              handler: () => guard.requestCloseAll(),
+              handler: withModalClose(() => guard.requestCloseAll()),
             },
             {
               combo: 'mod+d',
               description: 'Duplicate tab',
-              handler: () => activeTabId && duplicateTab(activeTabId),
+              handler: withModalClose(() => activeTabId && duplicateTab(activeTabId)),
             },
-            { combo: 'mod+l', description: 'Focus URL bar', handler: () => focusUrl() },
+            { combo: 'mod+l', description: 'Focus URL bar', handler: withModalClose(() => focusUrl()) },
             {
               combo: 'mod+b',
               description: 'Toggle sidebar',
-              handler: () => setSidebarVisible((v) => !v),
+              handler: withModalClose(() => setSidebarVisible((v) => !v)),
             },
             {
               combo: 'mod+shift+f',
               description: 'Focus collection search',
-              handler: () => focusSidebarSearch(),
+              handler: withModalClose(() => focusSidebarSearch()),
             },
             {
               combo: 'mod+f',
               description: 'Find in response',
-              handler: () => {
+              handler: withModalClose(() => {
                 const state = useAppStore.getState();
                 const tab = state.tabs.find((t) => t.id === state.activeTabId);
                 if (tab?.execution.status === 'success') {
                   focusSearch();
                 }
-              },
+              }),
             },
             {
               combo: 'mod+enter',
               description: 'Send / cancel request',
-              handler: () => {
+              handler: withModalClose(() => {
                 const state = useAppStore.getState();
                 const tab = state.tabs.find((t) => t.id === state.activeTabId);
                 if (tab?.execution.status === 'sending') {
@@ -190,32 +200,32 @@ export function App(): JSX.Element {
                 } else {
                   void state.send();
                 }
-              },
+              }),
             },
-            { combo: 'mod+s', description: 'Save request', handler: () => void saveOrPrompt() },
+            { combo: 'mod+s', description: 'Save request', handler: withModalClose(() => void saveOrPrompt()) },
             {
               combo: 'mod+shift+t',
               description: 'Reopen closed tab',
-              handler: () => reopenClosedTab(),
+              handler: withModalClose(() => reopenClosedTab()),
             },
             ...(isRepo
               ? [
                   {
                     combo: 'mod+shift+h',
                     description: 'Toggle sync with git',
-                    handler: (): void => {
+                    handler: withModalClose((): void => {
                       const active = tabs.find((t) => t.id === activeTabId);
                       if (active?.kind === 'file' && active.relPath) {
                         void toggleHiddenRequest(active.relPath);
                       }
-                    },
+                    }),
                   },
                 ]
               : []),
             ...([1, 2, 3, 4, 5, 6, 7, 8, 9] as const).map((n) => ({
               combo: `mod+${n}` as const,
               description: `Switch to tab ${n}`,
-              handler: () => activateTabByIndex(n),
+              handler: withModalClose(() => activateTabByIndex(n)),
             })),
           ]),
     ],

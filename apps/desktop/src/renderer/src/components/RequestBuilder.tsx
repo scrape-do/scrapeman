@@ -55,9 +55,9 @@ export function RequestBuilder(): JSX.Element {
   const setTab = useAppStore((s) => s.setActivePane);
   const setScreenshotMode = useAppStore((s) => s.setScreenshotMode);
   const screenshotMode = useAppStore((s) => s.screenshotMode);
+  const setScreenshotUrl = useAppStore((s) => s.setScreenshotUrl);
   const [importOpen, setImportOpen] = useState(false);
   const [importOpenApiOpen, setImportOpenApiOpen] = useState(false);
-  const [screenshotUrl, setScreenshotUrl] = useState<string | null>(null);
 
   const takeScreenshot = useCallback(async (): Promise<void> => {
     setScreenshotMode(true);
@@ -78,7 +78,7 @@ export function RequestBuilder(): JSX.Element {
     } finally {
       setScreenshotMode(false);
     }
-  }, [setScreenshotMode]);
+  }, [setScreenshotMode, setScreenshotUrl]);
 
   // Ephemeral toast message shown in the body bar. Auto-clears after 3s.
   const [bodyToast, setBodyToast] = useState<string | null>(null);
@@ -475,10 +475,7 @@ export function RequestBuilder(): JSX.Element {
         onClose={closeSaveDialog}
       />
 
-      <ScreenshotModal
-        dataUrl={screenshotUrl}
-        onClose={() => setScreenshotUrl(null)}
-      />
+      <ScreenshotModal />
     </div>
   );
 }

@@ -289,6 +289,12 @@ interface AppState {
   screenshotMode: boolean;
   setScreenshotMode: (v: boolean) => void;
 
+  // Screenshot result URL. Non-null while the ScreenshotModal is open.
+  screenshotUrl: string | null;
+  setScreenshotUrl: (url: string) => void;
+  clearScreenshotUrl: () => void;
+
+
   // Bumped by ⌘L; RequestBuilder watches and focuses+selects the URL bar.
   focusUrlTick: number;
   focusUrl: () => void;
@@ -951,6 +957,9 @@ export const useAppStore = create<AppState>((set, get) => {
     saveDialogOpen: false,
     screenshotMode: false,
     setScreenshotMode: (v) => set({ screenshotMode: v }),
+    screenshotUrl: null,
+    setScreenshotUrl: (url) => set({ screenshotUrl: url }),
+    clearScreenshotUrl: () => set({ screenshotUrl: null }),
     focusUrlTick: 0,
     focusParamsTick: 0,
     focusSearchTick: 0,
@@ -2664,3 +2673,7 @@ export const useAppStore = create<AppState>((set, get) => {
 });
 
 export type { Environment, EnvironmentVariable };
+
+// Derived selector: true when any top-level modal is blocking the UI.
+// Starts with screenshot; extend as more modals are promoted to global state.
+export const selectIsModalOpen = (s: AppState): boolean => s.screenshotUrl !== null;

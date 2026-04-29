@@ -1,21 +1,18 @@
 import { useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { bridge } from '../bridge.js';
+import { useAppStore } from '../store.js';
 
-export function ScreenshotModal({
-  dataUrl,
-  onClose,
-}: {
-  dataUrl: string | null;
-  onClose: () => void;
-}): JSX.Element | null {
+export function ScreenshotModal(): JSX.Element | null {
+  const screenshotUrl = useAppStore((s) => s.screenshotUrl);
+  const clearScreenshotUrl = useAppStore((s) => s.clearScreenshotUrl);
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>('idle');
 
-  if (!dataUrl) return null;
+  if (!screenshotUrl) return null;
 
   const copy = async (): Promise<void> => {
     try {
-      await bridge.writeClipboardImage(dataUrl);
+      await bridge.writeClipboardImage(screenshotUrl);
       setCopyState('copied');
       window.setTimeout(() => setCopyState('idle'), 1500);
     } catch {
@@ -25,7 +22,7 @@ export function ScreenshotModal({
   };
 
   return (
-    <Dialog.Root open onOpenChange={(o) => !o && onClose()}>
+    <Dialog.Root open onOpenChange={(o) => !o && clearScreenshotUrl()}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/60" />
         <Dialog.Content
@@ -58,7 +55,7 @@ export function ScreenshotModal({
           <div className="flex-1 overflow-auto bg-bg-subtle p-3">
             {/* eslint-disable-next-line jsx-a11y/alt-text */}
             <img
-              src={dataUrl}
+              src={screenshotUrl}
               alt="Request screenshot"
               className="mx-auto max-w-full rounded border border-line"
             />
