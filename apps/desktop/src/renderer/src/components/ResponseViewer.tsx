@@ -1141,15 +1141,16 @@ function HeadersPanel({ response }: { response: ExecutedResponse }): JSX.Element
   );
 
   return (
-    <div className="flex h-full flex-col overflow-auto">
+    <div className="relative flex h-full flex-col overflow-auto">
       {toast && (
         <div
-          className={`sticky top-0 z-20 flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-medium ${
+          role="status"
+          className={`pointer-events-none absolute right-3 top-2 z-30 rounded-md border px-2.5 py-1 text-[11px] font-medium shadow-md ${
             toast.result === 'added'
-              ? 'bg-status-ok/10 text-status-ok'
+              ? 'border-status-ok/30 bg-status-ok/15 text-status-ok'
               : toast.result === 'exists'
-                ? 'bg-bg-muted text-ink-3'
-                : 'bg-method-delete/10 text-method-delete'
+                ? 'border-line bg-bg-canvas text-ink-2'
+                : 'border-method-delete/30 bg-method-delete/15 text-method-delete'
           }`}
         >
           {toast.result === 'added' && `${toast.name} added to watched headers`}
