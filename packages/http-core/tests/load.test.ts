@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import { once } from 'node:events';
 import { AddressInfo } from 'node:net';
-import { FORMAT_VERSION, type ScrapemanRequest } from '@scrapeman/shared-types';
+import { FORMAT_VERSION, type LoadFailedBodyEvent, type ScrapemanRequest } from '@scrapeman/shared-types';
 import { runLoad } from '../src/load/runner.js';
 
 let server: Server;
@@ -193,5 +193,125 @@ describe('runLoad — per-iteration variable resolution', () => {
     for (let i = 1; i < events.length; i++) {
       expect(events[i]!.sent).toBeGreaterThanOrEqual(events[i - 1]!.sent);
     }
+  });
+});
+
+describe('runLoad — failed-body capture', () => {
+  it('does not emit lastFailedBodyEvent when saveFailedBodies is false', async () => {
+    const signal = AbortSignal.timeout(10_000);
+    const failedBodyEvents: LoadFailedBodyEvent[] = [];
+
+    await runLoad(
+      {
+        request: req(`${baseUrl()}/fb-off`),
+        variables: {},
+        total: 3,
+        concurrency: 1,
+        // Expect 201, server returns 200 → validation failures but no body capture.
+        validator: { expectStatus: [201] },
+        saveFailedBodies: false,
+      },
+      (p) => {
+        if (p.lastFailedBodyEvent) failedBodyEvents.push(p.lastFailedBodyEvent);
+      },
+      signal,
+    );
+
+    expect(failedBodyEvents).toHaveLength(0);
+  });
+
+  it('emits lastFailedBodyEvent for each validation failure when enabled', async () => {
+    const signal = AbortSignal.timeout(10_000);
+    const failedBodyEvents: LoadFailedBodyEvent[] = [];
+
+    const final = await runLoad(
+      {
+        request: req(`${baseUrl()}/fb-on`),
+        variables: {},
+        total: 4,
+        concurrency: 1,
+        validator: { expectStatus: [201] },
+        saveFailedBodies: true,
+        failedBodyLimit: 50,
+      },
+      (p) => {
+        if (p.lastFailedBodyEvent) failedBodyEvents.push(p.lastFailedBodyEvent);
+      },
+      signal,
+    );
+
+    // 4 validation failures (server returns 200, we expect 201).
+    expect(final.validationFailures).toBe(4);
+    expect(failedBodyEvents).toHaveLength(4);
+    // Each event has kind 'failed-body'.
+    for (const ev of failedBodyEvents) {
+      expect(ev.kind).toBe('failed-body');
+      expect(ev.status).toBe(200);
+    }
+  });
+
+  it('respects failedBodyLimit — stops emitting after N events', async () => {
+    const signal = AbortSignal.timeout(10_000);
+    const failedBodyEvents: LoadFailedBodyEvent[] = [];
+
+    await runLoad(
+      {
+        request: req(`${baseUrl()}/fb-limit`),
+        variables: {},
+        total: 10,
+        concurrency: 1,
+        validator: { expectStatus: [201] },
+        saveFailedBodies: true,
+        failedBodyLimit: 3,
+      },
+      (p) => {
+        if (p.lastFailedBodyEvent) failedBodyEvents.push(p.lastFailedBodyEvent);
+      },
+      signal,
+    );
+
+    // Even though 10 requests fail, only 3 failed-body events should be emitted.
+    expect(failedBodyEvents).toHaveLength(3);
+  });
+
+  it('truncates captured bodies to 64 KB', async () => {
+    // Spin up a second server that returns a large body.
+    const BIG_SIZE = 128 * 1024; // 128 KB — above the 64 KB cap.
+    const bigServer = createServer((_req, res) => {
+      res.writeHead(200, { 'Content-Type': 'text/plain' });
+      res.end(Buffer.alloc(BIG_SIZE, 0x41)); // 128 KB of 'A'
+    });
+    bigServer.listen(0, '127.0.0.1');
+    await once(bigServer, 'listening');
+    const bigPort = (bigServer.address() as AddressInfo).port;
+
+    const signal = AbortSignal.timeout(10_000);
+    const failedBodyEvents: LoadFailedBodyEvent[] = [];
+
+    await runLoad(
+      {
+        request: req(`http://127.0.0.1:${bigPort}/big`),
+        variables: {},
+        total: 1,
+        concurrency: 1,
+        validator: { expectStatus: [201] },
+        saveFailedBodies: true,
+        failedBodyLimit: 10,
+      },
+      (p) => {
+        if (p.lastFailedBodyEvent) failedBodyEvents.push(p.lastFailedBodyEvent);
+      },
+      signal,
+    );
+
+    bigServer.close();
+    await once(bigServer, 'close');
+
+    expect(failedBodyEvents).toHaveLength(1);
+    const capturedBytes = Buffer.from(failedBodyEvents[0]!.bodyBase64, 'base64').length;
+    // Must be capped at 64 KB.
+    expect(capturedBytes).toBeLessThanOrEqual(64 * 1024);
+    // Must not be empty.
+    expect(capturedBytes).toBeGreaterThan(0);
   });
 });

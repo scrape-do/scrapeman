@@ -15,6 +15,7 @@ import type {
   HttpVersion,
   InheritedAuthInfo,
   LoadEvent,
+  LoadFailedBodyEvent,
   LoadProgress,
   ProxyConfig,
   RateLimitConfig,
@@ -138,10 +139,17 @@ export interface LoadTestState {
     delay: number;
     expectStatus: string;
     expectBody: string;
+    /** Capture response bodies from failed iterations. */
+    saveFailedBodies: boolean;
+    /** Max failed bodies to keep per run (1–1000). */
+    failedBodyLimit: number;
   };
   runId: string | null;
   progress: LoadProgress | null;
   events: LoadEvent[];
+  /** Ring buffer of failed iteration bodies. Populated only when
+   *  config.saveFailedBodies is true. Capped at config.failedBodyLimit. */
+  failedBodies: LoadFailedBodyEvent[];
   starting: boolean;
   startError: string | null;
 }
@@ -400,6 +408,8 @@ interface AppState {
   resetLoadTestForStart: (tabId: string, runId: string) => void;
   /** Called by the global onLoadProgress listener; routes the event to the correct tab. */
   handleLoadProgress: (p: LoadProgress) => void;
+  /** Clear only the failed-bodies ring buffer for a tab (e.g. on export). */
+  clearFailedBodies: (tabId: string) => void;
 
   loadEnvironments: () => Promise<void>;
   setActiveEnvironment: (name: string | null) => Promise<void>;
@@ -584,10 +594,13 @@ function freshLoadTest(): LoadTestState {
       delay: 0,
       expectStatus: '200',
       expectBody: '',
+      saveFailedBodies: false,
+      failedBodyLimit: 50,
     },
     runId: null,
     progress: null,
     events: [],
+    failedBodies: [],
     starting: false,
     startError: null,
   };
@@ -1780,6 +1793,7 @@ export const useAppStore = create<AppState>((set, get) => {
           runId,
           progress: null,
           events: [],
+          failedBodies: [],
           starting: true,
           startError: null,
         },
@@ -1808,6 +1822,13 @@ export const useAppStore = create<AppState>((set, get) => {
       }));
     },
 
+    clearFailedBodies: (tabId) => {
+      mutateById(tabId, (tab) => ({
+        ...tab,
+        loadTest: { ...tab.loadTest, failedBodies: [] },
+      }));
+    },
+
     handleLoadProgress: (p) => {
       // Find which tab owns this runId and dispatch to it.
       const { tabs } = get();
@@ -1816,6 +1837,18 @@ export const useAppStore = create<AppState>((set, get) => {
       get().updateLoadProgress(target.id, p);
       if (p.lastEvent) {
         get().appendLoadEvent(target.id, p.lastEvent);
+      }
+      if (p.lastFailedBodyEvent) {
+        // Append to the ring buffer; cap at the configured limit.
+        mutateById(target.id, (tab) => {
+          const limit = tab.loadTest.config.failedBodyLimit;
+          const prev = tab.loadTest.failedBodies;
+          const next =
+            prev.length >= limit
+              ? [...prev.slice(-(limit - 1)), p.lastFailedBodyEvent!]
+              : [...prev, p.lastFailedBodyEvent!];
+          return { ...tab, loadTest: { ...tab.loadTest, failedBodies: next } };
+        });
       }
     },
 

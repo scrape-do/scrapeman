@@ -16,11 +16,9 @@ Complete reference for every feature in Scrapeman. For installation and project 
 - [Response Viewer](#response-viewer)
 - [Code Export](#code-export)
 - [Load Runner](#load-runner)
-<<<<<<< HEAD
 - [WebSocket](#websocket)
-=======
 - [Collection Runner](#collection-runner)
->>>>>>> ed92491 (feat: collection runner — sequential/parallel, CSV iterations, JSON/CSV/HTML export)
+- [Scripts](#scripts)
 - [Import and Export](#import-and-export)
 - [Proxy and Scrape.do Mode](#proxy-and-scrapedo-mode)
 - [Scraping-first features](#scraping-first-features)
@@ -522,10 +520,49 @@ Set expected status codes (e.g., `200, 201`) and an optional body-contains subst
 - **Stop** mid-run with partial results preserved.
 - Console log with color-coded rows: green for success, yellow for validation fail, red for network error.
 
+### Number input editing
+
+The Total requests, Concurrency, and Per-iteration delay fields accept free-form editing. You can clear the entire value and type a new number without the field snapping back to 1 mid-edit. The value is clamped (minimum 1 for counts, 0 for delay) when you leave the field or press Start.
+
+### Event log scroll
+
+The event log has a fixed-height scroll area so the metrics row above it stays visible at all times. **Auto-scroll** is on by default: the log follows the latest event. Scrolling up manually pauses it. Click **Auto-scroll** to resume anchoring to the bottom.
+
+### Failures panel (save failed responses)
+
+Enable **Save failed responses** in the config form before starting a run. When enabled, the runner captures the response body of every failed iteration (validation failures and network errors). Bodies are truncated to 64 KB before being stored in memory.
+
+The **Limit** field caps how many bodies are kept (1–1000, default 50). When the limit is reached, older entries are dropped as new failures arrive.
+
+After the run, a **Failures** panel appears below the event log. Each row shows:
+- Iteration number, status code, duration, and a brief reason string
+- Click any row to expand it and view the raw body. JSON is pretty-printed automatically.
+
+**Export JSON** saves all captured failures to a file with shape:
+
+```json
+{
+  "runId": "...",
+  "generatedAt": "...",
+  "failures": [
+    {
+      "kind": "failed-body",
+      "iteration": 42,
+      "status": 500,
+      "durationMs": 312,
+      "bodyBase64": "...",
+      "validationFailureReason": "status 500 not in [200]"
+    }
+  ]
+}
+```
+
+**Clear** removes all captured failures from memory without affecting the run metrics.
+
+Persisting failed bodies to disk across app restarts is not supported in v1. The ring buffer is in-memory only.
+
 ---
 
-<<<<<<< HEAD
-<<<<<<< HEAD
 ## WebSocket
 
 The "WebSocket" tab on any request tab opens a bidirectional WebSocket client. It does not replace the HTTP request builder — both live in the same tab.
@@ -573,7 +610,9 @@ Switching to another tab does not close the socket. The connection stays open in
 ### Proxy support
 
 The WebSocket client routes through the same proxy configuration used for HTTP requests. Set a proxy URL in the connection options, and all WebSocket handshake and frames will go through it. This includes Scrape.do proxy endpoints for scraping targets that require it.
-=======
+
+---
+
 ## Collection Runner
 
 Run all requests in a folder together — useful for smoke-testing a workflow, seeding test data, or running a multi-step scraping sequence.
@@ -640,8 +679,9 @@ The native file-save dialog prompts for a destination on each export.
 ### Scrape.do compatibility
 
 If a request in the folder has `scrapeDo.enabled: true`, the runner honours it — just as the single-request executor does. The runner does not force Scrape.do on globally; per-request settings are respected.
->>>>>>> ed92491 (feat: collection runner — sequential/parallel, CSV iterations, JSON/CSV/HTML export)
-=======
+
+---
+
 ## Scripts
 
 Each request has two optional JavaScript scripts: one that runs before the request is sent and one that runs after the response is received. Open the **Scripts** tab in the request builder to write them.
@@ -743,7 +783,6 @@ Scripts are stored in the `.sman` file under the `scripts:` key as YAML literal 
 - `bru.runRequest("Other request name")` — chaining by request name.
 - TypeScript inside scripts.
 - Visualizer (`vis.set(...)`) API.
->>>>>>> 0541c7f (feat(scripts): pre-request and post-response script sandbox)
 
 ---
 

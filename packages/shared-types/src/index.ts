@@ -474,9 +474,17 @@ export interface LoadRunStartInput {
    *  generating a new one, eliminating the race where load:progress events arrive
    *  before the Promise resolves and the store has stored the runId. */
   runId?: string;
+  /** When true the runner captures response bodies from failed iterations and
+   *  emits them as `failed-body` events. Defaults to false. */
+  saveFailedBodies?: boolean;
+  /** Maximum number of failed-body events to emit per run. Capped at 1000.
+   *  Defaults to 50. */
+  failedBodyLimit?: number;
 }
 
-export interface LoadEvent {
+/** A normal per-iteration result event. */
+export interface LoadIterationEvent {
+  kind: 'iteration';
   iteration: number;
   status: number;
   durationMs: number;
@@ -484,6 +492,29 @@ export interface LoadEvent {
   errorKind?: string;
   errorMessage?: string;
 }
+
+/** Emitted for failed iterations when saveFailedBodies is enabled. Body is
+ *  base64-encoded and capped at 64 KB before emission. */
+export interface LoadFailedBodyEvent {
+  kind: 'failed-body';
+  iteration: number;
+  status: number;
+  durationMs: number;
+  /** Base64-encoded response body, truncated to 64 KB. */
+  bodyBase64: string;
+  errorKind?: string;
+  /** Non-empty when the failure was a validation mismatch rather than a
+   *  network error. */
+  validationFailureReason?: string;
+}
+
+/**
+ * `LoadEvent` is the per-iteration result event. It is the same as
+ * `LoadIterationEvent` — the `kind` field is added for forward compatibility
+ * with `LoadFailedBodyEvent`. Existing code that reads `.status`, `.valid`,
+ * etc. directly from a `LoadEvent` still works.
+ */
+export type LoadEvent = LoadIterationEvent;
 
 export interface LoadProgress {
   runId: string;
@@ -503,6 +534,9 @@ export interface LoadProgress {
   elapsedMs: number;
   totalTarget: number;
   lastEvent: LoadEvent | null;
+  /** Present when saveFailedBodies is enabled and the most recent iteration
+   *  failed. The renderer accumulates these into its ring buffer. */
+  lastFailedBodyEvent?: LoadFailedBodyEvent;
   done: boolean;
 }
 

@@ -640,6 +640,10 @@ app.whenReady().then(() => {
                 ? { perIterDelayMs: input.perIterDelayMs }
                 : {}),
               validator: input.validator,
+              ...(input.saveFailedBodies === true ? { saveFailedBodies: true } : {}),
+              ...(input.failedBodyLimit !== undefined
+                ? { failedBodyLimit: input.failedBodyLimit }
+                : {}),
             },
             (progress) => {
               const payload: LoadProgress = { runId, ...progress };

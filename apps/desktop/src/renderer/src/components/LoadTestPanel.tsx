@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef } from 'react';
-import { FORMAT_VERSION } from '@scrapeman/shared-types';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FORMAT_VERSION, type LoadFailedBodyEvent } from '@scrapeman/shared-types';
 import { bridge } from '../bridge.js';
 import { useAppStore, type BuilderState } from '../store.js';
 import { Tooltip } from '../ui/Tooltip.js';
@@ -16,30 +16,110 @@ export function LoadTestPanel(): JSX.Element {
   const updateLoadTestConfig = useAppStore((s) => s.updateLoadTestConfig);
   const setLoadTestRun = useAppStore((s) => s.setLoadTestRun);
   const clearLoadTest = useAppStore((s) => s.clearLoadTest);
+  const clearFailedBodies = useAppStore((s) => s.clearFailedBodies);
   const resetLoadTestForStart = useAppStore((s) => s.resetLoadTestForStart);
 
   // Read load test state directly from the active tab.
   const loadTest = activeTab?.loadTest ?? null;
   const config = loadTest?.config;
-  const { runId, progress, events, starting, startError } = loadTest ?? {
+  const { runId, progress, events, failedBodies, starting, startError } = loadTest ?? {
     runId: null,
     progress: null,
     events: [],
+    failedBodies: [],
     starting: false,
     startError: null,
   };
 
-  // Auto-scroll the console to the bottom whenever a new event is appended.
-  const scrollRef = useRef<HTMLDivElement | null>(null);
+  // --- Task 2: Raw string state for number inputs ---
+  // Track the raw text in component state to allow clearing the leading digit.
+  // Synced down from store when the active tab changes (via activeTab.id key).
+  const [rawTotal, setRawTotal] = useState<string>(() => String(config?.total ?? 100));
+  const [rawConcurrency, setRawConcurrency] = useState<string>(() =>
+    String(config?.concurrency ?? 10),
+  );
+  const [rawDelay, setRawDelay] = useState<string>(() => String(config?.delay ?? 0));
+  const [rawFailedBodyLimit, setRawFailedBodyLimit] = useState<string>(() =>
+    String(config?.failedBodyLimit ?? 50),
+  );
+
+  // When the active tab changes, sync raw inputs from the store.
+  const tabId = activeTab?.id ?? null;
   useEffect(() => {
+    if (!config) return;
+    setRawTotal(String(config.total));
+    setRawConcurrency(String(config.concurrency));
+    setRawDelay(String(config.delay));
+    setRawFailedBodyLimit(String(config.failedBodyLimit));
+  // Intentionally only re-run when the tab identity changes, not on every config change.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabId]);
+
+  // Clamp helper: parse raw string, fall back to min, apply Math.max.
+  const commitTotal = useCallback((): void => {
+    if (!activeTab) return;
+    const v = Math.max(1, parseInt(rawTotal, 10) || 1);
+    setRawTotal(String(v));
+    updateLoadTestConfig(activeTab.id, { total: v });
+  }, [activeTab, rawTotal, updateLoadTestConfig]);
+
+  const commitConcurrency = useCallback((): void => {
+    if (!activeTab) return;
+    const v = Math.max(1, parseInt(rawConcurrency, 10) || 1);
+    setRawConcurrency(String(v));
+    updateLoadTestConfig(activeTab.id, { concurrency: v });
+  }, [activeTab, rawConcurrency, updateLoadTestConfig]);
+
+  const commitDelay = useCallback((): void => {
+    if (!activeTab) return;
+    const v = Math.max(0, parseInt(rawDelay, 10) || 0);
+    setRawDelay(String(v));
+    updateLoadTestConfig(activeTab.id, { delay: v });
+  }, [activeTab, rawDelay, updateLoadTestConfig]);
+
+  const commitFailedBodyLimit = useCallback((): void => {
+    if (!activeTab) return;
+    const v = Math.min(1000, Math.max(1, parseInt(rawFailedBodyLimit, 10) || 50));
+    setRawFailedBodyLimit(String(v));
+    updateLoadTestConfig(activeTab.id, { failedBodyLimit: v });
+  }, [activeTab, rawFailedBodyLimit, updateLoadTestConfig]);
+
+  // --- Task 1: Auto-scroll ---
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [autoScroll, setAutoScroll] = useState(true);
+
+  useEffect(() => {
+    if (!autoScroll) return;
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [events.length]);
+  }, [events.length, autoScroll]);
+
+  const handleScroll = useCallback((): void => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+    setAutoScroll(atBottom);
+  }, []);
+
+  // Reset auto-scroll to ON when a new run starts.
+  useEffect(() => {
+    if (starting) setAutoScroll(true);
+  }, [starting]);
 
   const start = async (): Promise<void> => {
     if (!activeTab) return;
     const tabId = activeTab.id;
     const cfg = activeTab.loadTest.config;
+
+    // Commit any pending raw-input edits before starting.
+    const total = Math.max(1, parseInt(rawTotal, 10) || cfg.total);
+    const concurrency = Math.max(1, parseInt(rawConcurrency, 10) || cfg.concurrency);
+    const delay = Math.max(0, parseInt(rawDelay, 10) || 0);
+    const failedBodyLimit = Math.min(
+      1000,
+      Math.max(1, parseInt(rawFailedBodyLimit, 10) || cfg.failedBodyLimit),
+    );
+
     // Generate runId client-side so load:progress events that arrive before the
     // IPC call resolves are still routable in the store.
     const newRunId = crypto.randomUUID();
@@ -50,9 +130,9 @@ export function LoadTestPanel(): JSX.Element {
       await bridge.loadStart({
         request,
         ...(workspace?.path ? { workspacePath: workspace.path } : {}),
-        total: cfg.total,
-        concurrency: cfg.concurrency,
-        ...(cfg.delay > 0 ? { perIterDelayMs: cfg.delay } : {}),
+        total,
+        concurrency,
+        ...(delay > 0 ? { perIterDelayMs: delay } : {}),
         runId: newRunId,
         validator: {
           ...(cfg.expectStatus.trim()
@@ -65,6 +145,7 @@ export function LoadTestPanel(): JSX.Element {
             : {}),
           ...(cfg.expectBody.trim() ? { expectBodyContains: cfg.expectBody } : {}),
         },
+        ...(cfg.saveFailedBodies ? { saveFailedBodies: true, failedBodyLimit } : {}),
       });
       setLoadTestRun(tabId, { starting: false });
     } catch (err) {
@@ -111,6 +192,24 @@ export function LoadTestPanel(): JSX.Element {
     () => (progress ? Object.entries(progress.errorKinds) : []),
     [progress],
   );
+
+  // Export failures as JSON.
+  const exportFailures = useCallback((): void => {
+    if (!activeTab || failedBodies.length === 0) return;
+    const payload = {
+      runId,
+      generatedAt: new Date().toISOString(),
+      failures: failedBodies,
+    };
+    const json = JSON.stringify(payload, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const href = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = href;
+    a.download = `load-failures-${runId ?? 'run'}.json`;
+    a.click();
+    URL.revokeObjectURL(href);
+  }, [activeTab, failedBodies, runId]);
 
   return (
     <div className="flex h-full flex-col">
@@ -162,17 +261,14 @@ export function LoadTestPanel(): JSX.Element {
       {/* Config form — hidden once run is in flight */}
       {!running && !finished && config && (
         <div className="grid grid-cols-2 gap-4 border-b border-line px-5 py-4">
+          {/* Task 2: raw string inputs with blur-commit */}
           <Field label="Total requests" hint="Total number of iterations">
             <input
               type="number"
               min={1}
-              value={config.total}
-              onChange={(e) =>
-                activeTab &&
-                updateLoadTestConfig(activeTab.id, {
-                  total: Math.max(1, parseInt(e.target.value, 10) || 1),
-                })
-              }
+              value={rawTotal}
+              onChange={(e) => setRawTotal(e.target.value)}
+              onBlur={commitTotal}
               className="field w-full"
             />
           </Field>
@@ -180,13 +276,9 @@ export function LoadTestPanel(): JSX.Element {
             <input
               type="number"
               min={1}
-              value={config.concurrency}
-              onChange={(e) =>
-                activeTab &&
-                updateLoadTestConfig(activeTab.id, {
-                  concurrency: Math.max(1, parseInt(e.target.value, 10) || 1),
-                })
-              }
+              value={rawConcurrency}
+              onChange={(e) => setRawConcurrency(e.target.value)}
+              onBlur={commitConcurrency}
               className="field w-full"
             />
           </Field>
@@ -194,13 +286,9 @@ export function LoadTestPanel(): JSX.Element {
             <input
               type="number"
               min={0}
-              value={config.delay}
-              onChange={(e) =>
-                activeTab &&
-                updateLoadTestConfig(activeTab.id, {
-                  delay: Math.max(0, parseInt(e.target.value, 10) || 0),
-                })
-              }
+              value={rawDelay}
+              onChange={(e) => setRawDelay(e.target.value)}
+              onBlur={commitDelay}
               className="field w-full"
             />
           </Field>
@@ -232,6 +320,36 @@ export function LoadTestPanel(): JSX.Element {
                 className="field w-full font-mono"
               />
             </Field>
+          </div>
+          {/* Task 3: save failed bodies config */}
+          <div className="col-span-2 flex items-start gap-4">
+            <label className="flex cursor-pointer items-center gap-2 text-xs text-ink-2">
+              <input
+                type="checkbox"
+                checked={config.saveFailedBodies}
+                onChange={(e) =>
+                  activeTab &&
+                  updateLoadTestConfig(activeTab.id, {
+                    saveFailedBodies: e.target.checked,
+                  })
+                }
+                className="h-3.5 w-3.5 accent-accent"
+              />
+              Save failed responses
+            </label>
+            {config.saveFailedBodies && (
+              <Field label="Limit" hint="Max failed bodies (1–1000)">
+                <input
+                  type="number"
+                  min={1}
+                  max={1000}
+                  value={rawFailedBodyLimit}
+                  onChange={(e) => setRawFailedBodyLimit(e.target.value)}
+                  onBlur={commitFailedBodyLimit}
+                  className="field w-24"
+                />
+              </Field>
+            )}
           </div>
         </div>
       )}
@@ -265,7 +383,7 @@ export function LoadTestPanel(): JSX.Element {
         </div>
       )}
 
-      {/* Metrics */}
+      {/* Metrics — sticky above the events log */}
       {progress && (
         <div className="border-b border-line px-5 py-4">
           {(config?.expectStatus.trim() || config?.expectBody.trim()) && (
@@ -387,25 +505,61 @@ export function LoadTestPanel(): JSX.Element {
         </div>
       )}
 
-      {/* Console */}
-      <div
-        ref={scrollRef}
-        className="flex-1 overflow-y-auto bg-bg-subtle p-4 font-mono text-[11px] leading-[18px]"
-      >
-        {events.length === 0 && !progress && (
-          <div className="text-ink-4">
-            Configure the run above and press <span className="text-ink-2">Start</span>.
+      {/* Events log — fixed-height scroll area (Task 1) */}
+      <div className="flex min-h-0 flex-1 flex-col">
+        {/* Log header with auto-scroll toggle */}
+        {(events.length > 0 || progress) && (
+          <div className="flex items-center justify-between border-b border-line px-4 py-1.5">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-4">
+              Events
+              {events.length > 0 && (
+                <span className="ml-1.5 rounded-full bg-bg-muted px-1.5 text-[10px] font-semibold text-ink-3">
+                  {events.length}
+                </span>
+              )}
+            </span>
+            <button
+              onClick={() => setAutoScroll((v) => !v)}
+              title="Toggle auto-scroll"
+              className={`rounded px-2 py-0.5 text-[10px] font-medium ${
+                autoScroll
+                  ? 'bg-accent-soft text-accent'
+                  : 'text-ink-3 hover:bg-bg-hover hover:text-ink-1'
+              }`}
+            >
+              Auto-scroll
+            </button>
           </div>
         )}
-        {events.map((ev) => (
-          <EventLine key={ev.iteration} event={ev} />
-        ))}
-        {finished && (
-          <div className="mt-2 text-ink-3">
-            — Done in {(progress!.elapsedMs / 1000).toFixed(2)}s ·{' '}
-            {progress!.succeeded} ok / {progress!.sent} sent ·{' '}
-            {successRate}% success
-          </div>
+        <div
+          ref={scrollRef}
+          onScroll={handleScroll}
+          className="max-h-[40vh] overflow-y-auto bg-bg-subtle p-4 font-mono text-[11px] leading-[18px]"
+        >
+          {events.length === 0 && !progress && (
+            <div className="text-ink-4">
+              Configure the run above and press <span className="text-ink-2">Start</span>.
+            </div>
+          )}
+          {events.map((ev) => (
+            <EventLine key={ev.iteration} event={ev} />
+          ))}
+          {finished && (
+            <div className="mt-2 text-ink-3">
+              — Done in {(progress!.elapsedMs / 1000).toFixed(2)}s ·{' '}
+              {progress!.succeeded} ok / {progress!.sent} sent ·{' '}
+              {successRate}% success
+            </div>
+          )}
+        </div>
+
+        {/* Task 3: Failures sub-panel */}
+        {failedBodies.length > 0 && (
+          <FailuresPanel
+            failures={failedBodies}
+            onExport={exportFailures}
+            onClear={() => activeTab && clearFailedBodies(activeTab.id)}
+          />
         )}
       </div>
     </div>
@@ -442,6 +596,155 @@ function EventLine({ event }: { event: LoadEvent }): JSX.Element {
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Failures sub-panel (Task 3)
+// ---------------------------------------------------------------------------
+
+function FailuresPanel({
+  failures,
+  onExport,
+  onClear,
+}: {
+  failures: LoadFailedBodyEvent[];
+  onExport: () => void;
+  onClear: () => void;
+}): JSX.Element {
+  const [expandedIteration, setExpandedIteration] = useState<number | null>(null);
+
+  return (
+    <div className="border-t border-line">
+      {/* Sub-panel header */}
+      <div className="flex items-center justify-between border-b border-line px-4 py-2">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-4">
+          Failures
+          <span className="ml-1.5 rounded-full bg-method-delete/10 px-1.5 text-[10px] font-semibold text-method-delete">
+            {failures.length}
+          </span>
+        </span>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onExport}
+            className="text-[10px] text-ink-3 hover:text-ink-1"
+            title="Export failures as JSON"
+          >
+            Export JSON
+          </button>
+          <button
+            onClick={onClear}
+            className="text-[10px] text-ink-3 hover:text-ink-1"
+            title="Clear captured failures"
+          >
+            Clear
+          </button>
+        </div>
+      </div>
+
+      {/* Failure rows */}
+      <div className="max-h-[30vh] overflow-y-auto">
+        {failures.map((f) => (
+          <FailureRow
+            key={f.iteration}
+            failure={f}
+            expanded={expandedIteration === f.iteration}
+            onToggle={() =>
+              setExpandedIteration((prev) =>
+                prev === f.iteration ? null : f.iteration,
+              )
+            }
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function FailureRow({
+  failure,
+  expanded,
+  onToggle,
+}: {
+  failure: LoadFailedBodyEvent;
+  expanded: boolean;
+  onToggle: () => void;
+}): JSX.Element {
+  // Decode body for display.
+  const bodyText = useMemo(() => {
+    if (!failure.bodyBase64) return '';
+    try {
+      return atob(failure.bodyBase64);
+    } catch {
+      return failure.bodyBase64;
+    }
+  }, [failure.bodyBase64]);
+
+  // Pretty-print if JSON.
+  const displayBody = useMemo(() => {
+    if (!bodyText) return '';
+    try {
+      return JSON.stringify(JSON.parse(bodyText), null, 2);
+    } catch {
+      return bodyText;
+    }
+  }, [bodyText]);
+
+  const reason =
+    failure.validationFailureReason ?? (failure.errorKind ? `error: ${failure.errorKind}` : '');
+
+  return (
+    <div className="border-b border-line last:border-0">
+      <button
+        onClick={onToggle}
+        className="flex w-full items-center gap-3 px-4 py-2 text-left hover:bg-bg-hover"
+      >
+        {/* Chevron */}
+        <span className="text-ink-4" aria-hidden="true">
+          {expanded ? '▾' : '▸'}
+        </span>
+        <span className="font-mono text-[10px] text-ink-4">
+          #{String(failure.iteration).padStart(5, '0')}
+        </span>
+        <span
+          className={`font-mono text-[11px] font-semibold ${
+            failure.status === 0
+              ? 'text-method-delete'
+              : failure.status >= 500
+                ? 'text-method-delete'
+                : failure.status >= 400
+                  ? 'text-status-clientError'
+                  : 'text-ink-2'
+          }`}
+        >
+          {failure.status === 0 ? '---' : failure.status}
+        </span>
+        <span className="font-mono text-[10px] text-ink-4">{failure.durationMs}ms</span>
+        {reason && (
+          <span className="min-w-0 flex-1 truncate text-[10px] text-ink-3" title={reason}>
+            {reason}
+          </span>
+        )}
+      </button>
+
+      {expanded && (
+        <div className="border-t border-line bg-bg-subtle px-4 py-3">
+          {displayBody ? (
+            <pre className="max-h-[20vh] overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] text-ink-2">
+              {displayBody}
+            </pre>
+          ) : (
+            <div className="font-mono text-[11px] text-ink-4">
+              {failure.errorKind ? `No body captured (${failure.errorKind})` : 'Empty response body'}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Shared small components
+// ---------------------------------------------------------------------------
 
 function Field({
   label,

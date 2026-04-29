@@ -1,4 +1,8 @@
-import type { ScrapemanRequest } from '@scrapeman/shared-types';
+import type {
+  LoadEvent,
+  LoadFailedBodyEvent,
+  ScrapemanRequest,
+} from '@scrapeman/shared-types';
 import { UndiciExecutor } from '../adapters/undici-executor.js';
 import { resolveRequest } from '../variables/resolve.js';
 import { applyAuth } from '../auth/apply.js';
@@ -17,16 +21,15 @@ export interface LoadRunInput {
   concurrency: number;
   perIterDelayMs?: number;
   validator: LoadValidator;
+  /** When true the runner captures failed iteration bodies and passes them
+   *  via the onFailedBody callback. Default false. */
+  saveFailedBodies?: boolean;
+  /** Maximum failed-body events to emit per run (default 50, max 1000). */
+  failedBodyLimit?: number;
 }
 
-export interface LoadEvent {
-  iteration: number;
-  status: number;
-  durationMs: number;
-  valid: boolean;
-  errorKind?: string;
-  errorMessage?: string;
-}
+// 64 KB cap on captured failure bodies.
+const FAILED_BODY_CAP_BYTES = 64 * 1024;
 
 export interface LoadProgress {
   sent: number;
@@ -45,6 +48,8 @@ export interface LoadProgress {
   elapsedMs: number;
   totalTarget: number;
   lastEvent: LoadEvent | null;
+  /** Only present when saveFailedBodies is enabled and the iteration failed. */
+  lastFailedBodyEvent?: LoadFailedBodyEvent;
   done: boolean;
 }
 
@@ -74,6 +79,12 @@ export async function runLoad(
   const started = Date.now();
   let nextIteration = 0;
 
+  // Ring buffer: track how many failed-body events we've emitted so we
+  // stop once we reach the configured limit.
+  const saveFailedBodies = input.saveFailedBodies === true;
+  const failedBodyLimit = Math.min(1000, Math.max(1, input.failedBodyLimit ?? 50));
+  let failedBodyCount = 0;
+
   const concurrency = Math.max(1, Math.min(input.concurrency, input.total));
 
   const percentile = (sortedArr: number[], q: number): number => {
@@ -82,7 +93,11 @@ export async function runLoad(
     return sortedArr[idx]!;
   };
 
-  const snapshot = (lastEvent: LoadEvent | null, done: boolean): LoadProgress => {
+  const snapshot = (
+    lastEvent: LoadEvent | null,
+    done: boolean,
+    lastFailedBodyEvent?: LoadFailedBodyEvent,
+  ): LoadProgress => {
     const sorted = [...latencies].sort((a, b) => a - b);
     const elapsedMs = Date.now() - started;
     const currentRps = elapsedMs > 0 ? (sent * 1000) / elapsedMs : 0;
@@ -103,6 +118,7 @@ export async function runLoad(
       elapsedMs,
       totalTarget: input.total,
       lastEvent,
+      ...(lastFailedBodyEvent !== undefined ? { lastFailedBodyEvent } : {}),
       done,
     };
   };
@@ -117,7 +133,19 @@ export async function runLoad(
     return true;
   };
 
-  const runOne = async (iteration: number): Promise<LoadEvent> => {
+  /**
+   * Truncate a buffer to at most FAILED_BODY_CAP_BYTES and encode as base64.
+   * Avoids encoding multi-MB responses before transmission.
+   */
+  const encodeBodyCapped = (raw: Uint8Array | null): string => {
+    if (!raw) return '';
+    const slice = raw.length > FAILED_BODY_CAP_BYTES ? raw.slice(0, FAILED_BODY_CAP_BYTES) : raw;
+    return Buffer.from(slice).toString('base64');
+  };
+
+  const runOne = async (
+    iteration: number,
+  ): Promise<{ event: LoadEvent; failedBodyEvent?: LoadFailedBodyEvent }> => {
     // Per-iteration resolve → {{random}} / {{timestamp}} produce fresh values.
     let prepared = resolveRequest(input.request, {
       variables: input.variables,
@@ -140,22 +168,50 @@ export async function runLoad(
         ? Buffer.from(response.fullBodyBytes).toString('utf8')
         : Buffer.from(response.bodyBase64, 'base64').toString('utf8');
       const valid = validate(response.status, body);
-      if (valid) succeeded++;
-      else validationFailures++;
+      if (valid) {
+        succeeded++;
+      } else {
+        validationFailures++;
+      }
 
-      return {
+      const event: LoadEvent = {
+        kind: 'iteration',
         iteration,
         status: response.status,
         durationMs: Math.round(durationMs),
         valid,
       };
+
+      // Emit a failed-body event when the iteration failed validation and the
+      // feature is enabled and we haven't hit the per-run cap yet.
+      let failedBodyEvent: LoadFailedBodyEvent | undefined;
+      if (!valid && saveFailedBodies && failedBodyCount < failedBodyLimit) {
+        failedBodyCount++;
+        const rawBytes = response.fullBodyBytes ?? null;
+        failedBodyEvent = {
+          kind: 'failed-body',
+          iteration,
+          status: response.status,
+          durationMs: Math.round(durationMs),
+          bodyBase64: encodeBodyCapped(rawBytes),
+          validationFailureReason: buildValidationFailureReason(
+            response.status,
+            body,
+            input.validator,
+          ),
+        };
+      }
+
+      return { event, ...(failedBodyEvent !== undefined ? { failedBodyEvent } : {}) };
     } catch (err) {
       const durationMs = performance.now() - t0;
       latencies.push(durationMs);
       failed++;
       const kind = err instanceof ExecutorError ? err.kind : 'unknown';
       errorKinds[kind] = (errorKinds[kind] ?? 0) + 1;
-      return {
+
+      const event: LoadEvent = {
+        kind: 'iteration',
         iteration,
         status: 0,
         durationMs: Math.round(durationMs),
@@ -163,6 +219,23 @@ export async function runLoad(
         errorKind: kind,
         errorMessage: err instanceof Error ? err.message : String(err),
       };
+
+      // Network/TLS errors also count as failures when saveFailedBodies is on.
+      // Body will be empty because we never received a response.
+      let failedBodyEvent: LoadFailedBodyEvent | undefined;
+      if (saveFailedBodies && failedBodyCount < failedBodyLimit) {
+        failedBodyCount++;
+        failedBodyEvent = {
+          kind: 'failed-body',
+          iteration,
+          status: 0,
+          durationMs: Math.round(durationMs),
+          bodyBase64: '',
+          errorKind: kind,
+        };
+      }
+
+      return { event, ...(failedBodyEvent !== undefined ? { failedBodyEvent } : {}) };
     }
   };
 
@@ -172,10 +245,10 @@ export async function runLoad(
       const iteration = nextIteration++;
       if (iteration >= input.total) return;
       inflight++;
-      const event = await runOne(iteration);
+      const { event, failedBodyEvent } = await runOne(iteration);
       sent++;
       inflight--;
-      onProgress(snapshot(event, false));
+      onProgress(snapshot(event, false, failedBodyEvent));
 
       // Per-run delay (from the UI load-test config) + per-request rate-limit.
       // They stack: run-level delay is the baseline, request rate-limit adds
@@ -205,4 +278,24 @@ export async function runLoad(
   const final = snapshot(null, true);
   onProgress(final);
   return final;
+}
+
+/** Build a human-readable string explaining why validation failed. */
+function buildValidationFailureReason(
+  status: number,
+  body: string,
+  validator: LoadValidator,
+): string {
+  const reasons: string[] = [];
+  if (validator.expectStatus && validator.expectStatus.length > 0) {
+    if (!validator.expectStatus.includes(status)) {
+      reasons.push(`status ${status} not in [${validator.expectStatus.join(', ')}]`);
+    }
+  }
+  if (validator.expectBodyContains) {
+    if (!body.includes(validator.expectBodyContains)) {
+      reasons.push(`body missing "${validator.expectBodyContains}"`);
+    }
+  }
+  return reasons.join('; ');
 }
