@@ -636,6 +636,21 @@ app.whenReady().then(() => {
       void (async () => {
         let lastProgress: LoadProgress | null = null;
         try {
+          // Resolve effective watched headers: per-run override replaces
+          // the workspace list (not appended). Fall back to workspace settings
+          // when the per-run list was not supplied.
+          let effectiveWatchedHeaders: string[] | undefined;
+          let effectiveAutoTrack: boolean | undefined;
+          if (input.watchedHeaders !== undefined) {
+            // Per-run override — use exactly what was sent.
+            effectiveWatchedHeaders = input.watchedHeaders;
+            effectiveAutoTrack = input.autoTrackScrapeDoHeaders;
+          } else if (input.workspacePath) {
+            const cs = await workspaceManager.readCollectionSettings(input.workspacePath);
+            effectiveWatchedHeaders = cs.loadTest?.watchedHeaders;
+            effectiveAutoTrack = cs.loadTest?.autoTrackScrapeDoHeaders;
+          }
+
           await runLoad(
             {
               request: input.request,
@@ -649,6 +664,11 @@ app.whenReady().then(() => {
               ...(input.saveFailedBodies === true ? { saveFailedBodies: true } : {}),
               ...(input.failedBodyLimit !== undefined
                 ? { failedBodyLimit: input.failedBodyLimit }
+              ...(effectiveWatchedHeaders !== undefined
+                ? { watchedHeaders: effectiveWatchedHeaders }
+                : {}),
+              ...(effectiveAutoTrack !== undefined
+                ? { autoTrackScrapeDoHeaders: effectiveAutoTrack }
                 : {}),
             },
             (progress) => {
@@ -717,6 +737,25 @@ app.whenReady().then(() => {
     const controller = loadRuns.get(runId);
     if (controller) controller.abort();
   });
+
+  ipcMain.handle(
+    'collection:addWatchedHeader',
+    async (_e, workspacePath: string, headerName: string): Promise<'added' | 'exists'> => {
+      const settings = await workspaceManager.readCollectionSettings(workspacePath);
+      const existing = settings.loadTest?.watchedHeaders ?? [];
+      const lc = headerName.toLowerCase();
+      if (existing.some((h) => h.toLowerCase() === lc)) return 'exists';
+      const next = [...existing, headerName];
+      await workspaceManager.writeCollectionSettings(workspacePath, {
+        ...settings,
+        loadTest: {
+          ...(settings.loadTest ?? {}),
+          watchedHeaders: next,
+        },
+      });
+      return 'added';
+    },
+  );
 
   // ---- Collection runner ----------------------------------------------------
 

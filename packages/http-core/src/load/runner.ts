@@ -3,6 +3,7 @@ import type {
   LoadFailedBodyEvent,
   ScrapemanRequest,
 } from '@scrapeman/shared-types';
+import type { ScrapemanRequest, WatchedHeaderStats, WatchedHeaderBucket, WatchedHeaderNumericStats } from '@scrapeman/shared-types';
 import { UndiciExecutor } from '../adapters/undici-executor.js';
 import { resolveRequest } from '../variables/resolve.js';
 import { applyAuth } from '../auth/apply.js';
@@ -26,6 +27,11 @@ export interface LoadRunInput {
   saveFailedBodies?: boolean;
   /** Maximum failed-body events to emit per run (default 50, max 1000). */
   failedBodyLimit?: number;
+  /** Explicit list of header names to track. Case-insensitive. */
+  watchedHeaders?: string[];
+  /** When true (default), any response header starting with `scrape.do-` is
+   *  automatically tracked regardless of `watchedHeaders`. */
+  autoTrackScrapeDoHeaders?: boolean;
 }
 
 // 64 KB cap on captured failure bodies.
@@ -51,6 +57,137 @@ export interface LoadProgress {
   /** Only present when saveFailedBodies is enabled and the iteration failed. */
   lastFailedBodyEvent?: LoadFailedBodyEvent;
   done: boolean;
+  watchedHeaderStats?: Record<string, WatchedHeaderStats>;
+}
+
+// ---------------------------------------------------------------------------
+// Internal accumulator per watched header
+// ---------------------------------------------------------------------------
+
+interface HeaderAcc {
+  /** Canonical name as first seen (preserves original casing of first occurrence). */
+  name: string;
+  seen: number;
+  valueCounts: Map<string, number>;
+  /** All numeric-parseable values collected so far. */
+  numericValues: number[];
+  /** Total values seen (including non-numeric). */
+  totalValues: number;
+  /** Per-status accumulator. */
+  byStatus: Map<string, { valueCounts: Map<string, number>; numericValues: number[]; totalValues: number }>;
+}
+
+function numericStats(sorted: number[]): WatchedHeaderNumericStats {
+  const n = sorted.length;
+  const sum = sorted.reduce((a, b) => a + b, 0);
+  const pct = (q: number): number => {
+    const idx = Math.min(n - 1, Math.floor(n * q));
+    return sorted[idx]!;
+  };
+  return {
+    min: sorted[0]!,
+    max: sorted[n - 1]!,
+    avg: sum / n,
+    p50: pct(0.5),
+    p95: pct(0.95),
+    p99: pct(0.99),
+  };
+}
+
+function bucketFromAcc(
+  valueCounts: Map<string, number>,
+  numericValues: number[],
+  totalValues: number,
+): WatchedHeaderBucket {
+  const unique: Array<[string, number]> = [...valueCounts.entries()].sort(
+    (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
+  );
+  const isNumeric =
+    totalValues >= 5 && numericValues.length / totalValues >= 0.95;
+  if (isNumeric) {
+    const sorted = [...numericValues].sort((a, b) => a - b);
+    return { unique, numeric: numericStats(sorted) };
+  }
+  return { unique };
+}
+
+function finalizeStats(
+  accMap: Map<string, HeaderAcc>,
+): Record<string, WatchedHeaderStats> {
+  const out: Record<string, WatchedHeaderStats> = {};
+  // Sort by seen descending, then by name ascending for ties.
+  const sorted = [...accMap.values()].sort(
+    (a, b) => b.seen - a.seen || a.name.localeCompare(b.name),
+  );
+  for (const acc of sorted) {
+    const bucket = bucketFromAcc(acc.valueCounts, acc.numericValues, acc.totalValues);
+    const byStatus: Record<string, WatchedHeaderBucket> = {};
+    for (const [status, statusAcc] of acc.byStatus.entries()) {
+      byStatus[status] = bucketFromAcc(
+        statusAcc.valueCounts,
+        statusAcc.numericValues,
+        statusAcc.totalValues,
+      );
+    }
+    out[acc.name] = {
+      name: acc.name,
+      seen: acc.seen,
+      unique: bucket.unique,
+      ...(bucket.numeric !== undefined ? { numeric: bucket.numeric } : {}),
+      byStatus,
+    };
+  }
+  return out;
+}
+
+function shouldTrack(
+  headerName: string,
+  watchedSet: Set<string>,
+  autoTrack: boolean,
+): boolean {
+  if (watchedSet.has(headerName.toLowerCase())) return true;
+  if (autoTrack && headerName.toLowerCase().startsWith('scrape.do-')) return true;
+  return false;
+}
+
+function accumulateHeader(
+  acc: Map<string, HeaderAcc>,
+  name: string,
+  value: string,
+  status: string,
+): void {
+  const key = name.toLowerCase();
+  let entry = acc.get(key);
+  if (!entry) {
+    entry = {
+      name,
+      seen: 0,
+      valueCounts: new Map(),
+      numericValues: [],
+      totalValues: 0,
+      byStatus: new Map(),
+    };
+    acc.set(key, entry);
+  }
+  entry.seen++;
+
+  const numVal = parseFloat(value);
+  const isNumeric = Number.isFinite(numVal);
+
+  // Global bucket
+  entry.valueCounts.set(value, (entry.valueCounts.get(value) ?? 0) + 1);
+  if (isNumeric) entry.numericValues.push(numVal);
+  entry.totalValues++;
+
+  // Per-status bucket
+  let statusAcc = entry.byStatus.get(status);
+  if (!statusAcc) {
+    statusAcc = { valueCounts: new Map(), numericValues: [], totalValues: 0 };
+    entry.byStatus.set(status, statusAcc);
+  }
+  statusAcc.valueCounts.set(value, (statusAcc.valueCounts.get(value) ?? 0) + 1);
+  if (isNumeric) statusAcc.numericValues.push(numVal);
+  statusAcc.totalValues++;
 }
 
 /**
@@ -87,6 +224,14 @@ export async function runLoad(
 
   const concurrency = Math.max(1, Math.min(input.concurrency, input.total));
 
+  // Watched headers setup
+  const watchedSet = new Set(
+    (input.watchedHeaders ?? []).map((h) => h.toLowerCase()),
+  );
+  const autoTrack = input.autoTrackScrapeDoHeaders ?? true;
+  const trackingEnabled = watchedSet.size > 0 || autoTrack;
+  const headerAcc = new Map<string, HeaderAcc>();
+
   const percentile = (sortedArr: number[], q: number): number => {
     if (sortedArr.length === 0) return 0;
     const idx = Math.min(sortedArr.length - 1, Math.floor(sortedArr.length * q));
@@ -101,7 +246,7 @@ export async function runLoad(
     const sorted = [...latencies].sort((a, b) => a - b);
     const elapsedMs = Date.now() - started;
     const currentRps = elapsedMs > 0 ? (sent * 1000) / elapsedMs : 0;
-    return {
+    const base: LoadProgress = {
       sent,
       succeeded,
       failed,
@@ -121,6 +266,10 @@ export async function runLoad(
       ...(lastFailedBodyEvent !== undefined ? { lastFailedBodyEvent } : {}),
       done,
     };
+    if (trackingEnabled && headerAcc.size > 0) {
+      base.watchedHeaderStats = finalizeStats(headerAcc);
+    }
+    return base;
   };
 
   const validate = (status: number, body: string): boolean => {
@@ -160,6 +309,15 @@ export async function runLoad(
       latencies.push(durationMs);
       const bucket = String(response.status);
       statusHistogram[bucket] = (statusHistogram[bucket] ?? 0) + 1;
+
+      // Accumulate watched headers
+      if (trackingEnabled) {
+        for (const [name, value] of response.headers) {
+          if (shouldTrack(name, watchedSet, autoTrack)) {
+            accumulateHeader(headerAcc, name, value, bucket);
+          }
+        }
+      }
 
       // T3W1: use the full body (not the UI-capped bodyBase64) for
       // validation so `expectBodyContains` matches against everything the

@@ -391,6 +391,10 @@ export interface GlobalVariables {
 export interface CollectionSettings {
   variables: EnvironmentVariable[];
   auth?: AuthConfig;
+  loadTest?: {
+    watchedHeaders?: string[];
+    autoTrackScrapeDoHeaders?: boolean;
+  };
 }
 
 export interface FolderSettings {
@@ -471,6 +475,32 @@ export interface LoadValidator {
   expectBodyContains?: string;
 }
 
+// ---- Watched-header stats (issue #79) -------------------------------------
+
+export interface WatchedHeaderNumericStats {
+  min: number;
+  max: number;
+  avg: number;
+  p50: number;
+  p95: number;
+  p99: number;
+}
+
+export interface WatchedHeaderBucket {
+  unique: Array<[value: string, count: number]>;
+  numeric?: WatchedHeaderNumericStats;
+}
+
+export interface WatchedHeaderStats {
+  name: string;
+  seen: number;
+  unique: Array<[value: string, count: number]>;
+  numeric?: WatchedHeaderNumericStats;
+  byStatus: Record<string, WatchedHeaderBucket>;
+}
+
+// ---------------------------------------------------------------------------
+
 export interface LoadRunStartInput {
   request: ScrapemanRequest;
   workspacePath?: string;
@@ -488,6 +518,11 @@ export interface LoadRunStartInput {
   /** Maximum number of failed-body events to emit per run. Capped at 1000.
    *  Defaults to 50. */
   failedBodyLimit?: number;
+  /** Explicit list of header names to track across iterations. Case-insensitive. */
+  watchedHeaders?: string[];
+  /** When true (the default), any response header matching `scrape.do-*` is
+   *  automatically tracked even if not listed in `watchedHeaders`. */
+  autoTrackScrapeDoHeaders?: boolean;
 }
 
 /** A normal per-iteration result event. */
@@ -546,6 +581,9 @@ export interface LoadProgress {
    *  failed. The renderer accumulates these into its ring buffer. */
   lastFailedBodyEvent?: LoadFailedBodyEvent;
   done: boolean;
+  /** Accumulated stats for watched headers. Populated when watchedHeaders or
+   *  autoTrackScrapeDoHeaders is active on the run. */
+  watchedHeaderStats?: Record<string, WatchedHeaderStats>;
 }
 
 export type ImportCurlResult =
@@ -912,6 +950,12 @@ export interface ScrapemanBridge {
     workspacePath: string,
     settings: CollectionSettings,
   ) => Promise<void>;
+  /** Idempotent append of a header name to the workspace watched-headers list.
+   *  No-ops when the name is already present. Returns 'added' | 'exists'. */
+  collectionAddWatchedHeader: (
+    workspacePath: string,
+    headerName: string,
+  ) => Promise<'added' | 'exists'>;
 
   // Folder settings (variables + folder-level auth)
   folderSettingsRead: (

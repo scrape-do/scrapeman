@@ -147,6 +147,8 @@ export interface LoadTestState {
     saveFailedBodies: boolean;
     /** Max failed bodies to keep per run (1–1000). */
     failedBodyLimit: number;
+    /** Per-run override for watched headers. Empty array = use workspace list. */
+    watchedHeaders: string[];
   };
   runId: string | null;
   progress: LoadProgress | null;
@@ -601,6 +603,7 @@ function freshLoadTest(): LoadTestState {
       expectBody: '',
       saveFailedBodies: false,
       failedBodyLimit: 50,
+      watchedHeaders: [],
     },
     runId: null,
     progress: null,

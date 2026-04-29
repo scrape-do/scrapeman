@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FORMAT_VERSION, type LoadFailedBodyEvent } from '@scrapeman/shared-types';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { FORMAT_VERSION } from '@scrapeman/shared-types';
+import type { WatchedHeaderStats } from '@scrapeman/shared-types';
 import { bridge } from '../bridge.js';
 import { useAppStore, type BuilderState } from '../store.js';
 import { Tooltip } from '../ui/Tooltip.js';
+
+const WATCHED_HEADER_CAP = 10;
 
 /**
  * Inline load test panel rendered inside the Request Builder tab bar.
@@ -45,6 +50,11 @@ export function LoadTestPanel(): JSX.Element {
 
   // When the active tab changes, sync raw inputs from the store.
   const tabId = activeTab?.id ?? null;
+  // Chip input state for per-run watched headers
+  const [chipDraft, setChipDraft] = useState('');
+
+  // Auto-scroll the console to the bottom whenever a new event is appended.
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!config) return;
     setRawTotal(String(config.total));
@@ -106,6 +116,34 @@ export function LoadTestPanel(): JSX.Element {
     if (starting) setAutoScroll(true);
   }, [starting]);
 
+  const addWatchedHeaderChip = useCallback(
+    (name: string) => {
+      if (!activeTab || !config) return;
+      const trimmed = name.trim();
+      if (!trimmed) return;
+      const existing = config.watchedHeaders ?? [];
+      if (existing.length >= WATCHED_HEADER_CAP) return;
+      const lc = trimmed.toLowerCase();
+      if (existing.some((h) => h.toLowerCase() === lc)) return;
+      updateLoadTestConfig(activeTab.id, {
+        watchedHeaders: [...existing, trimmed],
+      });
+    },
+    [activeTab, config, updateLoadTestConfig],
+  );
+
+  const removeWatchedHeaderChip = useCallback(
+    (name: string) => {
+      if (!activeTab || !config) return;
+      updateLoadTestConfig(activeTab.id, {
+        watchedHeaders: (config.watchedHeaders ?? []).filter(
+          (h) => h.toLowerCase() !== name.toLowerCase(),
+        ),
+      });
+    },
+    [activeTab, config, updateLoadTestConfig],
+  );
+
   const start = async (): Promise<void> => {
     if (!activeTab) return;
     const tabId = activeTab.id;
@@ -127,6 +165,8 @@ export function LoadTestPanel(): JSX.Element {
     resetLoadTestForStart(tabId, newRunId);
     try {
       const request = buildRequestFromBuilder(activeTab.builder, activeTab.name);
+      // Per-run override replaces workspace list when non-empty.
+      const hasPerRunOverride = cfg.watchedHeaders.length > 0;
       await bridge.loadStart({
         request,
         ...(workspace?.path ? { workspacePath: workspace.path } : {}),
@@ -146,6 +186,9 @@ export function LoadTestPanel(): JSX.Element {
           ...(cfg.expectBody.trim() ? { expectBodyContains: cfg.expectBody } : {}),
         },
         ...(cfg.saveFailedBodies ? { saveFailedBodies: true, failedBodyLimit } : {}),
+        // Send per-run override when the user filled it in. The main process
+        // treats a non-undefined value as a replacement for the workspace list.
+        ...(hasPerRunOverride ? { watchedHeaders: cfg.watchedHeaders } : {}),
       });
       setLoadTestRun(tabId, { starting: false });
     } catch (err) {
@@ -210,6 +253,16 @@ export function LoadTestPanel(): JSX.Element {
     a.click();
     URL.revokeObjectURL(href);
   }, [activeTab, failedBodies, runId]);
+  const watchedHeaderEntries = useMemo(
+    () =>
+      progress?.watchedHeaderStats
+        ? Object.values(progress.watchedHeaderStats).slice(0, WATCHED_HEADER_CAP)
+        : [],
+    [progress?.watchedHeaderStats],
+  );
+
+  const perRunChips = config?.watchedHeaders ?? [];
+  const atCap = perRunChips.length >= WATCHED_HEADER_CAP;
 
   return (
     <div className="flex h-full flex-col">
@@ -309,17 +362,134 @@ export function LoadTestPanel(): JSX.Element {
               label="Response body must contain"
               hint="Optional substring that every response must include"
             >
+        <div className="border-b border-line px-5 py-4">
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Total requests" hint="Total number of iterations">
               <input
-                type="text"
-                value={config.expectBody}
+                type="number"
+                min={1}
+                value={config.total}
                 onChange={(e) =>
                   activeTab &&
-                  updateLoadTestConfig(activeTab.id, { expectBody: e.target.value })
+                  updateLoadTestConfig(activeTab.id, {
+                    total: Math.max(1, parseInt(e.target.value, 10) || 1),
+                  })
                 }
-                placeholder='{"success":true}'
+                className="field w-full"
+              />
+            </Field>
+            <Field label="Concurrency" hint="Max parallel in-flight">
+              <input
+                type="number"
+                min={1}
+                value={config.concurrency}
+                onChange={(e) =>
+                  activeTab &&
+                  updateLoadTestConfig(activeTab.id, {
+                    concurrency: Math.max(1, parseInt(e.target.value, 10) || 1),
+                  })
+                }
+                className="field w-full"
+              />
+            </Field>
+            <Field label="Per-iteration delay (ms)" hint="Optional, 0 = no delay">
+              <input
+                type="number"
+                min={0}
+                value={config.delay}
+                onChange={(e) =>
+                  activeTab &&
+                  updateLoadTestConfig(activeTab.id, {
+                    delay: Math.max(0, parseInt(e.target.value, 10) || 0),
+                  })
+                }
+                className="field w-full"
+              />
+            </Field>
+            <Field label="Expected status codes" hint="Comma-separated, e.g. 200,201">
+              <input
+                type="text"
+                value={config.expectStatus}
+                onChange={(e) =>
+                  activeTab &&
+                  updateLoadTestConfig(activeTab.id, { expectStatus: e.target.value })
+                }
+                placeholder="200"
                 className="field w-full font-mono"
               />
             </Field>
+            <div className="col-span-2">
+              <Field
+                label="Response body must contain"
+                hint="Optional substring that every response must include"
+              >
+                <input
+                  type="text"
+                  value={config.expectBody}
+                  onChange={(e) =>
+                    activeTab &&
+                    updateLoadTestConfig(activeTab.id, { expectBody: e.target.value })
+                  }
+                  placeholder='{"success":true}'
+                  className="field w-full font-mono"
+                />
+              </Field>
+            </div>
+
+            {/* Per-run watched headers override */}
+            <div className="col-span-2">
+              <Field
+                label="Watched headers (overrides collection)"
+                hint={
+                  atCap
+                    ? `Cap of ${WATCHED_HEADER_CAP} reached`
+                    : `Header names to track across iterations. Overrides the collection setting when non-empty. Cap: ${WATCHED_HEADER_CAP}.`
+                }
+              >
+                <div className="flex min-h-[34px] flex-wrap items-center gap-1.5 rounded-md border border-line bg-bg-canvas px-2 py-1.5">
+                  {perRunChips.map((chip) => (
+                    <span
+                      key={chip}
+                      className="flex items-center gap-1 rounded bg-bg-subtle px-2 py-0.5 font-mono text-[11px] text-ink-2"
+                    >
+                      {chip}
+                      <button
+                        type="button"
+                        onClick={() => removeWatchedHeaderChip(chip)}
+                        className="text-ink-4 hover:text-method-delete"
+                        aria-label={`Remove ${chip}`}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                  {!atCap && (
+                    <input
+                      type="text"
+                      value={chipDraft}
+                      onChange={(e) => setChipDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ',') {
+                          e.preventDefault();
+                          addWatchedHeaderChip(chipDraft);
+                          setChipDraft('');
+                        } else if (
+                          e.key === 'Backspace' &&
+                          chipDraft === '' &&
+                          perRunChips.length > 0
+                        ) {
+                          removeWatchedHeaderChip(perRunChips[perRunChips.length - 1]!);
+                        }
+                      }}
+                      placeholder={
+                        perRunChips.length === 0 ? 'Add header name, press Enter…' : ''
+                      }
+                      className="min-w-[160px] flex-1 bg-transparent font-mono text-xs text-ink-1 outline-none placeholder:text-ink-4"
+                    />
+                  )}
+                </div>
+              </Field>
+            </div>
           </div>
           {/* Task 3: save failed bodies config */}
           <div className="col-span-2 flex items-start gap-4">
@@ -529,6 +699,32 @@ export function LoadTestPanel(): JSX.Element {
             >
               Auto-scroll
             </button>
+      {/* Watched header cards */}
+      {watchedHeaderEntries.length > 0 && (
+        <div className="border-b border-line px-5 py-4">
+          <div className="mb-3 text-[10px] font-semibold uppercase tracking-wider text-ink-4">
+            Watched headers
+          </div>
+          <div className="flex flex-col gap-3">
+            {watchedHeaderEntries.map((stats) => (
+              <WatchedHeaderCard
+                key={stats.name}
+                stats={stats}
+                total={progress?.totalTarget ?? 0}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Console */}
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-y-auto bg-bg-subtle p-4 font-mono text-[11px] leading-[18px]"
+      >
+        {events.length === 0 && !progress && (
+          <div className="text-ink-4">
+            Configure the run above and press <span className="text-ink-2">Start</span>.
           </div>
         )}
         <div
@@ -736,6 +932,100 @@ function FailureRow({
               {failure.errorKind ? `No body captured (${failure.errorKind})` : 'Empty response body'}
             </div>
           )}
+// WatchedHeaderCard
+// ---------------------------------------------------------------------------
+
+function WatchedHeaderCard({
+  stats,
+  total,
+}: {
+  stats: WatchedHeaderStats;
+  total: number;
+}): JSX.Element | null {
+  const [activeStatus, setActiveStatus] = useState<string>('all');
+
+  // Collect all status codes seen for this header
+  const statusCodes = useMemo(
+    () => Object.keys(stats.byStatus).sort(),
+    [stats.byStatus],
+  );
+
+  // Pick the active bucket
+  const activeBucket = useMemo(
+    () =>
+      activeStatus === 'all'
+        ? { unique: stats.unique, numeric: stats.numeric }
+        : (stats.byStatus[activeStatus] ?? { unique: [] }),
+    [activeStatus, stats],
+  );
+
+  // Collapse when seen = 0
+  if (stats.seen === 0) return null;
+
+  const seenPct = total > 0 ? ((stats.seen / total) * 100).toFixed(1) : '0.0';
+  const top5 = activeBucket.unique.slice(0, 5);
+  const maxCount = top5[0]?.[1] ?? 1;
+
+  return (
+    <div className="rounded-md border border-line bg-bg-canvas px-3 py-2.5">
+      {/* Title row */}
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="font-mono text-xs font-semibold text-ink-1">{stats.name}</span>
+        <span className="shrink-0 text-[10px] text-ink-4">
+          {stats.seen} seen ({seenPct}%)
+        </span>
+      </div>
+
+      {/* Status pills */}
+      {statusCodes.length > 0 && (
+        <div className="mb-2 flex flex-wrap gap-1">
+          <StatusPill
+            label="All"
+            active={activeStatus === 'all'}
+            onClick={() => setActiveStatus('all')}
+          />
+          {statusCodes.map((code) => (
+            <StatusPill
+              key={code}
+              label={code}
+              active={activeStatus === code}
+              onClick={() => setActiveStatus(code)}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Top-5 value bars */}
+      <div className="flex flex-col gap-1">
+        {top5.map(([value, count]) => (
+          <div key={value} className="flex items-center gap-2">
+            <div className="w-[140px] shrink-0 truncate font-mono text-[10px] text-ink-2">
+              {value}
+            </div>
+            <div className="flex flex-1 items-center gap-1.5">
+              <div className="h-1 flex-1 overflow-hidden rounded-full bg-bg-muted">
+                <div
+                  className="h-full rounded-full bg-accent"
+                  style={{ width: `${(count / maxCount) * 100}%` }}
+                />
+              </div>
+              <span className="w-8 text-right font-mono text-[10px] text-ink-4">
+                {count}
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Numeric stats line */}
+      {activeBucket.numeric && (
+        <div className="mt-2 flex flex-wrap gap-2 border-t border-line pt-2 text-[10px] font-mono text-ink-3">
+          <span>min {activeBucket.numeric.min.toFixed(2)}</span>
+          <span>max {activeBucket.numeric.max.toFixed(2)}</span>
+          <span>avg {activeBucket.numeric.avg.toFixed(2)}</span>
+          <span>p50 {activeBucket.numeric.p50.toFixed(2)}</span>
+          <span>p95 {activeBucket.numeric.p95.toFixed(2)}</span>
+          <span>p99 {activeBucket.numeric.p99.toFixed(2)}</span>
         </div>
       )}
     </div>
@@ -745,6 +1035,29 @@ function FailureRow({
 // ---------------------------------------------------------------------------
 // Shared small components
 // ---------------------------------------------------------------------------
+function StatusPill({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded px-1.5 py-0.5 font-mono text-[10px] transition-colors ${
+        active
+          ? 'bg-accent text-white'
+          : 'bg-bg-muted text-ink-3 hover:bg-bg-subtle hover:text-ink-1'
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
 
 function Field({
   label,

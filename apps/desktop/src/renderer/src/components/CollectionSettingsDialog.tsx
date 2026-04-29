@@ -8,6 +8,8 @@ import type {
 import { useAppStore } from '../store.js';
 import { AuthForm } from './AuthForm.js';
 
+const WATCHED_HEADER_CAP = 10;
+
 interface RowState extends EnvironmentVariable {
   id: string;
 }
@@ -32,9 +34,13 @@ export function CollectionSettingsDialog({
   const collectionSettings = useAppStore((s) => s.collectionSettings);
   const saveCollectionSettings = useAppStore((s) => s.saveCollectionSettings);
 
-  const [activeTab, setActiveTab] = useState<'variables' | 'auth'>('variables');
+  const [activeTab, setActiveTab] = useState<'variables' | 'auth' | 'loadtest'>('variables');
   const [rows, setRows] = useState<RowState[]>([]);
   const [auth, setAuth] = useState<AuthConfig>({ type: 'none' });
+  // Load test settings
+  const [watchedHeaders, setWatchedHeaders] = useState<string[]>([]);
+  const [autoTrack, setAutoTrack] = useState(true);
+  const [chipDraft, setChipDraft] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -48,8 +54,13 @@ export function CollectionSettingsDialog({
           : [newRow()],
       );
       setAuth(collectionSettings.auth ?? { type: 'none' });
+      setWatchedHeaders(collectionSettings.loadTest?.watchedHeaders ?? []);
+      setAutoTrack(collectionSettings.loadTest?.autoTrackScrapeDoHeaders ?? true);
     }
-    if (!open) setRows([]);
+    if (!open) {
+      setRows([]);
+      setChipDraft('');
+    }
   }, [open, collectionSettings]);
 
   const update = (id: string, patch: Partial<RowState>): void => {
@@ -64,19 +75,45 @@ export function CollectionSettingsDialog({
     setRows((prev) => [...prev, newRow()]);
   };
 
+  const addChip = (name: string): void => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    if (watchedHeaders.length >= WATCHED_HEADER_CAP) return;
+    const lc = trimmed.toLowerCase();
+    if (watchedHeaders.some((h) => h.toLowerCase() === lc)) return;
+    setWatchedHeaders((prev) => [...prev, trimmed]);
+  };
+
+  const removeChip = (name: string): void => {
+    setWatchedHeaders((prev) =>
+      prev.filter((h) => h.toLowerCase() !== name.toLowerCase()),
+    );
+  };
+
   const save = async (): Promise<void> => {
     setSaving(true);
     const variables: EnvironmentVariable[] = rows
       .filter((r) => r.key.trim().length > 0)
       .map(({ id: _id, ...v }) => ({ ...v, key: v.key.trim() }));
+    const hasLoadTest = watchedHeaders.length > 0 || autoTrack !== true;
     const settings: CollectionSettings = {
       variables,
       ...(auth.type !== 'none' ? { auth } : {}),
+      ...(hasLoadTest
+        ? {
+            loadTest: {
+              ...(watchedHeaders.length > 0 ? { watchedHeaders } : {}),
+              autoTrackScrapeDoHeaders: autoTrack,
+            },
+          }
+        : {}),
     };
     await saveCollectionSettings(settings);
     setSaving(false);
     onClose();
   };
+
+  const atCap = watchedHeaders.length >= WATCHED_HEADER_CAP;
 
   return (
     <RadixDialog.Root open={open} onOpenChange={(next) => !next && onClose()}>
@@ -113,6 +150,16 @@ export function CollectionSettingsDialog({
               }`}
             >
               Default auth
+            </button>
+            <button
+              onClick={() => setActiveTab('loadtest')}
+              className={`border-b-2 py-2 text-xs font-semibold ${
+                activeTab === 'loadtest'
+                  ? 'border-accent text-ink-1'
+                  : 'border-transparent text-ink-3 hover:text-ink-1'
+              }`}
+            >
+              Load test
             </button>
           </div>
 
@@ -192,6 +239,100 @@ export function CollectionSettingsDialog({
                   overridden by a folder or individual request.
                 </p>
                 <AuthForm auth={auth} onChange={setAuth} />
+              </div>
+            )}
+
+            {activeTab === 'loadtest' && (
+              <div className="p-4">
+                <p className="mb-4 text-xs text-ink-3">
+                  Configure response headers to track across all load test
+                  iterations. The per-run override in the Load Test panel
+                  replaces this list when non-empty.
+                </p>
+
+                {/* Auto-track toggle */}
+                <div className="mb-4 flex items-center justify-between rounded-md border border-line bg-bg-subtle px-3 py-2.5">
+                  <div>
+                    <div className="text-xs font-semibold text-ink-1">
+                      Auto-track Scrape.do-* headers
+                    </div>
+                    <div className="mt-0.5 text-[11px] text-ink-4">
+                      Automatically track any response header whose name starts
+                      with <span className="font-mono">Scrape.do-</span> (case-insensitive).
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={autoTrack}
+                    onClick={() => setAutoTrack((v) => !v)}
+                    className={`relative h-5 w-9 flex-shrink-0 rounded-full transition-colors ${
+                      autoTrack ? 'bg-accent' : 'bg-bg-muted'
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                        autoTrack ? 'translate-x-4' : 'translate-x-0.5'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {/* Watched headers chip input */}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[10px] font-semibold uppercase tracking-wider text-ink-3">
+                    Watched headers
+                  </label>
+                  <div className="flex min-h-[42px] flex-wrap items-center gap-1.5 rounded-md border border-line bg-bg-canvas px-2 py-1.5">
+                    {watchedHeaders.map((chip) => (
+                      <span
+                        key={chip}
+                        className="flex items-center gap-1 rounded bg-bg-subtle px-2 py-0.5 font-mono text-[11px] text-ink-2"
+                      >
+                        {chip}
+                        <button
+                          type="button"
+                          onClick={() => removeChip(chip)}
+                          className="text-ink-4 hover:text-method-delete"
+                          aria-label={`Remove ${chip}`}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                    {!atCap && (
+                      <input
+                        type="text"
+                        value={chipDraft}
+                        onChange={(e) => setChipDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ',') {
+                            e.preventDefault();
+                            addChip(chipDraft);
+                            setChipDraft('');
+                          } else if (
+                            e.key === 'Backspace' &&
+                            chipDraft === '' &&
+                            watchedHeaders.length > 0
+                          ) {
+                            removeChip(watchedHeaders[watchedHeaders.length - 1]!);
+                          }
+                        }}
+                        placeholder={
+                          watchedHeaders.length === 0
+                            ? 'Add header name, press Enter…'
+                            : ''
+                        }
+                        className="min-w-[160px] flex-1 bg-transparent font-mono text-xs text-ink-1 outline-none placeholder:text-ink-4"
+                      />
+                    )}
+                  </div>
+                  <div className="text-[10px] text-ink-4">
+                    {atCap
+                      ? `Cap of ${WATCHED_HEADER_CAP} reached.`
+                      : `Enter / comma to add. Cap: ${WATCHED_HEADER_CAP}.`}
+                  </div>
+                </div>
               </div>
             )}
           </div>

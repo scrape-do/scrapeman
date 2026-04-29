@@ -1119,19 +1119,72 @@ function ModeButton({
 }
 
 function HeadersPanel({ response }: { response: ExecutedResponse }): JSX.Element {
+  const workspace = useAppStore((s) => s.workspace);
+  const loadCollectionSettings = useAppStore((s) => s.loadCollectionSettings);
+  // 'added' | 'exists' | 'error' — resets after 2 s
+  const [toast, setToast] = useState<{ name: string; result: 'added' | 'exists' | 'error' } | null>(null);
+
+  const handleAddWatched = useCallback(
+    async (name: string) => {
+      if (!workspace?.path) return;
+      try {
+        const result = await bridge.collectionAddWatchedHeader(workspace.path, name);
+        setToast({ name, result });
+        // Refresh collection settings so CollectionSettingsDialog shows the update.
+        void loadCollectionSettings();
+      } catch {
+        setToast({ name, result: 'error' });
+      }
+      setTimeout(() => setToast(null), 2000);
+    },
+    [workspace, loadCollectionSettings],
+  );
+
   return (
     <div className="flex h-full flex-col overflow-auto">
-      <div className="sticky top-0 z-10 grid grid-cols-[240px_1fr] border-b border-line bg-bg-subtle px-4 text-[10px] font-semibold uppercase tracking-wider text-ink-4">
+      {toast && (
+        <div
+          className={`sticky top-0 z-20 flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-medium ${
+            toast.result === 'added'
+              ? 'bg-status-ok/10 text-status-ok'
+              : toast.result === 'exists'
+                ? 'bg-bg-muted text-ink-3'
+                : 'bg-method-delete/10 text-method-delete'
+          }`}
+        >
+          {toast.result === 'added' && `${toast.name} added to watched headers`}
+          {toast.result === 'exists' && `${toast.name} already watched`}
+          {toast.result === 'error' && `Failed to add ${toast.name}`}
+        </div>
+      )}
+      <div className="sticky top-0 z-10 grid grid-cols-[240px_1fr_28px] border-b border-line bg-bg-subtle px-4 text-[10px] font-semibold uppercase tracking-wider text-ink-4">
         <div className="py-2">Name</div>
         <div className="py-2">Value</div>
+        <div />
       </div>
       {response.headers.map(([name, value], i) => (
         <div
           key={i}
-          className="grid grid-cols-[240px_1fr] border-b border-line-subtle px-4 hover:bg-bg-subtle"
+          className="group grid grid-cols-[240px_1fr_28px] items-center border-b border-line-subtle px-4 hover:bg-bg-subtle"
         >
           <div className="truncate py-2 font-mono text-xs text-ink-3">{name}</div>
           <div className="break-all py-2 font-mono text-xs text-ink-1">{value}</div>
+          <div className="flex items-center justify-center">
+            {workspace && (
+              <button
+                type="button"
+                onClick={() => void handleAddWatched(name)}
+                title={`Watch header "${name}" in load tests`}
+                className="opacity-0 group-hover:opacity-100 flex h-5 w-5 items-center justify-center rounded text-[11px] text-ink-4 transition-opacity hover:bg-bg-muted hover:text-accent"
+                aria-label={`Add ${name} to watched headers`}
+              >
+                {/* Inline + icon */}
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
+                  <path d="M5 1v8M1 5h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                </svg>
+              </button>
+            )}
+          </div>
         </div>
       ))}
     </div>

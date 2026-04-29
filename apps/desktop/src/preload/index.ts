@@ -219,6 +219,12 @@ const api: ScrapemanBridge = {
       workspacePath,
       settings,
     ) as Promise<void>,
+  collectionAddWatchedHeader: (workspacePath: string, headerName: string) =>
+    ipcRenderer.invoke(
+      'collection:addWatchedHeader',
+      workspacePath,
+      headerName,
+    ) as Promise<'added' | 'exists'>,
 
   folderSettingsRead: (workspacePath: string, folderRelPath: string) =>
     ipcRenderer.invoke(

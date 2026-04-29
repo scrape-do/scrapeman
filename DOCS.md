@@ -520,6 +520,7 @@ Set expected status codes (e.g., `200, 201`) and an optional body-contains subst
 - **Stop** mid-run with partial results preserved.
 - Console log with color-coded rows: green for success, yellow for validation fail, red for network error.
 
+<<<<<<< HEAD
 ### Number input editing
 
 The Total requests, Concurrency, and Per-iteration delay fields accept free-form editing. You can clear the entire value and type a new number without the field snapping back to 1 mid-edit. The value is clamped (minimum 1 for counts, 0 for delay) when you leave the field or press Start.
@@ -560,6 +561,29 @@ After the run, a **Failures** panel appears below the event log. Each row shows:
 **Clear** removes all captured failures from memory without affecting the run metrics.
 
 Persisting failed bodies to disk across app restarts is not supported in v1. The ring buffer is in-memory only.
+=======
+### Watched headers
+
+Track specific response headers across all iterations and see per-header statistics after the run.
+
+**Workspace-level config** — open Collection Settings, go to the "Load test" tab. Add header names to the watched list and toggle "Auto-track Scrape.do-* headers" (on by default). These settings are saved to `.scrapeman/collection.yaml` and apply to every load run from this workspace.
+
+**Per-run override** — the Load Test panel has a "Watched headers" chip input above the config form. Any headers added there replace the workspace list for that run only. Remove them to fall back to the workspace list.
+
+**Click-to-add from a response** — in the Response Viewer, hover any row in the Headers tab. A "+" icon appears on the right. Click it to append that header name to the workspace watched list. A brief inline notification confirms whether the header was added or was already present.
+
+**Cap: 10 headers per run.** The workspace list and per-run override each cap at 10.
+
+**Cards** — after the first tick with stats, a "Watched headers" section appears below the metrics grid. Each card shows:
+- Header name, total times seen, percentage of total iterations
+- Status pills (All, 200, 429, …) — click a pill to scope the value distribution to that status code
+- Top-5 unique values as a bar chart (sorted by count desc, ties broken lexicographically)
+- Numeric stats line (min, max, avg, p50, p95, p99) when >= 95% of seen values parse as a number and at least 5 values have been seen
+
+Cards for headers that never appeared are hidden.
+
+**Override semantics** — the per-run override *replaces* the workspace list, it does not append to it. A per-run list of `["X-Custom"]` means only `X-Custom` is tracked, regardless of what the workspace list contains.
+>>>>>>> 10f8581 (feat(load-test): watched headers — workspace + per-run + click-to-add (#79))
 
 ---
 

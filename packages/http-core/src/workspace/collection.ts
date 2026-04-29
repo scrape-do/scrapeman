@@ -1,17 +1,14 @@
 import { promises as fsp } from 'node:fs';
 import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import type { AuthConfig, EnvironmentVariable } from '@scrapeman/shared-types';
+import type { AuthConfig, CollectionSettings, EnvironmentVariable } from '@scrapeman/shared-types';
 import { FORMAT_VERSION } from '@scrapeman/shared-types';
 import { parseAuthConfig, serializeAuthConfig } from './auth-io.js';
 
 const COLLECTION_FILE = '.scrapeman/collection.yaml';
 
-export interface CollectionSettings {
-  variables: EnvironmentVariable[];
-  /** Default auth for all requests unless overridden by a folder or request. */
-  auth?: AuthConfig;
-}
+// Re-export so callers that import from this module still get the type.
+export type { CollectionSettings };
 
 function parseVariables(raw: Record<string, unknown>): EnvironmentVariable[] {
   if (!Array.isArray(raw['variables'])) return [];
@@ -32,6 +29,30 @@ async function atomicWrite(absPath: string, data: string): Promise<void> {
   const tmp = `${absPath}.tmp-${Math.random().toString(36).slice(2)}`;
   await fsp.writeFile(tmp, data, 'utf8');
   await fsp.rename(tmp, absPath);
+}
+
+function parseLoadTest(
+  rec: Record<string, unknown>,
+): CollectionSettings['loadTest'] | undefined {
+  const lt = rec['loadTest'];
+  if (typeof lt !== 'object' || lt === null) return undefined;
+  const obj = lt as Record<string, unknown>;
+  const watchedHeaders: string[] = [];
+  if (Array.isArray(obj['watchedHeaders'])) {
+    for (const item of obj['watchedHeaders']) {
+      if (typeof item === 'string' && item.trim()) {
+        watchedHeaders.push(item.trim());
+      }
+    }
+  }
+  const autoTrack =
+    typeof obj['autoTrackScrapeDoHeaders'] === 'boolean'
+      ? obj['autoTrackScrapeDoHeaders']
+      : undefined;
+  return {
+    ...(watchedHeaders.length > 0 ? { watchedHeaders } : {}),
+    ...(autoTrack !== undefined ? { autoTrackScrapeDoHeaders: autoTrack } : {}),
+  };
 }
 
 function yamlString(value: string): string {
@@ -77,7 +98,12 @@ export class CollectionFs {
       typeof rec['auth'] === 'object' && rec['auth'] !== null
         ? parseAuthConfig(rec['auth'] as Record<string, unknown>)
         : undefined;
-    return { variables, ...(auth !== undefined ? { auth } : {}) };
+    const loadTest = parseLoadTest(rec);
+    return {
+      variables,
+      ...(auth !== undefined ? { auth } : {}),
+      ...(loadTest !== undefined ? { loadTest } : {}),
+    };
   }
 
   async write(settings: CollectionSettings): Promise<void> {
@@ -102,6 +128,22 @@ export class CollectionFs {
       lines.push('auth:');
       for (const l of authLines) {
         lines.push(`  ${l}`);
+      }
+    }
+    if (settings.loadTest) {
+      lines.push('loadTest:');
+      const wh = settings.loadTest.watchedHeaders;
+      if (wh && wh.length > 0) {
+        lines.push('  watchedHeaders:');
+        for (const h of wh) {
+          lines.push(`    - ${yamlString(h)}`);
+        }
+      } else {
+        lines.push('  watchedHeaders: []');
+      }
+      const autoTrack = settings.loadTest.autoTrackScrapeDoHeaders;
+      if (autoTrack !== undefined) {
+        lines.push(`  autoTrackScrapeDoHeaders: ${autoTrack}`);
       }
     }
     await atomicWrite(path, lines.join('\n') + '\n');
