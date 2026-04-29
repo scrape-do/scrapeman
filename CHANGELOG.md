@@ -2,6 +2,22 @@
 
 All notable changes land here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [SemVer](https://semver.org/).
 
+## [0.5.1] — 2026-04-29
+
+Patch release. Bug fixes from dogfooding plus two small additions on top of 0.5.0.
+
+### Added
+- **Watched response headers in load runs** (#79). Track up to 10 response headers (e.g. `Scrape.do-Rotations`) and see their value distribution per status code. Lives at three levels: workspace default in `.scrapeman/collection.yaml`, per-run override in the load test config, and a click-to-add `+` button on the Response Headers tab. `Scrape.do-*` headers auto-track by default. Numeric headers get min/max/avg/p50/p95/p99 stats when at least 95% parse and at least 5 samples land. 15 new tests cover the aggregator, status stratification, numeric mode threshold, and chip cap.
+- **Per-request cookie jar toggle** (#23 follow-up). Settings tab now has a "Use cookie jar" checkbox so a single request can opt out of the workspace jar without disabling it globally. Matches Postman's per-request override.
+
+### Fixed
+- **Load test auto-scroll, empty number inputs, failed-body capture** (#74 #77 #78). The events log now sticks to the bottom while a run is live and lets the user scroll up to pause it. Number inputs (Total / Concurrency / Delay) accept empty values during edit and clamp on blur. Failed iteration bodies can be saved into a ring buffer (cap 1 to 1000) and exported as JSON for offline triage.
+- **Screenshot modal vs global shortcuts** (#75). Closing the screenshot preview no longer fires the global Cmd+W tab-close shortcut.
+- **Workspace rename keeps the open tab in sync** (#76). Renaming a request in the sidebar updates the matching tab's path so subsequent saves write to the new location.
+
+### Tests
+- 569 passing in `http-core` (15 new for watched headers), 35 in `apps/desktop`. 7 skipped. Typecheck clean across all three packages.
+
 ## [0.5.0] — 2026-04-26
 
 Big-feature release. Eleven previously-open issues land in this cut.
