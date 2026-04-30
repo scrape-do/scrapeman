@@ -3,13 +3,10 @@ import {
   FORMAT_VERSION,
   type LoadEvent,
   type LoadFailedBodyEvent,
-  type WatchedHeaderStats,
 } from '@scrapeman/shared-types';
 import { bridge } from '../bridge.js';
 import { useAppStore, type BuilderState } from '../store.js';
 import { Tooltip } from '../ui/Tooltip.js';
-
-const WATCHED_HEADER_CAP = 10;
 
 /**
  * Inline load test panel rendered inside the Request Builder tab bar.
@@ -49,9 +46,6 @@ export function LoadTestPanel(): JSX.Element {
   const [rawFailedBodyLimit, setRawFailedBodyLimit] = useState<string>(() =>
     String(config?.failedBodyLimit ?? 50),
   );
-
-  // Per-run chip input draft for watched headers.
-  const [chipDraft, setChipDraft] = useState('');
 
   // When the active tab changes, sync raw inputs from the store.
   const tabId = activeTab?.id ?? null;
@@ -156,7 +150,6 @@ export function LoadTestPanel(): JSX.Element {
           ...(cfg.expectBody.trim() ? { expectBodyContains: cfg.expectBody } : {}),
         },
         ...(cfg.saveFailedBodies ? { saveFailedBodies: true, failedBodyLimit } : {}),
-        ...(cfg.watchedHeaders.length > 0 ? { watchedHeaders: cfg.watchedHeaders } : {}),
       });
       setLoadTestRun(tabId, { starting: false });
     } catch (err) {
@@ -202,42 +195,6 @@ export function LoadTestPanel(): JSX.Element {
   const errorEntries = useMemo(
     () => (progress ? Object.entries(progress.errorKinds) : []),
     [progress],
-  );
-
-  const watchedStats = useMemo<WatchedHeaderStats[]>(
-    () =>
-      progress?.watchedHeaderStats
-        ? Object.values(progress.watchedHeaderStats)
-        : [],
-    [progress?.watchedHeaderStats],
-  );
-
-  const perRunChips = config?.watchedHeaders ?? [];
-  const atCap = perRunChips.length >= WATCHED_HEADER_CAP;
-
-  const addChip = useCallback(
-    (raw: string): void => {
-      if (!activeTab || !config) return;
-      const trimmed = raw.trim();
-      if (!trimmed) return;
-      if (perRunChips.length >= WATCHED_HEADER_CAP) return;
-      const lc = trimmed.toLowerCase();
-      if (perRunChips.some((h) => h.toLowerCase() === lc)) return;
-      updateLoadTestConfig(activeTab.id, {
-        watchedHeaders: [...perRunChips, trimmed],
-      });
-    },
-    [activeTab, config, perRunChips, updateLoadTestConfig],
-  );
-
-  const removeChip = useCallback(
-    (name: string): void => {
-      if (!activeTab) return;
-      updateLoadTestConfig(activeTab.id, {
-        watchedHeaders: perRunChips.filter((h) => h !== name),
-      });
-    },
-    [activeTab, perRunChips, updateLoadTestConfig],
   );
 
   // Export failures as JSON.
@@ -398,63 +355,6 @@ export function LoadTestPanel(): JSX.Element {
               </Field>
             )}
           </div>
-          {/* Watched headers — per-run override chips */}
-          <div className="col-span-2 flex flex-col gap-1.5">
-            <label className="text-[10px] font-semibold uppercase tracking-wider text-ink-3">
-              Watched headers (per-run)
-            </label>
-            <div className="flex min-h-[42px] flex-wrap items-center gap-1.5 rounded-md border border-line bg-bg-canvas px-2 py-1.5">
-              {perRunChips.map((chip) => (
-                <span
-                  key={chip}
-                  className="flex items-center gap-1 rounded bg-bg-subtle px-2 py-0.5 font-mono text-[11px] text-ink-2"
-                >
-                  {chip}
-                  <button
-                    type="button"
-                    onClick={() => removeChip(chip)}
-                    className="text-ink-4 hover:text-method-delete"
-                    aria-label={`Remove ${chip}`}
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
-              {!atCap && (
-                <input
-                  type="text"
-                  value={chipDraft}
-                  onChange={(e) => setChipDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ',') {
-                      e.preventDefault();
-                      addChip(chipDraft);
-                      setChipDraft('');
-                    } else if (
-                      e.key === 'Backspace' &&
-                      chipDraft === '' &&
-                      perRunChips.length > 0
-                    ) {
-                      removeChip(perRunChips[perRunChips.length - 1]!);
-                    }
-                  }}
-                  placeholder={
-                    perRunChips.length === 0
-                      ? 'Override workspace list — add header name, press Enter…'
-                      : ''
-                  }
-                  className="min-w-[200px] flex-1 bg-transparent font-mono text-xs text-ink-1 outline-none placeholder:text-ink-4"
-                />
-              )}
-            </div>
-            <div className="text-[10px] text-ink-4">
-              {atCap
-                ? `Cap of ${WATCHED_HEADER_CAP} reached.`
-                : perRunChips.length === 0
-                  ? `Empty = use workspace list. Cap: ${WATCHED_HEADER_CAP}.`
-                  : `Per-run override active. Cap: ${WATCHED_HEADER_CAP}.`}
-            </div>
-          </div>
         </div>
       )}
 
@@ -464,53 +364,16 @@ export function LoadTestPanel(): JSX.Element {
           <span className="spinner h-5 w-5" aria-hidden="true" />
           <div className="text-sm font-medium text-ink-2">Sending requests…</div>
           <div className="text-xs text-ink-3">Waiting for the first response.</div>
-          {(config?.expectStatus.trim() || config?.expectBody.trim()) && (
-            <div className="mt-2 flex flex-wrap items-center justify-center gap-2 text-[11px]">
-              <span className="font-semibold uppercase tracking-wider text-ink-4">
-                Validating
-              </span>
-              {config?.expectStatus.trim() && (
-                <span className="rounded bg-bg-muted px-2 py-0.5 font-mono text-ink-2">
-                  status&nbsp;=&nbsp;{config.expectStatus}
-                </span>
-              )}
-              {config?.expectBody.trim() && (
-                <span
-                  className="max-w-[240px] truncate rounded bg-bg-muted px-2 py-0.5 font-mono text-ink-2"
-                  title={`Response body must contain: ${config.expectBody}`}
-                >
-                  body ⊃ &quot;{config.expectBody}&quot;
-                </span>
-              )}
-            </div>
-          )}
+          {config && <RunParamsPills config={config} />}
         </div>
       )}
 
       {/* Metrics — sticky above the events log */}
       {progress && (
         <div className="border-b border-line px-5 py-4">
-          {(config?.expectStatus.trim() || config?.expectBody.trim()) && (
-            <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px]">
-              <span className="font-semibold uppercase tracking-wider text-ink-4">
-                Validating
-              </span>
-              {config?.expectStatus.trim() && (
-                <span
-                  className="rounded bg-bg-muted px-2 py-0.5 font-mono text-ink-2"
-                  title="Expected status code(s)"
-                >
-                  status&nbsp;=&nbsp;{config.expectStatus}
-                </span>
-              )}
-              {config?.expectBody.trim() && (
-                <span
-                  className="max-w-[240px] truncate rounded bg-bg-muted px-2 py-0.5 font-mono text-ink-2"
-                  title={`Response body must contain: ${config.expectBody}`}
-                >
-                  body ⊃ &quot;{config.expectBody}&quot;
-                </span>
-              )}
+          {config && (
+            <div className="mb-3">
+              <RunParamsPills config={config} />
             </div>
           )}
           <div className="mb-3 h-1.5 w-full overflow-hidden rounded-full bg-bg-muted">
@@ -606,23 +469,6 @@ export function LoadTestPanel(): JSX.Element {
               ))}
             </div>
           )}
-
-          {watchedStats.length > 0 && (
-            <div className="mt-4">
-              <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-ink-4">
-                Watched headers
-              </div>
-              <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                {watchedStats.map((stats) => (
-                  <WatchedHeaderCard
-                    key={stats.name}
-                    stats={stats}
-                    total={progress.sent}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       )}
 
@@ -683,6 +529,62 @@ export function LoadTestPanel(): JSX.Element {
           />
         )}
       </div>
+    </div>
+  );
+}
+
+function RunParamsPills({
+  config,
+}: {
+  config: {
+    total: number;
+    concurrency: number;
+    delay: number;
+    expectStatus: string;
+    expectBody: string;
+  };
+}): JSX.Element {
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-[11px]">
+      <span className="font-semibold uppercase tracking-wider text-ink-4">
+        Run parameters
+      </span>
+      <span
+        className="rounded bg-bg-muted px-2 py-0.5 font-mono text-ink-2"
+        title="Total iterations"
+      >
+        total&nbsp;=&nbsp;{config.total}
+      </span>
+      <span
+        className="rounded bg-bg-muted px-2 py-0.5 font-mono text-ink-2"
+        title="Max parallel in-flight requests"
+      >
+        concurrency&nbsp;=&nbsp;{config.concurrency}
+      </span>
+      {config.delay > 0 && (
+        <span
+          className="rounded bg-bg-muted px-2 py-0.5 font-mono text-ink-2"
+          title="Per-iteration delay (ms)"
+        >
+          delay&nbsp;=&nbsp;{config.delay}ms
+        </span>
+      )}
+      {config.expectStatus.trim() && (
+        <span
+          className="rounded bg-bg-muted px-2 py-0.5 font-mono text-ink-2"
+          title="Expected status code(s)"
+        >
+          status&nbsp;=&nbsp;{config.expectStatus}
+        </span>
+      )}
+      {config.expectBody.trim() && (
+        <span
+          className="max-w-[240px] truncate rounded bg-bg-muted px-2 py-0.5 font-mono text-ink-2"
+          title={`Response body must contain: ${config.expectBody}`}
+        >
+          body ⊃ &quot;{config.expectBody}&quot;
+        </span>
+      )}
     </div>
   );
 }
@@ -858,124 +760,6 @@ function FailureRow({
         </div>
       )}
     </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Watched header card (issue #79)
-// ---------------------------------------------------------------------------
-
-function WatchedHeaderCard({
-  stats,
-  total,
-}: {
-  stats: WatchedHeaderStats;
-  total: number;
-}): JSX.Element | null {
-  const [activeStatus, setActiveStatus] = useState<string>('all');
-
-  const statusCodes = useMemo(
-    () => Object.keys(stats.byStatus).sort(),
-    [stats.byStatus],
-  );
-
-  const activeBucket = useMemo(
-    () =>
-      activeStatus === 'all'
-        ? { unique: stats.unique, numeric: stats.numeric }
-        : (stats.byStatus[activeStatus] ?? { unique: [] as Array<[string, number]> }),
-    [activeStatus, stats],
-  );
-
-  if (stats.seen === 0) return null;
-
-  const seenPct = total > 0 ? ((stats.seen / total) * 100).toFixed(1) : '0.0';
-  const top5 = activeBucket.unique.slice(0, 5);
-  const maxCount = top5[0]?.[1] ?? 1;
-
-  return (
-    <div className="rounded-md border border-line bg-bg-canvas px-3 py-2.5">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <span className="font-mono text-xs font-semibold text-ink-1">{stats.name}</span>
-        <span className="shrink-0 text-[10px] text-ink-4">
-          {stats.seen} seen ({seenPct}%)
-        </span>
-      </div>
-
-      {statusCodes.length > 0 && (
-        <div className="mb-2 flex flex-wrap gap-1">
-          <StatusPill
-            label="All"
-            active={activeStatus === 'all'}
-            onClick={() => setActiveStatus('all')}
-          />
-          {statusCodes.map((code) => (
-            <StatusPill
-              key={code}
-              label={code}
-              active={activeStatus === code}
-              onClick={() => setActiveStatus(code)}
-            />
-          ))}
-        </div>
-      )}
-
-      <div className="flex flex-col gap-1">
-        {top5.map(([value, count]) => (
-          <div key={value} className="flex items-center gap-2">
-            <div className="w-[140px] shrink-0 truncate font-mono text-[10px] text-ink-2">
-              {value}
-            </div>
-            <div className="flex flex-1 items-center gap-1.5">
-              <div className="h-1 flex-1 overflow-hidden rounded-full bg-bg-muted">
-                <div
-                  className="h-full rounded-full bg-accent"
-                  style={{ width: `${(count / maxCount) * 100}%` }}
-                />
-              </div>
-              <span className="w-8 text-right font-mono text-[10px] text-ink-4">
-                {count}
-              </span>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {activeBucket.numeric && (
-        <div className="mt-2 flex flex-wrap gap-2 border-t border-line pt-2 font-mono text-[10px] text-ink-3">
-          <span>min {activeBucket.numeric.min.toFixed(2)}</span>
-          <span>max {activeBucket.numeric.max.toFixed(2)}</span>
-          <span>avg {activeBucket.numeric.avg.toFixed(2)}</span>
-          <span>p50 {activeBucket.numeric.p50.toFixed(2)}</span>
-          <span>p95 {activeBucket.numeric.p95.toFixed(2)}</span>
-          <span>p99 {activeBucket.numeric.p99.toFixed(2)}</span>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function StatusPill({
-  label,
-  active,
-  onClick,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}): JSX.Element {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded px-1.5 py-0.5 font-mono text-[10px] transition-colors ${
-        active
-          ? 'bg-accent text-white'
-          : 'bg-bg-muted text-ink-3 hover:bg-bg-subtle hover:text-ink-1'
-      }`}
-    >
-      {label}
-    </button>
   );
 }
 
