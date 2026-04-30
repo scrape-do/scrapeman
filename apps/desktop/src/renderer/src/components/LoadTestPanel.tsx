@@ -92,11 +92,14 @@ export function LoadTestPanel(): JSX.Element {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [autoScroll, setAutoScroll] = useState(true);
 
+  // Scroll on every new event AND once more when the run completes — the
+  // "— Done in X.XXs" line renders below the last event, after `events.length`
+  // has stopped changing.
   useEffect(() => {
     if (!autoScroll) return;
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [events.length, autoScroll]);
+  }, [events.length, autoScroll, progress?.done]);
 
   const handleScroll = useCallback((): void => {
     const el = scrollRef.current;
