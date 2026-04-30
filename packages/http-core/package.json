@@ -12,7 +12,11 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist", "src", "README.md"],
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch --preserveWatchOutput",
@@ -22,6 +26,7 @@
     "lint": "echo 'no lint' && exit 0"
   },
   "dependencies": {
+    "@scrape-do/curl-parser": "^0.4.1",
     "@scrapeman/shared-types": "workspace:*",
     "aws4": "^1.13.0",
     "chokidar": "^4.0.0",

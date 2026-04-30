@@ -184,4 +184,48 @@ describe('parseCurlCommand', () => {
     const body = req.body as { content?: string };
     expect(body.content).toBe('a\tb\nc!\\d');
   });
+
+  it('preserves backslashes and quotes inside double-quoted body data', () => {
+    // GraphQL clients commonly emit JSON bodies with embedded quotes.
+    const cmd =
+      'curl -X POST -H "Content-Type: application/json" ' +
+      '-d "{\\"q\\":\\"foo\\\\bar\\"}" https://api.example.com/g';
+    const req = parseCurlCommand(cmd);
+    const body = req.body as { type: string; content: string };
+    expect(body.type).toBe('json');
+    expect(body.content).toBe('{"q":"foo\\bar"}');
+  });
+
+  it('joins repeated --data-urlencode pairs with &', () => {
+    const req = parseCurlCommand(
+      `curl --data-urlencode foo=bar --data-urlencode baz=zap https://example.com`,
+    );
+    expect(req.method).toBe('POST');
+    expect(req.body).toEqual({ type: 'text', content: 'foo=bar&baz=zap' });
+  });
+
+  it('parses Chrome "Copy as cURL (bash)" multi-header request', () => {
+    const cmd = `curl 'https://api.example.com/v1/users?limit=10' \\
+      -H 'accept: application/json' \\
+      -H 'authorization: Bearer abc.def.ghi' \\
+      -H $'cookie: sid=\\u00e7;\\ttoken=42' \\
+      --compressed`;
+    const req = parseCurlCommand(cmd);
+    expect(req.method).toBe('GET');
+    expect(req.url).toBe('https://api.example.com/v1/users?limit=10');
+    expect(req.headers).toMatchObject({
+      accept: 'application/json',
+      authorization: 'Bearer abc.def.ghi',
+      cookie: 'sid=ç;\ttoken=42',
+    });
+  });
+
+  it('handles unknown flags that take a value without breaking the URL', () => {
+    // --max-time 5 should be silently dropped, not treated as URL.
+    const req = parseCurlCommand(
+      `curl --max-time 5 -X GET https://api.example.com`,
+    );
+    expect(req.url).toBe('https://api.example.com');
+    expect(req.method).toBe('GET');
+  });
 });

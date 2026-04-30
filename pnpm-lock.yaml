@@ -129,6 +129,9 @@ importers:
 
   packages/http-core:
     dependencies:
+      '@scrape-do/curl-parser':
+        specifier: ^0.4.1
+        version: 0.4.1
       '@scrapeman/shared-types':
         specifier: workspace:*
         version: link:../shared-types
@@ -1028,6 +1031,9 @@ packages:
     resolution: {integrity: sha512-lWMnixq/QzxyhTV6NjQJ4SFo1J6PvOX8vUx5Wb4bBPsEb+8xZ89Bz6kOXpfXj9ak9AHTQVQzlgzBEc1SyM27xQ==}
     cpu: [x64]
     os: [win32]
+
+  '@scrape-do/curl-parser@0.4.1':
+    resolution: {integrity: sha512-ZT7bUAqDESidu/zN5HpSNJV/NexO5zELWDNviBk9U1+wGEZmJVck6APqcyEB+phAQYpHzO4GKEZqRQ3MPyhh/A==}
 
   '@sindresorhus/is@4.6.0':
     resolution: {integrity: sha512-t09vSN3MdfsyCHoFcTRCH/iUtG7OJ0CsjzB8cjAmKc/va/kIgeDI/TxsigdncE/4be734m0cvIYwNaV4i2XqAw==}
@@ -3901,6 +3907,8 @@ snapshots:
 
   '@rollup/rollup-win32-x64-msvc@4.60.1':
     optional: true
+
+  '@scrape-do/curl-parser@0.4.1': {}
 
   '@sindresorhus/is@4.6.0': {}
 
