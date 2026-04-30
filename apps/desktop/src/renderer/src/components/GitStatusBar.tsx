@@ -18,6 +18,10 @@ export function GitStatusBar({
   const workspace = useAppStore((s) => s.workspace);
   const gitStatus = useAppStore((s) => s.gitStatus);
   const setSidebarView = useAppStore((s) => s.setSidebarView);
+  const splitDisabled = useAppStore((s) => {
+    const pane = s.tabs.find((t) => t.id === s.activeTabId)?.activePane;
+    return pane === 'load' || pane === 'websocket';
+  });
 
   const counts = useMemo(() => {
     if (!gitStatus) return { modified: 0, untracked: 0, staged: 0 };
@@ -35,7 +39,7 @@ export function GitStatusBar({
   if (!workspace) return null;
 
   return (
-    <div className="flex h-[22px] items-center border-t border-line bg-bg-subtle px-2 text-[11px] text-ink-3">
+    <div className="flex h-[26px] items-center border-t border-line bg-bg-subtle px-2 text-[11px] text-ink-3">
       {/* Left: git info */}
       <div className="flex flex-1 items-center gap-3 truncate">
         {gitStatus?.isRepo ? (
@@ -82,25 +86,30 @@ export function GitStatusBar({
         <button
           onClick={onToggleSidebar}
           title={`${sidebarVisible ? 'Hide' : 'Show'} sidebar (⌘B)`}
-          className="flex h-5 w-5 items-center justify-center rounded text-ink-4 hover:bg-bg-hover hover:text-ink-1"
+          className="flex h-6 w-6 items-center justify-center rounded text-ink-4 hover:bg-bg-hover hover:text-ink-1"
         >
-          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.3">
+          <svg viewBox="0 0 16 16" className="h-[17px] w-[17px]" fill="none" stroke="currentColor" strokeWidth="1.3">
             <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" />
             <line x1="5.5" y1="2.5" x2="5.5" y2="13.5" />
           </svg>
         </button>
         <button
           onClick={onToggleSplit}
-          title={`Switch to ${splitOrientation === 'horizontal' ? 'top/bottom' : 'side-by-side'} layout`}
-          className="flex h-5 w-5 items-center justify-center rounded text-ink-4 hover:bg-bg-hover hover:text-ink-1"
+          disabled={splitDisabled}
+          title={
+            splitDisabled
+              ? 'Layout toggle disabled — response panel hidden in this view'
+              : `Switch to ${splitOrientation === 'horizontal' ? 'top/bottom' : 'side-by-side'} layout`
+          }
+          className="flex h-6 w-6 items-center justify-center rounded text-ink-4 hover:bg-bg-hover hover:text-ink-1 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-ink-4"
         >
           {splitOrientation === 'horizontal' ? (
-            <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.3">
+            <svg viewBox="0 0 16 16" className="h-[17px] w-[17px]" fill="none" stroke="currentColor" strokeWidth="1.3">
               <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" />
               <line x1="8" y1="2.5" x2="8" y2="13.5" />
             </svg>
           ) : (
-            <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.3">
+            <svg viewBox="0 0 16 16" className="h-[17px] w-[17px]" fill="none" stroke="currentColor" strokeWidth="1.3">
               <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" />
               <line x1="1.5" y1="8" x2="14.5" y2="8" />
             </svg>

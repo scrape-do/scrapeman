@@ -262,7 +262,7 @@ export function App(): JSX.Element {
         typeof window !== 'undefined'
           ? localStorage.getItem('split:orientation')
           : null;
-      return stored === 'vertical' ? 'vertical' : 'horizontal';
+      return stored === 'horizontal' ? 'horizontal' : 'vertical';
     },
   );
 
