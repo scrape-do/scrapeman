@@ -4,6 +4,10 @@ import { defineConfig, externalizeDepsPlugin } from 'electron-vite';
 import react from '@vitejs/plugin-react';
 
 const pkg = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf-8')) as { version: string };
+// Inline the repo-root CHANGELOG so the post-update dialog can render the
+// new version's section offline. Stays in lockstep with shipped binaries
+// because it's bundled at build time.
+const changelog = readFileSync(resolve(__dirname, '../../CHANGELOG.md'), 'utf-8');
 
 export default defineConfig({
   main: {
@@ -29,6 +33,7 @@ export default defineConfig({
     plugins: [react()],
     define: {
       __APP_VERSION__: JSON.stringify(pkg.version),
+      __CHANGELOG__: JSON.stringify(changelog),
     },
     build: {
       outDir: 'out/renderer',
