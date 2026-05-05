@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, session, shell } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, session, shell } from 'electron';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { promises as fsp } from 'node:fs';
@@ -169,21 +169,6 @@ function createWindow(): BrowserWindow {
     console.error('[scrapeman] preload error:', preloadPath, error);
   });
 
-  // Block Electron's default Cmd/Ctrl+R reload accelerator so the renderer's
-  // "Send (parallel)" shortcut wins. DevTools (Cmd+Opt+I) and the dev hot
-  // reload still work; only the page-reload binding is suppressed.
-  win.webContents.on('before-input-event', (event, input) => {
-    if (
-      input.type === 'keyDown' &&
-      input.key.toLowerCase() === 'r' &&
-      (input.meta || input.control) &&
-      !input.alt &&
-      !input.shift
-    ) {
-      event.preventDefault();
-    }
-  });
-
   return win;
 }
 
@@ -285,8 +270,99 @@ function buildBruCallbacks(
   };
 }
 
+// Build the application menu. Mostly mirrors Electron's defaults but drops
+// the `Cmd/Ctrl+R` accelerator from "Reload" so it doesn't shadow the
+// renderer's "Send (parallel)" shortcut. Forced reload stays on
+// `Cmd/Ctrl+Shift+R` for when the dev needs to refresh the page.
+function buildAppMenu(): Menu {
+  const isMac = process.platform === 'darwin';
+  const template: Electron.MenuItemConstructorOptions[] = [];
+
+  if (isMac) {
+    template.push({
+      label: app.name,
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' },
+      ],
+    });
+  }
+
+  template.push(
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        ...(isMac
+          ? ([
+              { role: 'pasteAndMatchStyle' },
+              { role: 'delete' },
+              { role: 'selectAll' },
+              { type: 'separator' },
+              {
+                label: 'Speech',
+                submenu: [{ role: 'startSpeaking' }, { role: 'stopSpeaking' }],
+              },
+            ] as Electron.MenuItemConstructorOptions[])
+          : ([
+              { role: 'delete' },
+              { type: 'separator' },
+              { role: 'selectAll' },
+            ] as Electron.MenuItemConstructorOptions[])),
+      ],
+    },
+    {
+      label: 'View',
+      submenu: [
+        // Reload kept available but with no accelerator so Cmd/Ctrl+R stays
+        // free for the renderer's "Send (parallel)" shortcut. Force-reload
+        // keeps its default Cmd/Ctrl+Shift+R binding.
+        { label: 'Reload', accelerator: '', role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' },
+      ],
+    },
+    {
+      label: 'Window',
+      submenu: [
+        { role: 'minimize' },
+        { role: 'zoom' },
+        ...(isMac
+          ? ([
+              { type: 'separator' },
+              { role: 'front' },
+              { type: 'separator' },
+              { role: 'window' },
+            ] as Electron.MenuItemConstructorOptions[])
+          : ([{ role: 'close' }] as Electron.MenuItemConstructorOptions[])),
+      ],
+    },
+  );
+
+  return Menu.buildFromTemplate(template);
+}
+
 app.whenReady().then(() => {
   installContentSecurityPolicy();
+  Menu.setApplicationMenu(buildAppMenu());
 
   if (isDev && process.platform === 'darwin' && app.dock) {
     const image = nativeImage.createFromPath(devIconPath);
