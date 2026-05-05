@@ -1,7 +1,5 @@
-import { useEffect, useMemo } from 'react';
 import { useAppStore, type ParallelBurstEntry } from '../store.js';
 
-const AUTO_HIDE_DELAY_MS = 2200;
 // Stable empty-array reference. Used as the fallback so the Zustand
 // selector returns the same value when no bursts are pending — without
 // it we'd return a fresh `[]` literal on every store mutation, which
@@ -11,28 +9,15 @@ const EMPTY: ParallelBurstEntry[] = [];
 /**
  * Floating HUD that appears in the bottom-right while Cmd+R parallel
  * sends are in flight. Lists each fired request with a status dot
- * (pending → success / error) and the response time. Auto-hides a
- * couple of seconds after every entry has settled. Mirrors Insomnia's
- * transient burst panel.
+ * (pending → success / error) and the response time. The panel stays
+ * open after every entry settles so the user can scan the results;
+ * the × button clears it.
  */
 export function ParallelBurstHud(): JSX.Element | null {
   const bursts = useAppStore(
     (s) => s.tabs.find((t) => t.id === s.activeTabId)?.parallelBursts ?? EMPTY,
   );
   const clear = useAppStore((s) => s.clearParallelBursts);
-
-  const allDone = useMemo(
-    () => bursts.length > 0 && bursts.every((b) => b.status !== 'pending'),
-    [bursts],
-  );
-
-  // Auto-clear once everything has settled and the user has had a moment
-  // to read the result. The × button uses the same `clear` action.
-  useEffect(() => {
-    if (!allDone) return;
-    const t = setTimeout(() => clear(), AUTO_HIDE_DELAY_MS);
-    return () => clearTimeout(t);
-  }, [allDone, clear]);
 
   if (bursts.length === 0) return null;
 
