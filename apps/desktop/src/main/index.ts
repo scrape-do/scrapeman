@@ -169,6 +169,21 @@ function createWindow(): BrowserWindow {
     console.error('[scrapeman] preload error:', preloadPath, error);
   });
 
+  // Block Electron's default Cmd/Ctrl+R reload accelerator so the renderer's
+  // "Send (parallel)" shortcut wins. DevTools (Cmd+Opt+I) and the dev hot
+  // reload still work; only the page-reload binding is suppressed.
+  win.webContents.on('before-input-event', (event, input) => {
+    if (
+      input.type === 'keyDown' &&
+      input.key.toLowerCase() === 'r' &&
+      (input.meta || input.control) &&
+      !input.alt &&
+      !input.shift
+    ) {
+      event.preventDefault();
+    }
+  });
+
   return win;
 }
 

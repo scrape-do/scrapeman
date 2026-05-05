@@ -39,6 +39,16 @@ import { bridge } from './bridge.js';
 // running request via the main-process IPC channel.
 const inflightRequestIds = new Map<string, string>();
 
+// Per-tab monotonically increasing token for parallel sends (sendParallel).
+// Each fire bumps the counter; only the latest-completed token wins the
+// response panel, so spamming Cmd+R reflects whichever response *finishes*
+// last (not which one was started last). Mirrors Insomnia's behaviour.
+const parallelSendTokens = new Map<string, number>();
+// Track the highest token whose response has already been written for each
+// tab, so an out-of-order completion from an older send doesn't clobber a
+// newer (finished-first) one.
+const lastWrittenParallelToken = new Map<string, number>();
+
 // LIFO stack of recently closed tabs for ⌘⇧T reopen. Bounded so a
 // user who mass-closes tabs doesn't stash unbounded memory.
 // Note: this stack is process-global (not per-workspace) for Phase 1
@@ -397,6 +407,10 @@ interface AppState {
   setPostResponseScript: (code: string) => void;
 
   send: () => Promise<void>;
+  /** Insomnia-style parallel send: fires another request without cancelling
+   *  the in-flight one. The response panel ends up reflecting whichever
+   *  parallel send *finishes* last. */
+  sendParallel: () => Promise<void>;
   cancelSend: () => void;
   setResponseSearch: (search: string) => void;
   setResponseMode: (mode: ResponseBodyMode) => void;
@@ -1758,6 +1772,80 @@ export const useAppStore = create<AppState>((set, get) => {
         return;
       }
       void bridge.cancelRequest(requestId);
+    },
+
+    // Insomnia-style: every press fires a new request without touching
+    // anything in flight. The response panel reflects whichever parallel
+    // send *finishes* last — out-of-order completions from earlier presses
+    // are dropped so they don't clobber a newer finished response.
+    sendParallel: async () => {
+      const { activeTabId, tabs } = get();
+      if (!activeTabId) return;
+      const tab = tabs.find((t) => t.id === activeTabId);
+      if (!tab || !tab.builder.url.trim()) return;
+
+      const targetTabId = tab.id;
+      const startedAt = Date.now();
+
+      const nextToken = (parallelSendTokens.get(targetTabId) ?? 0) + 1;
+      parallelSendTokens.set(targetTabId, nextToken);
+
+      // Reflect "in flight" only if the tab isn't already showing a finished
+      // response — leaving the panel as-is during a parallel burst keeps the
+      // user reading whichever response landed most recently.
+      const currentStatus = tab.execution.status;
+      if (currentStatus === 'idle' || currentStatus === 'error') {
+        mutateById(targetTabId, (t) => ({
+          ...t,
+          execution: {
+            status: 'sending',
+            response: null,
+            error: null,
+            startedAt,
+            finishedAt: null,
+          },
+        }));
+      }
+
+      const normalizedBuilder = {
+        ...tab.builder,
+        url: normalizeUrlSchema(tab.builder.url),
+      };
+      const request = buildRequest(normalizedBuilder, { name: tab.name });
+      const workspace = get().workspace;
+      const requestId = crypto.randomUUID();
+
+      const result = await bridge.executeRequest(
+        request,
+        workspace?.path ?? undefined,
+        requestId,
+      );
+      const finishedAt = Date.now();
+
+      // Drop the result if a later parallel send already wrote a response.
+      const lastWritten = lastWrittenParallelToken.get(targetTabId) ?? 0;
+      if (nextToken <= lastWritten) return;
+      lastWrittenParallelToken.set(targetTabId, nextToken);
+
+      mutateById(targetTabId, (t) => ({
+        ...t,
+        execution: result.ok
+          ? {
+              status: 'success',
+              response: result.response,
+              error: null,
+              startedAt,
+              finishedAt,
+            }
+          : {
+              status: 'error',
+              response: null,
+              error: result.error,
+              startedAt,
+              finishedAt,
+            },
+      }));
+      void get().loadHistory();
     },
 
     setResponseSearch: (search: string) => {

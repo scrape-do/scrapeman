@@ -202,6 +202,20 @@ export function App(): JSX.Element {
                 }
               }),
             },
+            {
+              // Insomnia-style alt: every press fires another request in
+              // parallel without cancelling the in-flight one. Useful for
+              // quickly probing flakiness or warming up an endpoint before
+              // a load run.
+              combo: 'mod+r',
+              description: 'Send request (parallel — does not cancel in-flight)',
+              handler: withModalClose(() => {
+                const state = useAppStore.getState();
+                const tab = state.tabs.find((t) => t.id === state.activeTabId);
+                if (!tab) return;
+                void state.sendParallel();
+              }),
+            },
             { combo: 'mod+s', description: 'Save request', handler: withModalClose(() => void saveOrPrompt()) },
             {
               combo: 'mod+shift+t',
