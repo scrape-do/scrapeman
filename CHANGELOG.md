@@ -2,6 +2,20 @@
 
 All notable changes land here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [SemVer](https://semver.org/).
 
+## [0.6.1] — 2026-05-06
+
+Patch release. Splits the global string-utilities ask (#81) into three follow-ups; lands two of them.
+
+### Added
+- **Per-request raw-body toggle** (#83). New `Settings → Body` toggle: when on, `{{var}}` placeholders inside the request body ship verbatim instead of resolving from the active environment. URL, headers, params, auth still resolve. Use case: server-side template proxies and placeholder-validation endpoints that expect literal `{{...}}` syntax. Default off, so existing requests keep the previous behaviour. Persisted as `options.rawBody: true` in the `.sman` YAML.
+- **Right-click string transforms — Stringify / Destringify + selection-aware mode** (#84). The cell context menu already had URL encode/decode and base64 encode/decode; now it also has Stringify (escape for embedding in a JSON string literal) and Destringify (the inverse). All six transforms apply to the current selection when the focused input has one; otherwise to the whole field. The transformed range is re-selected so a user can round-trip with another menu pick. Copy / paste also honour the selection.
+
+### Notes
+- #81 closed and split into three issues: #83 (raw-body, shipped), #84 (transforms, shipped), #85 (plugin system, parked for discussion). #85 is added to the roadmap parking lot until concrete user demand surfaces a transform that doesn't fit as a built-in.
+
+### Tests
+- 582 passing in `http-core` (+4 new — 2 resolver rawBody, 2 format round-trip), 59 in `apps/desktop` (+12 new transform helpers). 7 skipped. Typecheck clean.
+
 ## [0.6.0] — 2026-05-06
 
 Minor release. Four open issues land — three real friction points in the scraping use case (TLS verification toggle, restart restore, parallel-send crash fix) and a small polish on top of the existing auto-update banner.
