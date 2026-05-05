@@ -49,6 +49,36 @@ const parallelSendTokens = new Map<string, number>();
 // newer (finished-first) one.
 const lastWrittenParallelToken = new Map<string, number>();
 
+// Bound the visible burst log so a 5-second hold-down (~150 entries at the
+// macOS default key-repeat rate) doesn't bloat the DOM. FIFO eviction.
+const PARALLEL_BURST_LIMIT = 50;
+
+function appendBurst(
+  current: ParallelBurstEntry[] | undefined,
+  entry: ParallelBurstEntry,
+): ParallelBurstEntry[] {
+  const next = [...(current ?? []), entry];
+  if (next.length > PARALLEL_BURST_LIMIT) {
+    return next.slice(next.length - PARALLEL_BURST_LIMIT);
+  }
+  return next;
+}
+
+function updateBurst(
+  current: ParallelBurstEntry[] | undefined,
+  id: string,
+  patch: (entry: ParallelBurstEntry) => ParallelBurstEntry,
+): ParallelBurstEntry[] | undefined {
+  if (!current) return current;
+  let changed = false;
+  const next = current.map((entry) => {
+    if (entry.id !== id) return entry;
+    changed = true;
+    return patch(entry);
+  });
+  return changed ? next : current;
+}
+
 // LIFO stack of recently closed tabs for ⌘⇧T reopen. Bounded so a
 // user who mass-closes tabs doesn't stash unbounded memory.
 // Note: this stack is process-global (not per-workspace) for Phase 1
@@ -231,6 +261,20 @@ export interface Tab {
   sourceHistoryId?: string;
   /** Per-tab WebSocket panel state. Initialized lazily when the pane is first activated. */
   websocket?: WsTabState;
+  /** Live entries for the parallel-send (Cmd+R) burst HUD. Bounded ring
+   *  buffer; cleared once empty and acknowledged. */
+  parallelBursts?: ParallelBurstEntry[];
+}
+
+export interface ParallelBurstEntry {
+  /** Stable client-side id assigned at the moment the request was fired. */
+  id: string;
+  startedAt: number;
+  status: 'pending' | 'success' | 'error';
+  /** HTTP status code, when the request completed with a response. */
+  httpStatus?: number;
+  durationMs?: number;
+  errorMessage?: string;
 }
 
 export type BuilderPane =
@@ -411,6 +455,8 @@ interface AppState {
    *  the in-flight one. The response panel ends up reflecting whichever
    *  parallel send *finishes* last. */
   sendParallel: () => Promise<void>;
+  /** Drop the parallel-send burst HUD entries for the active tab. */
+  clearParallelBursts: () => void;
   cancelSend: () => void;
   setResponseSearch: (search: string) => void;
   setResponseMode: (mode: ResponseBodyMode) => void;
@@ -1786,6 +1832,7 @@ export const useAppStore = create<AppState>((set, get) => {
 
       const targetTabId = tab.id;
       const startedAt = Date.now();
+      const burstId = crypto.randomUUID();
 
       const nextToken = (parallelSendTokens.get(targetTabId) ?? 0) + 1;
       parallelSendTokens.set(targetTabId, nextToken);
@@ -1794,18 +1841,25 @@ export const useAppStore = create<AppState>((set, get) => {
       // response — leaving the panel as-is during a parallel burst keeps the
       // user reading whichever response landed most recently.
       const currentStatus = tab.execution.status;
-      if (currentStatus === 'idle' || currentStatus === 'error') {
-        mutateById(targetTabId, (t) => ({
-          ...t,
-          execution: {
-            status: 'sending',
-            response: null,
-            error: null,
-            startedAt,
-            finishedAt: null,
-          },
-        }));
-      }
+      const newPending: ParallelBurstEntry = {
+        id: burstId,
+        startedAt,
+        status: 'pending',
+      };
+      mutateById(targetTabId, (t) => ({
+        ...t,
+        execution:
+          currentStatus === 'idle' || currentStatus === 'error'
+            ? {
+                status: 'sending',
+                response: null,
+                error: null,
+                startedAt,
+                finishedAt: null,
+              }
+            : t.execution,
+        parallelBursts: appendBurst(t.parallelBursts, newPending),
+      }));
 
       const normalizedBuilder = {
         ...tab.builder,
@@ -1821,31 +1875,55 @@ export const useAppStore = create<AppState>((set, get) => {
         requestId,
       );
       const finishedAt = Date.now();
+      const durationMs = finishedAt - startedAt;
 
       // Drop the result if a later parallel send already wrote a response.
       const lastWritten = lastWrittenParallelToken.get(targetTabId) ?? 0;
-      if (nextToken <= lastWritten) return;
-      lastWrittenParallelToken.set(targetTabId, nextToken);
+      const winsResponsePanel = nextToken > lastWritten;
+      if (winsResponsePanel) {
+        lastWrittenParallelToken.set(targetTabId, nextToken);
+      }
 
-      mutateById(targetTabId, (t) => ({
-        ...t,
-        execution: result.ok
-          ? {
-              status: 'success',
-              response: result.response,
-              error: null,
-              startedAt,
-              finishedAt,
-            }
-          : {
-              status: 'error',
-              response: null,
-              error: result.error,
-              startedAt,
-              finishedAt,
-            },
-      }));
+      mutateById(targetTabId, (t) => {
+        const updated = updateBurst(t.parallelBursts, burstId, (entry) => ({
+          ...entry,
+          status: result.ok ? 'success' : 'error',
+          durationMs,
+          ...(result.ok ? { httpStatus: result.response.status } : {}),
+          ...(result.ok ? {} : { errorMessage: result.error.message }),
+        }));
+        return {
+          ...t,
+          execution: winsResponsePanel
+            ? result.ok
+              ? {
+                  status: 'success',
+                  response: result.response,
+                  error: null,
+                  startedAt,
+                  finishedAt,
+                }
+              : {
+                  status: 'error',
+                  response: null,
+                  error: result.error,
+                  startedAt,
+                  finishedAt,
+                }
+            : t.execution,
+          ...(updated !== undefined ? { parallelBursts: updated } : {}),
+        };
+      });
       void get().loadHistory();
+    },
+
+    clearParallelBursts: () => {
+      const { activeTabId } = get();
+      if (!activeTabId) return;
+      mutateById(activeTabId, (t) => {
+        if (!t.parallelBursts || t.parallelBursts.length === 0) return t;
+        return { ...t, parallelBursts: [] };
+      });
     },
 
     setResponseSearch: (search: string) => {

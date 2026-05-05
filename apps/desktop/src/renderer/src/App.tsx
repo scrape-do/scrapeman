@@ -10,6 +10,7 @@ import { CookiesPanel } from './components/CookiesPanel.js';
 import { SettingsDialog } from './components/SettingsDialog.js';
 import { SplitPane, type SplitOrientation } from './components/SplitPane.js';
 import { GitStatusBar } from './components/GitStatusBar.js';
+import { ParallelBurstHud } from './components/ParallelBurstHud.js';
 import { useAppStore } from './store.js';
 import { bridge } from './bridge.js';
 import { usePlatform } from './hooks/usePlatform.js';
@@ -433,6 +434,7 @@ export function App(): JSX.Element {
           setSplitOrientation((o) => (o === 'horizontal' ? 'vertical' : 'horizontal'))
         }
       />
+      <ParallelBurstHud />
       <RunnerPanel />
     </div>
   );
