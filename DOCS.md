@@ -146,6 +146,16 @@ These re-resolve on every send:
 
 Variables with `secret: true` are masked in the UI (shown as `••••••`). They resolve normally at send time. History entries preserve the template (`{{token}}`) on disk, never the resolved secret value.
 
+### Right-click string transforms
+
+URL bar, header / param cells, and other input fields expose a right-click menu (#84) with these transforms:
+
+- **URL encode / decode** — `encodeURIComponent` / `decodeURIComponent`. Percent-escapes reserved characters; `+` decodes to space.
+- **Base64 encode / decode** — UTF-8 safe; works with multi-byte characters that pure `btoa` would reject.
+- **Stringify / Destringify** — escape / unescape for embedding inside a JSON string literal. Stringifying `say "hi"` produces `say \"hi\"`; destringifying it back returns the original.
+
+When a selection is present in the focused input, transforms apply to that selection only (the rest of the value is preserved). With no selection they apply to the whole field. Malformed inputs (e.g. invalid base64, broken percent-escape) silently leave the field untouched.
+
 ---
 
 ## Scoped Variables and Auth Inheritance
