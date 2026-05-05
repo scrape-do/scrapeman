@@ -3,7 +3,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { bridge } from '../bridge.js';
 import { useAppStore } from '../store.js';
 import { usePlatform } from '../hooks/usePlatform.js';
+import { shortcutLabel } from '../hooks/useShortcuts.js';
+import { SHORTCUTS } from '../shortcutsRegistry.js';
 import { ConfirmDialog } from '../ui/Dialog.js';
+
+type SettingsTab = 'storage' | 'shortcuts';
 
 interface HistoryStats {
   count: number;
@@ -28,6 +32,7 @@ export function SettingsDialog({
   const [copied, setCopied] = useState(false);
   const [confirmClearOne, setConfirmClearOne] = useState(false);
   const [confirmClearAll, setConfirmClearAll] = useState(false);
+  const [tab, setTab] = useState<SettingsTab>('storage');
 
   const refresh = useCallback(async (): Promise<void> => {
     if (!workspace) {
@@ -76,14 +81,28 @@ export function SettingsDialog({
       <RadixDialog.Root open={open} onOpenChange={(next) => !next && onClose()}>
         <RadixDialog.Portal>
           <RadixDialog.Overlay className="fixed inset-0 z-50 bg-ink-1/20 backdrop-blur-[2px] animate-fade-in" />
-          <RadixDialog.Content className="fixed left-1/2 top-1/2 z-50 w-[560px] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-line bg-bg-canvas p-5 shadow-popover animate-slide-down-fade">
-            <RadixDialog.Title className="text-sm font-semibold text-ink-1">
-              Settings
-            </RadixDialog.Title>
-            <RadixDialog.Description className="mt-1 text-xs text-ink-3">
-              Manage where Scrapeman keeps request history on disk.
-            </RadixDialog.Description>
+          <RadixDialog.Content className="fixed left-1/2 top-1/2 z-50 w-[600px] max-h-[85vh] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-lg border border-line bg-bg-canvas shadow-popover animate-slide-down-fade flex flex-col">
+            <div className="px-5 pt-5">
+              <RadixDialog.Title className="text-sm font-semibold text-ink-1">
+                Settings
+              </RadixDialog.Title>
+              <RadixDialog.Description className="mt-1 text-xs text-ink-3">
+                Storage location, history cleanup, and the keyboard shortcut cheat sheet.
+              </RadixDialog.Description>
 
+              <div className="mt-4 flex gap-1 border-b border-line">
+                <TabButton active={tab === 'storage'} onClick={() => setTab('storage')}>
+                  Storage
+                </TabButton>
+                <TabButton active={tab === 'shortcuts'} onClick={() => setTab('shortcuts')}>
+                  Keyboard shortcuts
+                </TabButton>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 pb-5">
+            {tab === 'storage' && (
+            <>
             <section className="mt-5">
               <div className="text-[11px] font-semibold uppercase tracking-wide text-ink-3">
                 Storage
@@ -173,7 +192,39 @@ export function SettingsDialog({
               </div>
             </section>
 
-            <div className="mt-6 flex items-center justify-end">
+            </>
+            )}
+            {tab === 'shortcuts' && (
+              <section className="mt-5 space-y-5">
+                {SHORTCUTS.map((g) => (
+                  <div key={g.group}>
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-ink-3">
+                      {g.group}
+                    </div>
+                    <div className="mt-2 divide-y divide-line rounded-md border border-line">
+                      {g.shortcuts.map((s) => (
+                        <div
+                          key={s.combo}
+                          className="flex items-start gap-3 px-3 py-2 text-xs"
+                        >
+                          <kbd className="shrink-0 rounded border border-line bg-bg-subtle px-1.5 py-0.5 font-mono text-[11px] text-ink-2">
+                            {shortcutLabel(s.combo)}
+                          </kbd>
+                          <span className="flex-1 text-ink-2">{s.description}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+                <div className="text-[11px] text-ink-4">
+                  Shortcuts are not customizable yet. Open an issue if you want
+                  remappable bindings.
+                </div>
+              </section>
+            )}
+            </div>
+
+            <div className="border-t border-line bg-bg-subtle px-5 py-3 flex items-center justify-end">
               <button type="button" className="btn-secondary" onClick={onClose} title="Close settings">
                 Close
               </button>
@@ -201,6 +252,30 @@ export function SettingsDialog({
         onClose={() => setConfirmClearAll(false)}
       />
     </>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`-mb-px border-b-2 px-3 py-2 text-xs font-medium transition-colors ${
+        active
+          ? 'border-accent text-ink-1'
+          : 'border-transparent text-ink-3 hover:text-ink-1'
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 
