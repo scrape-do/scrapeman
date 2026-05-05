@@ -49,6 +49,14 @@ const parallelSendTokens = new Map<string, number>();
 // newer (finished-first) one.
 const lastWrittenParallelToken = new Map<string, number>();
 
+// Per-tab inflight request count for parallel sends. Bounded by
+// MAX_INFLIGHT_PARALLEL_SENDS so holding Cmd+R for more than ~1 s doesn't
+// pile up hundreds of concurrent undici requests + IPC responses in main,
+// which can OOM the app on large response bodies. Excess keystrokes are
+// silently dropped; the burst HUD shows a "(N capped)" indicator.
+const inflightParallelSends = new Map<string, number>();
+const MAX_INFLIGHT_PARALLEL_SENDS = 32;
+
 // Bound the visible burst log so a 5-second hold-down (~150 entries at the
 // macOS default key-repeat rate) doesn't bloat the DOM. FIFO eviction.
 const PARALLEL_BURST_LIMIT = 50;
@@ -1920,6 +1928,16 @@ export const useAppStore = create<AppState>((set, get) => {
       if (!tab || !tab.builder.url.trim()) return;
 
       const targetTabId = tab.id;
+
+      // Drop the keystroke when the per-tab cap is reached. Holding Cmd+R
+      // at the OS key-repeat rate would otherwise pile up hundreds of
+      // concurrent IPC executes — large response bodies + history writes
+      // can crash the main process. The cap is high enough that a typical
+      // burst (1–2 s hold) still fans out fully.
+      const inflight = inflightParallelSends.get(targetTabId) ?? 0;
+      if (inflight >= MAX_INFLIGHT_PARALLEL_SENDS) return;
+      inflightParallelSends.set(targetTabId, inflight + 1);
+
       const startedAt = Date.now();
       const burstId = crypto.randomUUID();
 
@@ -1958,11 +1976,20 @@ export const useAppStore = create<AppState>((set, get) => {
       const workspace = get().workspace;
       const requestId = crypto.randomUUID();
 
-      const result = await bridge.executeRequest(
-        request,
-        workspace?.path ?? undefined,
-        requestId,
-      );
+      let result;
+      try {
+        result = await bridge.executeRequest(
+          request,
+          workspace?.path ?? undefined,
+          requestId,
+        );
+      } finally {
+        // Always decrement, even on bridge error, so the cap doesn't
+        // permanently lock new sends after a transient main-process glitch.
+        const cur = inflightParallelSends.get(targetTabId) ?? 1;
+        if (cur <= 1) inflightParallelSends.delete(targetTabId);
+        else inflightParallelSends.set(targetTabId, cur - 1);
+      }
       const finishedAt = Date.now();
       const durationMs = finishedAt - startedAt;
 
