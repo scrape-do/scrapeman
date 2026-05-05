@@ -969,6 +969,77 @@ function persistOpenWorkspaces(list: WorkspaceInfo[]): void {
   localStorage.setItem(LS_OPEN_WORKSPACES, JSON.stringify(list));
 }
 
+// Per-workspace tab snapshot key. Stores everything needed to rebuild
+// open tabs (saved or not) on next boot. Live runtime state — current
+// execution, websocket connection, load test progress, parallel burst
+// HUD — is stripped out before serialising.
+function snapshotKey(workspacePath: string): string {
+  return `workspace:tabs:${workspacePath}`;
+}
+
+function stripTabForPersistence(tab: Tab): Tab {
+  // Reset execution to idle so a stale "sending" / "success" doesn't
+  // resurrect after restart with a response that is no longer in memory.
+  const stripped: Tab = {
+    ...tab,
+    execution: {
+      status: 'idle',
+      response: null,
+      error: null,
+      startedAt: null,
+      finishedAt: null,
+    },
+    // loadTest config persists (the user configured it), but the live
+    // run state is tied to a runId in main that is gone after restart.
+    loadTest: { ...tab.loadTest, runId: null, progress: null, events: [], failedBodies: [], starting: false, startError: null },
+  };
+  // Drop optional, transient-only fields — websocket connection is dead
+  // after restart, parallel-burst HUD is per-session noise.
+  delete stripped.websocket;
+  delete stripped.parallelBursts;
+  return stripped;
+}
+
+export function persistWorkspaceSnapshot(
+  workspacePath: string,
+  snap: WorkspaceSnapshot,
+): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    const payload = {
+      ...snap,
+      tabs: snap.tabs.map(stripTabForPersistence),
+    };
+    localStorage.setItem(snapshotKey(workspacePath), JSON.stringify(payload));
+  } catch {
+    /* localStorage quota or serialise failure — drop silently */
+  }
+}
+
+export function readWorkspaceSnapshot(
+  workspacePath: string,
+): WorkspaceSnapshot | null {
+  if (typeof localStorage === 'undefined') return null;
+  const raw = localStorage.getItem(snapshotKey(workspacePath));
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<WorkspaceSnapshot>;
+    if (!Array.isArray(parsed.tabs)) return null;
+    return {
+      tabs: parsed.tabs as Tab[],
+      activeTabId: typeof parsed.activeTabId === 'string' ? parsed.activeTabId : null,
+      activeEnvironment:
+        typeof parsed.activeEnvironment === 'string' ? parsed.activeEnvironment : null,
+      sidebarView:
+        parsed.sidebarView === 'git' || parsed.sidebarView === 'files'
+          ? parsed.sidebarView
+          : 'files',
+    };
+  } catch {
+    return null;
+  }
+}
+
 function persistLastActiveWorkspace(path: string | null): void {
   if (typeof localStorage === 'undefined') return;
   if (path === null) localStorage.removeItem(LS_LAST_ACTIVE_WORKSPACE);
@@ -1120,8 +1191,12 @@ export const useAppStore = create<AppState>((set, get) => {
       await get().loadHiddenRequests();
       // Hydrate from snapshot if we have one — this overwrites the freshly
       // built defaults (loadEnvironments set activeEnvironment from disk;
-      // we want the user's last in-session choice to win).
-      const snap = get().workspaceSnapshots[tree.workspace.path];
+      // we want the user's last in-session choice to win). In-memory
+      // snapshot wins over localStorage; the latter exists so unsaved tabs
+      // survive a full app restart, not just a workspace switch (#71).
+      const snap =
+        get().workspaceSnapshots[tree.workspace.path] ??
+        readWorkspaceSnapshot(tree.workspace.path);
       if (snap) {
         const patch: {
           tabs: Tab[];
@@ -1170,6 +1245,7 @@ export const useAppStore = create<AppState>((set, get) => {
             [current.path]: snap,
           },
         });
+        persistWorkspaceSnapshot(current.path, snap);
       }
       await get().openWorkspace(path);
     },
@@ -2905,3 +2981,58 @@ export type { Environment, EnvironmentVariable };
 // Derived selector: true when any top-level modal is blocking the UI.
 // Starts with screenshot; extend as more modals are promoted to global state.
 export const selectIsModalOpen = (s: AppState): boolean => s.screenshotUrl !== null;
+
+// Persist the active workspace's tab snapshot to localStorage on every
+// change so unsaved tabs survive an app restart (#71). Coalesces rapid
+// edits into a single write per animation frame; localStorage is
+// synchronous, so writing on every keystroke would be wasteful.
+let scheduledSnapshotWrite: number | null = null;
+let lastPersistedTabsRef: Tab[] | null = null;
+let lastPersistedActiveTabId: string | null = null;
+let lastPersistedActiveEnv: string | null = null;
+let lastPersistedSidebarView: 'files' | 'git' = 'files';
+
+useAppStore.subscribe((state) => {
+  const ws = state.workspace;
+  if (!ws) return;
+  // Bail early when nothing snapshot-relevant changed. References stay
+  // stable when other fields mutate, so this skips most updates.
+  if (
+    state.tabs === lastPersistedTabsRef &&
+    state.activeTabId === lastPersistedActiveTabId &&
+    state.activeEnvironment === lastPersistedActiveEnv &&
+    state.sidebarView === lastPersistedSidebarView
+  ) {
+    return;
+  }
+  lastPersistedTabsRef = state.tabs;
+  lastPersistedActiveTabId = state.activeTabId;
+  lastPersistedActiveEnv = state.activeEnvironment;
+  lastPersistedSidebarView = state.sidebarView;
+
+  if (scheduledSnapshotWrite !== null) return;
+  const flush = (): void => {
+    scheduledSnapshotWrite = null;
+    const live = useAppStore.getState();
+    if (!live.workspace) return;
+    persistWorkspaceSnapshot(
+      live.workspace.path,
+      captureWorkspaceSnapshot({
+        tabs: live.tabs,
+        activeTabId: live.activeTabId,
+        activeEnvironment: live.activeEnvironment,
+        sidebarView: live.sidebarView,
+      }),
+    );
+  };
+  // requestAnimationFrame coalesces rapid edits into one write per frame.
+  // In the test runtime (no DOM, no RAF) fall back to a microtask so the
+  // subscriber doesn't throw and the test can still assert against the
+  // localStorage write after a `flushPromises()`.
+  if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+    scheduledSnapshotWrite = window.requestAnimationFrame(flush);
+  } else {
+    scheduledSnapshotWrite = 1;
+    queueMicrotask(flush);
+  }
+});

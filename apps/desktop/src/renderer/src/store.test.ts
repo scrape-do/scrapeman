@@ -35,9 +35,13 @@ vi.hoisted(() => {
 
 import {
   captureWorkspaceSnapshot,
+  persistWorkspaceSnapshot,
   readPersistedLastActiveWorkspace,
   readPersistedOpenWorkspaces,
+  readWorkspaceSnapshot,
   useAppStore,
+  type Tab,
+  type WorkspaceSnapshot,
 } from './store.js';
 
 beforeEach(() => {
@@ -128,6 +132,140 @@ describe('readPersistedLastActiveWorkspace', () => {
   it('returns the stored path', () => {
     localStorage.setItem('workspaces:lastActive', '/Users/me/work');
     expect(readPersistedLastActiveWorkspace()).toBe('/Users/me/work');
+  });
+});
+
+describe('persistWorkspaceSnapshot / readWorkspaceSnapshot', () => {
+  function makeTab(overrides: Partial<Tab> = {}): Tab {
+    const base = useAppStore.getState();
+    void base;
+    return {
+      id: 'draft:abc',
+      kind: 'draft',
+      relPath: null,
+      name: 'My Request',
+      method: 'GET',
+      builder: {
+        method: 'GET',
+        url: 'https://example.com',
+        params: [],
+        headers: [],
+        bodyType: 'none',
+        body: '',
+        bodyFields: {},
+        bodyParts: [],
+        bodyFile: '',
+        graphql: { query: '', variables: '' },
+        auth: { type: 'none' },
+        settings: {
+          proxy: { enabled: false, url: '' },
+          timeout: { connect: null, read: null, total: null },
+          redirect: { follow: true, maxCount: 10 },
+          tls: { ignoreInvalidCerts: false },
+          httpVersion: 'auto',
+          scrapeDo: { enabled: false, token: '' },
+          validateBody: '',
+          uaPreset: 'scrapeman',
+          rateLimit: { enabled: false, fixedDelayMs: 0 },
+          useCookieJar: true,
+        },
+        disabledAutoHeaders: [],
+        preRequestScript: '',
+        postResponseScript: '',
+      },
+      dirty: true,
+      execution: {
+        status: 'idle',
+        response: null,
+        error: null,
+        startedAt: null,
+        finishedAt: null,
+      },
+      loadTest: {
+        config: {
+          total: 100,
+          concurrency: 10,
+          delay: 0,
+          expectStatus: '',
+          expectBody: '',
+          saveFailedBodies: false,
+          failedBodyLimit: 50,
+          watchedHeaders: [],
+        },
+        runId: null,
+        progress: null,
+        events: [],
+        failedBodies: [],
+        starting: false,
+        startError: null,
+      },
+      activePane: 'params',
+      responseSearch: '',
+      responseMode: null,
+      ...overrides,
+    } as Tab;
+  }
+
+  it('round-trips a draft tab through localStorage', () => {
+    const snap: WorkspaceSnapshot = {
+      tabs: [makeTab({ name: 'Draft 1' })],
+      activeTabId: 'draft:abc',
+      activeEnvironment: 'staging',
+      sidebarView: 'files',
+    };
+    persistWorkspaceSnapshot('/work', snap);
+    const round = readWorkspaceSnapshot('/work');
+    expect(round).not.toBeNull();
+    expect(round!.tabs).toHaveLength(1);
+    expect(round!.tabs[0]!.name).toBe('Draft 1');
+    expect(round!.tabs[0]!.builder.url).toBe('https://example.com');
+    expect(round!.tabs[0]!.dirty).toBe(true);
+    expect(round!.activeTabId).toBe('draft:abc');
+    expect(round!.activeEnvironment).toBe('staging');
+  });
+
+  it('strips transient fields from the persisted form', () => {
+    const tab = makeTab({
+      execution: {
+        status: 'success',
+        response: { body: 'huge' } as unknown as Tab['execution']['response'],
+        error: null,
+        startedAt: 1000,
+        finishedAt: 2000,
+      },
+      websocket: {
+        connectionId: 'ws-1',
+        url: 'wss://x',
+        state: 'open',
+        timeline: [],
+        sendDraft: '',
+        connecting: false,
+        error: null,
+      },
+      parallelBursts: [
+        { id: 'b1', startedAt: 0, status: 'success', httpStatus: 200, durationMs: 100 },
+      ],
+    } as Partial<Tab>);
+    persistWorkspaceSnapshot('/work', {
+      tabs: [tab],
+      activeTabId: tab.id,
+      activeEnvironment: null,
+      sidebarView: 'files',
+    });
+    const round = readWorkspaceSnapshot('/work');
+    const restored = round!.tabs[0]!;
+    expect(restored.execution.status).toBe('idle');
+    expect(restored.execution.response).toBeNull();
+    expect(restored.websocket).toBeUndefined();
+    expect(restored.parallelBursts).toBeUndefined();
+  });
+
+  it('returns null for missing or malformed snapshots', () => {
+    expect(readWorkspaceSnapshot('/missing')).toBeNull();
+    localStorage.setItem('workspace:tabs:/bad', '{not json');
+    expect(readWorkspaceSnapshot('/bad')).toBeNull();
+    localStorage.setItem('workspace:tabs:/notarray', '{"tabs":42}');
+    expect(readWorkspaceSnapshot('/notarray')).toBeNull();
   });
 });
 

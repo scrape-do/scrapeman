@@ -352,7 +352,7 @@ The dropdown lets you:
 
 When more than one workspace is open, the title bar shows the active workspace name in bold along with an "(N open)" counter.
 
-Persistence: the list of open workspaces and the last-active path persist to localStorage, so the same set reopens on next launch. Per-workspace UI snapshots (open tabs, active env, sidebar view) live in memory only — they are not saved across restarts. File-backed tabs reopen because they live on disk; unsaved draft tabs do not survive a quit.
+Persistence: the list of open workspaces and the last-active path persist to localStorage, so the same set reopens on next launch. Per-workspace UI snapshots (open tabs, active env, sidebar view) **also persist** as of v0.6.0 (#71). Unsaved draft tabs survive a full quit / restart — the URL, headers, body, auth, and settings round-trip through localStorage. Live runtime state (in-flight executions, websocket connections, load test runs, parallel-burst HUD) is stripped before saving so a stale "sending…" banner never resurfaces after restart.
 
 Out of scope for now: side-by-side workspace columns, dragging requests between workspaces, workspace-specific keyboard shortcuts. The undo-close-tab stack (`⌘⇧T`) is shared across workspaces in this release.
 
