@@ -573,12 +573,25 @@ function freshParam(): ParamRow {
   return { id: crypto.randomUUID(), key: '', value: '', enabled: true };
 }
 
+// Read the user's global TLS default from localStorage. Defaults to
+// `false` (verification on). The Settings dialog's Network tab writes
+// here; new requests start from this value so a user who works through
+// a self-signed corporate proxy doesn't have to flip it on every time.
+function readGlobalIgnoreInvalidCerts(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem('settings:tls:ignoreInvalidCerts') === 'true';
+  } catch {
+    return false;
+  }
+}
+
 function freshSettings(): SettingsState {
   return {
     proxy: { enabled: false, url: '' },
     timeout: { connect: null, read: null, total: null },
     redirect: { follow: true, maxCount: 10 },
-    tls: { ignoreInvalidCerts: false },
+    tls: { ignoreInvalidCerts: readGlobalIgnoreInvalidCerts() },
     httpVersion: 'auto',
     scrapeDo: { enabled: false, token: '' },
     validateBody: '',

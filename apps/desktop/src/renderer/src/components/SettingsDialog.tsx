@@ -7,7 +7,18 @@ import { shortcutLabel } from '../hooks/useShortcuts.js';
 import { SHORTCUTS } from '../shortcutsRegistry.js';
 import { ConfirmDialog } from '../ui/Dialog.js';
 
-type SettingsTab = 'storage' | 'shortcuts';
+type SettingsTab = 'storage' | 'network' | 'shortcuts';
+
+const GLOBAL_IGNORE_INVALID_CERTS_KEY = 'settings:tls:ignoreInvalidCerts';
+
+function readGlobalIgnoreInvalidCerts(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem(GLOBAL_IGNORE_INVALID_CERTS_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
 
 interface HistoryStats {
   count: number;
@@ -33,6 +44,18 @@ export function SettingsDialog({
   const [confirmClearOne, setConfirmClearOne] = useState(false);
   const [confirmClearAll, setConfirmClearAll] = useState(false);
   const [tab, setTab] = useState<SettingsTab>('storage');
+  const [globalIgnoreInvalid, setGlobalIgnoreInvalid] = useState(() =>
+    readGlobalIgnoreInvalidCerts(),
+  );
+
+  const updateGlobalIgnoreInvalid = useCallback((next: boolean): void => {
+    setGlobalIgnoreInvalid(next);
+    try {
+      window.localStorage.setItem(GLOBAL_IGNORE_INVALID_CERTS_KEY, String(next));
+    } catch {
+      /* localStorage may be unavailable in tests / private mode */
+    }
+  }, []);
 
   const refresh = useCallback(async (): Promise<void> => {
     if (!workspace) {
@@ -93,6 +116,9 @@ export function SettingsDialog({
               <div className="mt-4 flex gap-1 border-b border-line">
                 <TabButton active={tab === 'storage'} onClick={() => setTab('storage')}>
                   Storage
+                </TabButton>
+                <TabButton active={tab === 'network'} onClick={() => setTab('network')}>
+                  Network
                 </TabButton>
                 <TabButton active={tab === 'shortcuts'} onClick={() => setTab('shortcuts')}>
                   Keyboard shortcuts
@@ -193,6 +219,47 @@ export function SettingsDialog({
             </section>
 
             </>
+            )}
+            {tab === 'network' && (
+              <section className="mt-5 space-y-4">
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-ink-3">
+                    TLS / Certificate verification
+                  </div>
+                  <p className="mt-1 text-xs text-ink-3">
+                    The default value the per-request "Ignore invalid
+                    certificates" toggle starts at when you create a new
+                    request or open a tab. Existing requests with their own
+                    setting are not changed.
+                  </p>
+                  <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-md border border-line bg-bg-subtle px-3 py-2.5 text-xs text-ink-2 hover:border-line-strong">
+                    <input
+                      type="checkbox"
+                      checked={globalIgnoreInvalid}
+                      onChange={(e) => updateGlobalIgnoreInvalid(e.target.checked)}
+                      className="mt-0.5 h-3.5 w-3.5 accent-accent"
+                    />
+                    <span className="flex-1">
+                      <span className="font-medium text-ink-1">
+                        Ignore invalid certificates by default
+                      </span>
+                      <span className="mt-0.5 block text-[11px] text-ink-3">
+                        New requests start with TLS verification disabled.
+                        Equivalent to running curl with{' '}
+                        <code className="font-mono text-ink-2">-k</code>.
+                      </span>
+                    </span>
+                  </label>
+                  {globalIgnoreInvalid && (
+                    <div className="mt-2 rounded-md border border-method-delete/30 bg-method-delete/10 px-3 py-2 text-[11px] text-method-delete">
+                      <strong className="font-semibold">Warning:</strong> with
+                      this default on, every new request bypasses certificate
+                      verification. The per-request URL bar will show an
+                      "Insecure" badge whenever the toggle is active.
+                    </div>
+                  )}
+                </div>
+              </section>
             )}
             {tab === 'shortcuts' && (
               <section className="mt-5 space-y-5">

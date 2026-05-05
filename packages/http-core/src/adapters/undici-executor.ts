@@ -510,6 +510,17 @@ function buildBaseDispatcher(
   const headersTimeout = request.options?.timeout?.connect ?? totalTimeout;
   const httpVersion = request.options?.httpVersion ?? 'auto';
   const allowH2 = httpVersion === 'http2';
+  const ignoreInvalidCerts = request.options?.tls?.ignoreInvalidCerts === true;
+
+  // undici exposes per-Agent TLS options via the `connect` field. Setting
+  // `rejectUnauthorized: false` is the equivalent of curl's `-k` / `--insecure`:
+  // the TLS handshake completes even when the cert is self-signed, expired,
+  // or has a mismatched SAN. Required for scraping self-signed proxies,
+  // misconfigured targets, and mitmproxy-style debugging — but a real footgun
+  // when left on by accident, which is why the UI surfaces a warning.
+  const connectOpts = ignoreInvalidCerts
+    ? { rejectUnauthorized: false }
+    : undefined;
 
   if (request.proxy?.enabled && request.proxy.url.trim()) {
     const scheme = parseProxyScheme(request.proxy.url);
@@ -520,6 +531,7 @@ function buildBaseDispatcher(
         headersTimeout,
         maxHeaderSize: MAX_HEADER_SIZE,
         ...(allowH2 ? { allowH2: true } : {}),
+        ...(connectOpts ? { connect: connectOpts } : {}),
       };
       if (request.proxy.auth) {
         const token = Buffer.from(
@@ -542,6 +554,7 @@ function buildBaseDispatcher(
     headersTimeout,
     maxHeaderSize: MAX_HEADER_SIZE,
     ...(allowH2 ? { allowH2: true } : {}),
+    ...(connectOpts ? { connect: connectOpts } : {}),
   });
 }
 

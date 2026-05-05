@@ -341,12 +341,23 @@ export function SettingsTab(): JSX.Element {
         </Row>
       </Section>
 
-      <Section title="TLS">
+      <Section
+        title="TLS"
+        description="Disabling certificate verification is the equivalent of curl's -k / --insecure. Useful for self-signed proxies, expired certs, or mitmproxy debugging — but never ship a request with this off to a production endpoint."
+      >
         <Toggle
           label="Ignore invalid certificates"
           checked={s.tls.ignoreInvalidCerts}
           onChange={(ignoreInvalidCerts) => patch({ tls: { ignoreInvalidCerts } })}
         />
+        {s.tls.ignoreInvalidCerts && (
+          <div className="mt-2 rounded-md border border-method-delete/30 bg-method-delete/10 px-3 py-2 text-[11px] text-method-delete">
+            <strong className="font-semibold">Warning:</strong> certificate
+            verification is OFF for this request. The server identity is not
+            checked, so MITM attacks become trivial. The URL bar shows an
+            "Insecure" badge while this is set.
+          </div>
+        )}
       </Section>
 
       <Section

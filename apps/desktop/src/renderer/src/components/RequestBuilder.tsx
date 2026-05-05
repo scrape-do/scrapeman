@@ -258,7 +258,7 @@ export function RequestBuilder(): JSX.Element {
       <div className="flex items-center gap-2 px-4 py-3">
         <MethodPicker value={builder.method} onChange={setMethod} />
         <CellContextMenu value={builder.url} onChange={setUrl}>
-          <div className="flex-1">
+          <div className="relative flex-1">
             <HighlightedInput
               ref={urlInputRef}
               value={builder.url}
@@ -267,6 +267,28 @@ export function RequestBuilder(): JSX.Element {
               placeholder="https://api.example.com  or  paste a curl command"
               variant="field"
             />
+            {builder.settings.tls.ignoreInvalidCerts && (
+              <span
+                title="TLS certificate verification is disabled for this request — equivalent to curl -k. Re-enable in Settings → TLS before sending to production endpoints."
+                className="pointer-events-auto absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1 rounded bg-method-delete/15 px-1.5 py-0.5 text-[10px] font-semibold text-method-delete"
+              >
+                <svg
+                  width="11"
+                  height="11"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                >
+                  <path d="M8 1.5l5.5 2v4.5c0 3.5-2.5 6-5.5 6.5-3-0.5-5.5-3-5.5-6.5V3.5L8 1.5z" />
+                  <line x1="3" y1="3" x2="13" y2="13" />
+                </svg>
+                Insecure
+              </span>
+            )}
           </div>
         </CellContextMenu>
         {!screenshotMode && (sending ? (
