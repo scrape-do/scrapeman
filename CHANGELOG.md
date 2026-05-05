@@ -2,14 +2,17 @@
 
 All notable changes land here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [SemVer](https://semver.org/).
 
-## [0.6.0] — 2026-05-05
+## [0.6.0] — 2026-05-06
 
-Minor release. Three open issues land. Two of them target real friction points in the scraping use case (TLS verification toggle, restart restore), the third is a small polish on top of the existing auto-update banner.
+Minor release. Four open issues land — three real friction points in the scraping use case (TLS verification toggle, restart restore, parallel-send crash fix) and a small polish on top of the existing auto-update banner.
 
 ### Added
 - **TLS certificate verification toggle** (#80). The data model and per-request UI toggle existed since v0.2.0 but the executor never actually read the value, so the switch was a no-op — every request went through with verification on. Now the toggle wires through to undici's `connect.rejectUnauthorized` for both the direct `Agent` and the `ProxyAgent`. Behaviour matches curl's `-k` / `--insecure`. The URL bar shows a red `Insecure` badge while the toggle is on, and the per-request Settings tab renders a destructive-styled warning banner. New "Network" tab in Settings holds the global default that new tabs/requests start at, persisted to localStorage. Hermetic regression test spins up an HTTPS server with an OpenSSL-generated self-signed cert.
-- **Restore unsaved tabs on restart** (#71). Per-workspace tab snapshots already existed in memory for the workspace-switch flow. Now they persist to localStorage so a full app restart doesn't lose unsaved drafts. Builder state (URL, headers, params, body, auth, settings, scripts) and tab metadata round-trip; transient runtime — execution responses, websocket connections, load test runs, parallel-burst HUD — is stripped before saving so a stale "sending…" banner never resurfaces. Writes are coalesced to one per animation frame.
+- **Restore unsaved tabs on restart** (#71, #82). Per-workspace tab snapshots already existed in memory for the workspace-switch flow. Now they persist to localStorage so a full app restart doesn't lose unsaved drafts. Builder state (URL, headers, params, body, auth, settings, scripts) and tab metadata round-trip; transient runtime — execution responses, websocket connections, load test runs, parallel-burst HUD — is stripped before saving so a stale "sending…" banner never resurfaces. Writes are coalesced to one per animation frame.
 - **Post-update changelog popup** (#72). The first time you launch a new build, a dialog renders the matching CHANGELOG section(s) for everything between the last-launched version and the current one. CHANGELOG.md is bundled into the renderer at build time so it works offline. "View on GitHub" link in the corner deep-links to the release tag. Skipped on first install.
+
+### Fixed
+- **App crash when holding Cmd+R for several seconds.** OS key-repeat at ~30 Hz queued hundreds of concurrent IPC executes — each pinning a full ExecutedResponse with body data in main and triggering a history write on completion. The main process eventually OOMed and the renderer lost its IPC link. Now capped at 32 simultaneous parallel sends per tab; excess keystrokes are silently dropped. A 1–2 s burst still fans out fully (the common case for flakiness probes), worst-case memory stays bounded.
 
 ### Tests
 - 578 passing in `http-core` (3 new TLS), 47 in `apps/desktop` (3 new snapshot persistence + 9 new changelog parser). 7 skipped. Typecheck clean across all three packages.
