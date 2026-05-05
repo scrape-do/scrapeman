@@ -494,6 +494,14 @@ function buildUrl(request: ScrapemanRequest): string {
   return normalizeUrl(request.url);
 }
 
+// undici's default of 16 KiB is way too tight for scraping: scrape.do,
+// Cloudflare-fronted sites, and anti-bot vendors regularly emit 32 KiB+
+// of response headers (rotating cookies, signed proof-of-work tokens,
+// debug trailers). Bump to 256 KiB so realistic scrape responses parse
+// cleanly. Bounded to stop a malicious server from forcing unbounded
+// allocations.
+const MAX_HEADER_SIZE = 256 * 1024;
+
 function buildBaseDispatcher(
   request: ScrapemanRequest,
   totalTimeout: number,
@@ -510,6 +518,7 @@ function buildBaseDispatcher(
         uri: request.proxy.url,
         bodyTimeout,
         headersTimeout,
+        maxHeaderSize: MAX_HEADER_SIZE,
         ...(allowH2 ? { allowH2: true } : {}),
       };
       if (request.proxy.auth) {
@@ -531,6 +540,7 @@ function buildBaseDispatcher(
   return new Agent({
     bodyTimeout,
     headersTimeout,
+    maxHeaderSize: MAX_HEADER_SIZE,
     ...(allowH2 ? { allowH2: true } : {}),
   });
 }
@@ -670,6 +680,13 @@ function round2(n: number): number {
 
 function toExecutorError(err: unknown): ExecutorError {
   if (err instanceof ExecutorError) return err;
+  if (err instanceof undiciErrors.HeadersOverflowError) {
+    return new ExecutorError(
+      'protocol',
+      `Response headers exceeded ${MAX_HEADER_SIZE / 1024} KiB. The server returned more header bytes than the client accepts. If this persists, the server is likely emitting an oversized Set-Cookie or anti-bot header.`,
+      err,
+    );
+  }
   if (err instanceof undiciErrors.HeadersTimeoutError) {
     return new ExecutorError('timeout', 'Headers timeout', err);
   }
