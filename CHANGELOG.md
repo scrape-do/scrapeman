@@ -2,6 +2,30 @@
 
 All notable changes land here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [SemVer](https://semver.org/).
 
+## [0.5.2] — 2026-05-05
+
+Patch release. Two new shortcuts, a curl-import rewrite, scraping-targeted infrastructure fixes, and a layout default flip.
+
+### Added
+- **Cmd+R parallel send** (Insomnia parity). Each press fires another request without cancelling the in-flight one; the response panel shows whichever parallel send finishes last. Holding Cmd+R fires at the OS key-repeat rate, so a one-second hold = ~30 RPS micro burst — useful for flakiness probes or warming up an endpoint before a load run. The existing Cmd+Enter (send-or-cancel) is unchanged.
+- **Live HUD for parallel sends.** A floating panel in the bottom-right tracks every fired Cmd+R request with a status dot (pending → success / 4xx / error), HTTP status, and elapsed duration. Header summarises totals (`in flight / ok / err`). Stays open after the burst settles; × button dismisses. Bounded to the last 50 entries so a long Cmd+R hold doesn't bloat the DOM.
+- **Keyboard shortcut cheat sheet in Settings.** New "Keyboard shortcuts" tab in the Settings dialog lists every binding grouped by Request / Tabs / Navigation / Git, sourced from a static registry kept in sync with the actual handlers.
+- **Run-parameters pills in the load test panel.** While a run is live the metrics block now shows `total · concurrency · delay · status · body ⊃ "..."` pills so the user can confirm what's actually being executed at a glance.
+- **Top/bottom split is the new default.** Fresh installs land with the request above the response. Existing users keep their stored preference. The split-orientation toggle in the status bar is also now disabled (greyed) on the load test and websocket panes since the response panel is hidden in those views.
+- **Larger status bar icons** (~+20%): SVG 14 → 17 px, button hit area 20 → 24 px, bar height 22 → 26 px.
+
+### Changed
+- **Curl import rewritten on top of `@scrape-do/curl-parser`**. Standard surface (URL, method, basic auth, user-agent, cookies, boolean flags, multipart, urlencoded body) goes through the upstream package; we extract `-d` / `-H` / `-F` values, proxy/referer flags, and ANSI-C `$'...'` quoting ourselves before handing off, since upstream loses backslashes inside single quotes and escaped double quotes inside double quotes. 4 new tests on top of the existing 22.
+
+### Fixed
+- **Headers Overflow Error on scrape.do responses.** `undici`'s default `maxHeaderSize` of 16 KiB rejected legitimate Cloudflare-fronted and anti-bot responses (rotating cookies, signed proof-of-work tokens, debug trailers). Bumped to 256 KiB on both the direct `Agent` and `ProxyAgent` paths. `HeadersOverflowError` now surfaces as a clear `protocol`-kind ExecutorError with a descriptive message instead of a raw undici stack. 2 new regression tests (32 KiB and 128 KiB Set-Cookie).
+- **Load test events log auto-scroll missed the "Done in …" summary line.** The scroll effect only fired on `events.length` changes, so the trailing summary that renders after the last event ended up below the visible window. Added `progress?.done` to the dependency list.
+- **Watched-header toast covered the column titles.** The "added to watched headers" toast in the Response Headers tab was sticky-top-0, stacking on top of the Name / Value column labels. Now floats as a small pill in the top-right corner with `pointer-events:none`.
+- **Cmd+R was reloading the page.** Custom application menu drops the `Cmd/Ctrl+R` accelerator from "Reload" so the renderer's Cmd+R shortcut is reachable. Force Reload keeps `Cmd/Ctrl+Shift+R` for dev refreshes.
+
+### Tests
+- 575 passing in `http-core` (4 new curl, 2 new headers-overflow), 35 in `apps/desktop`. 7 skipped. Typecheck clean across all three packages.
+
 ## [0.5.1] — 2026-04-29
 
 Patch release. Bug fixes from dogfooding plus two small additions on top of 0.5.0.
