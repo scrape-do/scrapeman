@@ -183,7 +183,9 @@ export function RequestBuilder(): JSX.Element {
     builder.settings.httpVersion !== 'auto' ||
     builder.settings.timeout.total !== null ||
     builder.settings.timeout.connect !== null ||
-    builder.settings.timeout.read !== null;
+    builder.settings.timeout.read !== null ||
+    builder.settings.rawBody === true ||
+    builder.settings.useCookieJar === false;
 
   const handleUrlPaste = (e: React.ClipboardEvent<HTMLInputElement>): void => {
     const pasted = e.clipboardData.getData('text');

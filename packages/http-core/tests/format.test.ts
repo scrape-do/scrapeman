@@ -199,6 +199,31 @@ describe('serialize + parse', () => {
     expect(parsed.options?.cookieJar).toEqual({ enabled: false });
   });
 
+  it('round-trips options.rawBody', async () => {
+    const original: ScrapemanRequest = {
+      scrapeman: FORMAT_VERSION,
+      meta: { name: 'Raw body' },
+      method: 'POST',
+      url: 'https://api.example.com/template',
+      body: { type: 'json', content: '{"x":"{{y}}"}' },
+      options: { rawBody: true },
+    };
+    const parsed = await roundTrip(original);
+    expect(parsed.options?.rawBody).toBe(true);
+  });
+
+  it('omits options.rawBody when false (the default)', async () => {
+    const original: ScrapemanRequest = {
+      scrapeman: FORMAT_VERSION,
+      meta: { name: 'Default body resolution' },
+      method: 'POST',
+      url: 'https://api.example.com/x',
+      body: { type: 'json', content: '{}' },
+    };
+    const parsed = await roundTrip(original);
+    expect(parsed.options?.rawBody).toBeUndefined();
+  });
+
   it('omits options.cookieJar when not set', async () => {
     const original: ScrapemanRequest = {
       scrapeman: FORMAT_VERSION,

@@ -184,4 +184,44 @@ describe('resolveRequest', () => {
     expect(request.scrapeDo?.token).toBe('secret-token');
     expect(request.scrapeDo?.geoCode).toBe('42');
   });
+
+  it('honours options.rawBody — body sent literally, URL still resolved', () => {
+    const req: ScrapemanRequest = {
+      scrapeman: FORMAT_VERSION,
+      meta: { name: 'literal-body' },
+      method: 'POST',
+      url: '{{baseUrl}}/template',
+      headers: { 'X-Key': '{{apiKey}}' },
+      body: { type: 'json', content: '{"placeholder":"{{userId}}"}' },
+      options: { rawBody: true },
+    };
+    const { request } = resolveRequest(req, ctx);
+    // URL + headers still resolved.
+    expect(request.url).toBe('https://api.example.com/template');
+    expect(request.headers).toEqual({ 'X-Key': 'k_abc' });
+    // Body kept verbatim, the {{userId}} placeholder ships unsubstituted.
+    expect(request.body).toEqual({
+      type: 'json',
+      content: '{"placeholder":"{{userId}}"}',
+    });
+  });
+
+  it('also skips substitution for form-urlencoded fields when rawBody is on', () => {
+    const req: ScrapemanRequest = {
+      scrapeman: FORMAT_VERSION,
+      meta: { name: 'literal-form' },
+      method: 'POST',
+      url: 'https://example.com',
+      body: {
+        type: 'formUrlEncoded',
+        fields: { token: '{{token}}', static: 'literal' },
+      },
+      options: { rawBody: true },
+    };
+    const { request } = resolveRequest(req, ctx);
+    expect(request.body).toEqual({
+      type: 'formUrlEncoded',
+      fields: { token: '{{token}}', static: 'literal' },
+    });
+  });
 });

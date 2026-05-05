@@ -147,6 +147,13 @@ export interface RequestOptions {
   cookieJar?: {
     enabled: boolean;
   };
+  /** When true, skip `{{var}}` substitution in the request body (json /
+   *  text / xml / html / javascript content + form-urlencoded fields +
+   *  multipart text parts). URL, headers, params, auth, proxy still
+   *  resolve normally. Use when the server expects a literal `{{...}}`
+   *  payload — e.g. Postman-template proxy endpoints or placeholder
+   *  validation tests. Default: false (body is resolved). */
+  rawBody?: boolean;
 }
 
 export interface RequestScripts {

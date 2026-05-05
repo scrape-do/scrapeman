@@ -371,6 +371,17 @@ export function SettingsTab(): JSX.Element {
         />
       </Section>
 
+      <Section
+        title="Body"
+        description="By default {{var}} placeholders inside the request body are resolved against the active environment. Turn this on to send the body verbatim — useful when the receiving server expects the literal {{...}} syntax (template proxies, placeholder validation tests). URL, headers, params, and auth still resolve."
+      >
+        <Toggle
+          label="Send body raw (skip variable substitution)"
+          checked={s.rawBody}
+          onChange={(rawBody) => patch({ rawBody })}
+        />
+      </Section>
+
       <Section title="Protocol">
         <Row label="HTTP version">
           <select

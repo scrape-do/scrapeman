@@ -156,6 +156,9 @@ export interface SettingsState {
    *  (default); false = the jar is bypassed for this request, no Cookie
    *  header is added on send and no Set-Cookie is captured. */
   useCookieJar: boolean;
+  /** When true, skip `{{var}}` substitution in the request body. URL,
+   *  headers, params, auth still resolve. Default false (substitution on). */
+  rawBody: boolean;
 }
 
 export interface BuilderState {
@@ -606,6 +609,7 @@ function freshSettings(): SettingsState {
     uaPreset: 'scrapeman',
     rateLimit: { enabled: false, fixedDelayMs: 0 },
     useCookieJar: true,
+    rawBody: false,
   };
 }
 
@@ -772,6 +776,9 @@ function builderFromRequest(request: ScrapemanRequest): BuilderState {
   if (request.options?.cookieJar?.enabled === false) {
     settings.useCookieJar = false;
   }
+  if (request.options?.rawBody === true) {
+    settings.rawBody = true;
+  }
 
   return {
     method: request.method,
@@ -874,6 +881,10 @@ function buildRequest(
   // is true, so the absence of the field means "use the jar".
   if (!s.useCookieJar) {
     options.cookieJar = { enabled: false };
+  }
+  // Persist rawBody only when on; default false means substitute the body.
+  if (s.rawBody) {
+    options.rawBody = true;
   }
   if (Object.keys(options).length > 0) request.options = options;
   if (builder.disabledAutoHeaders.length > 0) {

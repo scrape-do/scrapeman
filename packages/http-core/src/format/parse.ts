@@ -298,6 +298,9 @@ function parseOptions(raw: Record<string, unknown>): RequestOptions {
       options.cookieJar = { enabled: cj['enabled'] };
     }
   }
+  if (typeof raw['rawBody'] === 'boolean') {
+    options.rawBody = raw['rawBody'];
+  }
   return options;
 }
 

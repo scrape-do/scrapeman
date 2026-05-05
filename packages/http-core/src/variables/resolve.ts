@@ -83,7 +83,14 @@ export function resolveRequest(
   if (request.params) out.params = mapValues(request.params, r);
   if (request.headers) out.headers = mapValues(request.headers, r);
   if (request.auth) out.auth = resolveAuth(request.auth, r);
-  if (request.body) out.body = resolveBody(request.body, r);
+  if (request.body) {
+    // `options.rawBody: true` lets the user opt out of substitution for
+    // the body specifically — useful when the server expects a literal
+    // `{{placeholder}}` payload. URL / headers / auth still resolve.
+    out.body = request.options?.rawBody === true
+      ? request.body
+      : resolveBody(request.body, r);
+  }
   if (request.proxy) {
     out.proxy = {
       ...request.proxy,

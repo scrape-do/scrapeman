@@ -276,6 +276,9 @@ function writeOptionsBlock(lines: string[], options: RequestOptions): void {
     lines.push('  cookieJar:');
     lines.push(`    enabled: ${options.cookieJar.enabled}`);
   }
+  if (options.rawBody === true) {
+    lines.push('  rawBody: true');
+  }
 }
 
 function writeScriptsBlock(lines: string[], scripts: RequestScripts): void {
