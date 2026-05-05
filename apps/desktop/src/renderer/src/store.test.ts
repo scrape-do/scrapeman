@@ -236,12 +236,12 @@ describe('persistWorkspaceSnapshot / readWorkspaceSnapshot', () => {
       websocket: {
         connectionId: 'ws-1',
         url: 'wss://x',
-        state: 'open',
+        state: 'OPEN',
         timeline: [],
         sendDraft: '',
         connecting: false,
         error: null,
-      },
+      } as Tab['websocket'],
       parallelBursts: [
         { id: 'b1', startedAt: 0, status: 'success', httpStatus: 200, durationMs: 100 },
       ],
