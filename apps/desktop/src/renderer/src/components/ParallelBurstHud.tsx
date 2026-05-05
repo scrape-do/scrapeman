@@ -1,7 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useAppStore, type ParallelBurstEntry } from '../store.js';
 
 const AUTO_HIDE_DELAY_MS = 2200;
+// Stable empty-array reference. Used as the fallback so the Zustand
+// selector returns the same value when no bursts are pending — without
+// it we'd return a fresh `[]` literal on every store mutation, which
+// re-renders this component for every unrelated store change.
+const EMPTY: ParallelBurstEntry[] = [];
 
 /**
  * Floating HUD that appears in the bottom-right while Cmd+R parallel
@@ -11,36 +16,25 @@ const AUTO_HIDE_DELAY_MS = 2200;
  * transient burst panel.
  */
 export function ParallelBurstHud(): JSX.Element | null {
-  const bursts = useAppStore((s) => {
-    const tab = s.tabs.find((t) => t.id === s.activeTabId);
-    return tab?.parallelBursts ?? [];
-  });
+  const bursts = useAppStore(
+    (s) => s.tabs.find((t) => t.id === s.activeTabId)?.parallelBursts ?? EMPTY,
+  );
   const clear = useAppStore((s) => s.clearParallelBursts);
-
-  const [hidden, setHidden] = useState(false);
 
   const allDone = useMemo(
     () => bursts.length > 0 && bursts.every((b) => b.status !== 'pending'),
     [bursts],
   );
 
-  // Reset the manual-hide flag whenever a fresh burst starts so a new
-  // Cmd+R press re-opens the HUD.
-  useEffect(() => {
-    if (bursts.some((b) => b.status === 'pending')) {
-      setHidden(false);
-    }
-  }, [bursts]);
-
   // Auto-clear once everything has settled and the user has had a moment
-  // to read the result.
+  // to read the result. The × button uses the same `clear` action.
   useEffect(() => {
-    if (!allDone || hidden) return;
+    if (!allDone) return;
     const t = setTimeout(() => clear(), AUTO_HIDE_DELAY_MS);
     return () => clearTimeout(t);
-  }, [allDone, hidden, clear]);
+  }, [allDone, clear]);
 
-  if (bursts.length === 0 || hidden) return null;
+  if (bursts.length === 0) return null;
 
   const pendingCount = bursts.filter((b) => b.status === 'pending').length;
   const successCount = bursts.filter((b) => b.status === 'success').length;
@@ -77,10 +71,7 @@ export function ParallelBurstHud(): JSX.Element | null {
           )}
           <button
             type="button"
-            onClick={() => {
-              setHidden(true);
-              clear();
-            }}
+            onClick={clear}
             title="Dismiss"
             className="ml-1 flex h-5 w-5 items-center justify-center rounded text-ink-4 hover:bg-bg-hover hover:text-ink-1"
             aria-label="Dismiss parallel send HUD"
