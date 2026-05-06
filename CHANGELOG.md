@@ -2,6 +2,13 @@
 
 All notable changes land here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [SemVer](https://semver.org/).
 
+## [0.6.2] — 2026-05-06
+
+Patch release. One bug fix.
+
+### Fixed
+- **Tabs sometimes lost on app restart.** The boot path went through an intermediate `tabs: []` set before reading the saved snapshot — and the persistence subscriber's `requestAnimationFrame` could fire during that window, overwriting the saved snapshot with the empty placeholder before `openWorkspace` finished reading it. The race was visible on slower disks / slower IPC, where the seven `await get().loadX()` calls between the empty-set and the snapshot read gave the RAF enough time to flush. Now `openWorkspace` reads the snapshot synchronously and seeds the initial set with the restored tabs directly, so the store never goes through an empty state. `activeEnvironment` restore is still deferred to after `loadEnvironments` (it needs the env list to validate against).
+
 ## [0.6.1] — 2026-05-06
 
 Patch release. Splits the global string-utilities ask (#81) into three follow-ups; lands two of them.

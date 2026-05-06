@@ -1182,12 +1182,25 @@ export const useAppStore = create<AppState>((set, get) => {
       const nextOpen = alreadyOpen
         ? existingOpen
         : [...existingOpen, tree.workspace];
+
+      // Read the persisted tab snapshot SYNCHRONOUSLY before we touch the
+      // store. If we instead let the store go through an intermediate
+      // `tabs: []` state, the persistence subscriber's RAF would run during
+      // the await window below and overwrite the saved snapshot with the
+      // empty placeholder — wiping the user's tabs before we got a chance
+      // to read them. In-memory snapshot wins for the workspace-switch
+      // flow; localStorage is the cold-boot fallback.
+      const snap =
+        get().workspaceSnapshots[tree.workspace.path] ??
+        readWorkspaceSnapshot(tree.workspace.path);
+
       set({
         workspace: tree.workspace,
         root: tree.root,
         openWorkspaces: nextOpen,
-        tabs: [],
-        activeTabId: null,
+        tabs: snap?.tabs ?? [],
+        activeTabId: snap?.activeTabId ?? null,
+        sidebarView: snap?.sidebarView ?? 'files',
         environments: [],
         activeEnvironment: null,
         globals: { variables: [] },
@@ -1208,41 +1221,19 @@ export const useAppStore = create<AppState>((set, get) => {
       await get().loadHistory();
       await get().loadGitStatus();
       await get().loadHiddenRequests();
-      // Hydrate from snapshot if we have one — this overwrites the freshly
-      // built defaults (loadEnvironments set activeEnvironment from disk;
-      // we want the user's last in-session choice to win). In-memory
-      // snapshot wins over localStorage; the latter exists so unsaved tabs
-      // survive a full app restart, not just a workspace switch (#71).
-      const snap =
-        get().workspaceSnapshots[tree.workspace.path] ??
-        readWorkspaceSnapshot(tree.workspace.path);
-      if (snap) {
-        const patch: {
-          tabs: Tab[];
-          activeTabId: string | null;
-          sidebarView: 'files' | 'git';
-          activeEnvironment?: string | null;
-        } = {
-          tabs: snap.tabs,
-          activeTabId: snap.activeTabId,
-          sidebarView: snap.sidebarView,
-        };
-        // Only restore the env if it still exists on disk; otherwise keep
-        // whatever loadEnvironments resolved to.
+
+      // Active-environment restore is deferred to here because it depends
+      // on `loadEnvironments` having populated the env list — we only
+      // re-activate an environment that still exists on disk.
+      if (snap && snap.activeEnvironment !== null) {
         const envs = get().environments;
-        if (
-          snap.activeEnvironment === null ||
-          envs.some((e) => e.name === snap.activeEnvironment)
-        ) {
-          patch.activeEnvironment = snap.activeEnvironment;
-          // Push the restored env back to disk so subsequent sends pick it
-          // up. envSetActive is fire-and-forget — the renderer cache is the
-          // source of truth in-session.
+        if (envs.some((e) => e.name === snap.activeEnvironment)) {
           if (snap.activeEnvironment !== get().activeEnvironment) {
+            set({ activeEnvironment: snap.activeEnvironment });
+            // Fire-and-forget: push to disk so subsequent sends pick it up.
             void bridge.envSetActive(tree.workspace.path, snap.activeEnvironment);
           }
         }
-        set(patch);
       }
     },
 
