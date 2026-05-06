@@ -1635,35 +1635,32 @@ export const useAppStore = create<AppState>((set, get) => {
       })),
     setUrl: (url) => {
       mutateActive((tab) => {
-        // When the URL has a ?, merge freshly parsed URL params with existing
-        // rows PRESERVING their order. Disabled rows stay in place untouched.
-        // Enabled rows get their value refreshed from the URL (and are dropped
-        // if the user removed them from the URL bar). New keys from the URL
-        // are appended after the existing rows.
-        const urlHasQuery = url.includes('?');
-        let newParams: ParamRow[];
-        if (urlHasQuery) {
-          const fromUrl = paramsFromUrl(url);
-          const fromUrlByKey = new Map(fromUrl.map((p) => [p.key, p.value]));
-          const existingKeys = new Set<string>();
-          const merged: ParamRow[] = [];
-          for (const row of tab.builder.params) {
-            existingKeys.add(row.key);
-            if (!row.enabled) {
-              merged.push(row);
-              continue;
-            }
-            const v = fromUrlByKey.get(row.key);
-            if (v !== undefined) merged.push({ ...row, value: v });
-            // enabled but removed from URL → drop the row
+        // Merge freshly parsed URL params with existing rows PRESERVING
+        // their order. Disabled rows stay in place untouched. Enabled rows
+        // get their value refreshed from the URL — if the user removed
+        // their key from the URL bar (or cleared the URL entirely), the
+        // enabled row is dropped. New keys from the URL are appended after
+        // the existing rows. `paramsFromUrl` returns [] for any URL with
+        // no `?`, so the merge correctly empties enabled rows when the
+        // user clears the URL bar.
+        const fromUrl = paramsFromUrl(url);
+        const fromUrlByKey = new Map(fromUrl.map((p) => [p.key, p.value]));
+        const existingKeys = new Set<string>();
+        const merged: ParamRow[] = [];
+        for (const row of tab.builder.params) {
+          existingKeys.add(row.key);
+          if (!row.enabled) {
+            merged.push(row);
+            continue;
           }
-          for (const p of fromUrl) {
-            if (!existingKeys.has(p.key)) merged.push(p);
-          }
-          newParams = merged.length > 0 ? merged : [freshParam()];
-        } else {
-          newParams = tab.builder.params;
+          const v = fromUrlByKey.get(row.key);
+          if (v !== undefined) merged.push({ ...row, value: v });
+          // enabled but removed from URL → drop the row
         }
+        for (const p of fromUrl) {
+          if (!existingKeys.has(p.key)) merged.push(p);
+        }
+        const newParams = merged.length > 0 ? merged : [freshParam()];
         return {
           ...tab,
           builder: { ...tab.builder, url, params: newParams },

@@ -318,3 +318,56 @@ describe('closeWorkspace', () => {
     ]);
   });
 });
+
+describe('setUrl — Params sync', () => {
+  beforeEach(() => {
+    useAppStore.getState().newTab();
+  });
+
+  it('removes enabled params when the URL is cleared', () => {
+    const tabId = useAppStore.getState().activeTabId!;
+    useAppStore.getState().setUrl('https://api.example.com?foo=1&bar=2');
+    let tab = useAppStore.getState().tabs.find((t) => t.id === tabId)!;
+    const enabledKeys = tab.builder.params.filter((p) => p.enabled).map((p) => p.key);
+    expect(enabledKeys).toEqual(['foo', 'bar']);
+
+    useAppStore.getState().setUrl('');
+    tab = useAppStore.getState().tabs.find((t) => t.id === tabId)!;
+    expect(tab.builder.params.filter((p) => p.enabled && p.key.length > 0)).toEqual([]);
+  });
+
+  it('removes enabled params when the URL loses its query string', () => {
+    const tabId = useAppStore.getState().activeTabId!;
+    useAppStore.getState().setUrl('https://api.example.com?foo=1');
+    useAppStore.getState().setUrl('https://api.example.com');
+    const tab = useAppStore.getState().tabs.find((t) => t.id === tabId)!;
+    expect(tab.builder.params.filter((p) => p.enabled && p.key.length > 0)).toEqual([]);
+  });
+
+  it('preserves disabled rows when the URL is cleared', () => {
+    const tabId = useAppStore.getState().activeTabId!;
+    useAppStore.getState().setUrl('https://api.example.com?foo=1&bar=2');
+    // Manually flip foo's enabled bit off via setState.
+    useAppStore.setState((s) => ({
+      tabs: s.tabs.map((t) => {
+        if (t.id !== tabId) return t;
+        return {
+          ...t,
+          builder: {
+            ...t.builder,
+            params: t.builder.params.map((p) =>
+              p.key === 'foo' ? { ...p, enabled: false } : p,
+            ),
+          },
+        };
+      }),
+    }));
+
+    useAppStore.getState().setUrl('');
+    const tab = useAppStore.getState().tabs.find((t) => t.id === tabId)!;
+    const remaining = tab.builder.params.filter((p) => p.key.length > 0);
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0]!.key).toBe('foo');
+    expect(remaining[0]!.enabled).toBe(false);
+  });
+});

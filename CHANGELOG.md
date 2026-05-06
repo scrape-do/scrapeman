@@ -2,6 +2,13 @@
 
 All notable changes land here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [SemVer](https://semver.org/).
 
+## [0.6.3] — 2026-05-06
+
+Patch release. One bug fix.
+
+### Fixed
+- **Params tab kept stale rows after the URL bar was cleared.** When the user cut or otherwise removed the query string from the URL, enabled rows in the Params tab survived because the sync logic short-circuited on URLs without `?`. Now every `setUrl` call merges against the freshly parsed URL params: enabled rows whose key disappeared from the URL drop out (matching the in-`?`-query branch's behaviour), disabled rows stay untouched. 3 new tests in `store.test.ts` cover URL-cleared, query-stripped, and disabled-row-preserved cases.
+
 ## [0.6.2] — 2026-05-06
 
 Patch release. One bug fix.
