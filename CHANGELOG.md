@@ -2,6 +2,26 @@
 
 All notable changes land here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [SemVer](https://semver.org/).
 
+## [0.6.4] — 2026-05-07
+
+Patch release. Bigger than the version number suggests — body editor got rebuilt on top of CodeMirror, three polish items, two bug fixes.
+
+### Added
+- **Request body editor — CodeMirror with syntax highlighting + `{{var}}` decoration + autocomplete.** Replaces the plain textarea. JSON / XML / HTML / JavaScript bodies get language-aware syntax colouring (key / string / number palette, like the response viewer's pretty mode); `{{var}}` placeholders render in the accent palette when known, destructive palette when undefined, regardless of language. Typing `{{` opens a popover listing every active environment variable plus the built-in dynamics (`random`, `uuid`, `timestamp`, `timestampSec`, `isoDate`, `randomInt`); selecting an option closes the braces automatically so the user doesn't have to type `}}`. Popover styling matches the URL bar's variable picker — same "Variables" header, font, accent colour, "built-in" badge.
+- **Lenient JSON beautify with auto-fix.** `Shift+Cmd+F` (and the Beautify button) now run a three-stage parse: strict `JSON.parse` first, then JSON5 (trailing commas, single-quoted strings, unquoted keys, comments) on failure, then a missing-comma repair pass that reads the V8 parser's error position and inserts a comma there, retrying up to 30 times. So `{ "a": 1\n  "b": 2 }` formats to valid JSON in one click. When auto-fix kicks in a "Fixed common JSON issues" toast appears so the user knows their bytes were touched beyond indentation. 7 new tests cover the lenient paths.
+- **Inline JSON lint gutter.** When body type is JSON, parse errors render as a red icon in the gutter and a single squiggle at the offending position — VSCode-style. Lint suppresses while a `{{var}}` is in the body so the resolver-time braces don't false-positive.
+
+### Fixed
+- **`{{var}}` in the URL host segment broke the request** (#86). When the user typed `{{base_url}}/users` and `base_url` resolved to a full URL like `https://api.example.com`, the renderer's `normalizeUrlSchema` saw an unrecognised scheme prefix and prepended its own `http://`, producing `http://https://api.example.com/users`. undici then refused to parse the result. The renderer now leaves any URL that starts with `{{` alone — the actual scheme is decided after variable resolution in the main process. 5 regression tests cover the placeholder, mid-URL placeholder, and existing-scheme cases.
+- **HTML preview rendered without styles or images.** Two issues compounded: the parent renderer's CSP only allowed `'self'` for `style-src` / `img-src` / `font-src`, blocking every external resource the scraped page tried to load; and the iframe ran with `srcDoc`'s `about:srcdoc` origin, so relative URLs (`<link href="/assets/main.css">`) had no server to resolve against. Fix: relaxed the prod CSP to allow `https:` and `http:` for those three media types (`script-src` and `connect-src` stay locked down — the iframe still runs with `sandbox=""` so no scripts execute), and inject `<base href="<final URL>">` at the top of `<head>` so relative URLs resolve to the originating server. The base href prefers the last redirect destination, falls back to the executor's `sentUrl`, then the URL the user typed. 7 unit tests cover the injection paths.
+- **Post-update changelog modal**: H3 section names (`Added`, `Fixed`, `Notes`, `Tests`) are no longer force-uppercased — they render in sentence case as written in the source. Bullet glyphs switched from CSS list-disc to a small dot for tighter alignment. Inline links (`[text](url)`) now render as actual links, and bare issue references like `(#79)` auto-link to the GitHub issue tracker. Body text bumped from 12px to 13px for readability.
+
+### Notes
+- #87 (request body JSON formatting) closed as already-shipped — the Beautify button + `Shift+Cmd+F` shortcut have lived on the body type bar since v0.5.x. The lenient + auto-fix work above lifts the same path well past what #87 explicitly asked for.
+
+### Tests
+- 582 passing in `http-core`, 81 in `apps/desktop` (+5 normalizeUrlSchema, +7 injectBaseHref, +7 lenient JSON formatting). 7 skipped. Typecheck clean across all three packages.
+
 ## [0.6.3] — 2026-05-06
 
 Patch release. One bug fix.

@@ -174,23 +174,29 @@ function createWindow(): BrowserWindow {
 
 function installContentSecurityPolicy(): void {
   const isDev = Boolean(process.env['ELECTRON_RENDERER_URL']);
+  // The HTML preview iframe (response viewer Preview mode) needs to load
+  // the scraped page's stylesheets, fonts, and images so users can actually
+  // see what they fetched. style-src / font-src / img-src therefore allow
+  // arbitrary http(s) sources. script-src and connect-src stay locked
+  // down — the iframe still has sandbox="" so scripts cannot run, and the
+  // renderer itself can only XHR to its own origin.
   const devCsp = [
     "default-src 'self' http://localhost:* ws://localhost:* data: blob:",
     "script-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:*",
-    "style-src 'self' 'unsafe-inline' http://localhost:*",
+    "style-src 'self' 'unsafe-inline' http://localhost:* https: http:",
     "connect-src 'self' http://localhost:* ws://localhost:*",
-    "img-src 'self' data: blob:",
-    "font-src 'self' data:",
+    "img-src 'self' data: blob: https: http:",
+    "font-src 'self' data: https: http:",
     "frame-src 'self' data: blob:",
     "object-src 'self' data: blob:",
   ].join('; ');
   const prodCsp = [
     "default-src 'self'",
     "script-src 'self'",
-    "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data:",
+    "style-src 'self' 'unsafe-inline' https: http:",
+    "img-src 'self' data: https: http:",
     "connect-src 'self'",
-    "font-src 'self' data:",
+    "font-src 'self' data: https: http:",
     "frame-src 'self' data: blob:",
     "object-src 'self' data: blob:",
   ].join('; ');

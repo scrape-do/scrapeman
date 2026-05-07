@@ -13,6 +13,7 @@ import { LoadTestPanel } from './LoadTestPanel.js';
 import { WebSocketPanel } from './WebSocketPanel.js';
 import { ScriptsTab } from './scripts/ScriptsTab.js';
 import { HighlightedInput } from '../ui/HighlightedInput.js';
+import { RequestBodyEditor, type BodyEditorLanguage } from './RequestBodyEditor.js';
 import { CellContextMenu } from '../ui/CellContextMenu.js';
 import { PromptDialog } from '../ui/Dialog.js';
 import { shortcutLabel } from '../hooks/useShortcuts.js';
@@ -21,6 +22,15 @@ import { ScreenshotModal } from './ScreenshotModal.js';
 import { bridge } from '../bridge.js';
 
 type Tab = 'params' | 'headers' | 'auth' | 'body' | 'settings' | 'scripts' | 'code' | 'load' | 'websocket';
+
+/** Map the request builder's body type onto a body-editor language so the
+ *  CodeMirror instance picks up the right syntax-highlighting extension. */
+function bodyEditorLanguage(bodyType: string): BodyEditorLanguage {
+  if (bodyType === 'json' || bodyType === 'xml' || bodyType === 'html' || bodyType === 'javascript') {
+    return bodyType;
+  }
+  return 'text';
+}
 
 export function RequestBuilder(): JSX.Element {
   const activeTab = useAppStore((s) => s.tabs.find((t) => t.id === s.activeTabId) ?? null);
@@ -98,6 +108,14 @@ export function RequestBuilder(): JSX.Element {
     const result = formatJson(body);
     if (result.ok) {
       setBody(result.text);
+      // Surface the lenient-fix toast so the user knows we touched things
+      // beyond pure indentation (trailing commas, single quotes, unquoted
+      // keys). Stays visible 3 s — same as the error path.
+      if (result.fixed) {
+        showBodyToast(
+          'Fixed common JSON issues (trailing commas / single quotes / unquoted keys).',
+        );
+      }
     } else if (result.error === 'unresolved-variables') {
       showBodyToast('Cannot format: body contains unresolved {{variables}}');
     } else {
@@ -437,10 +455,11 @@ export function RequestBuilder(): JSX.Element {
                 {bodyToast}
               </div>
             )}
-            <textarea
+            <RequestBodyEditor
               value={builder.body}
-              onChange={(e) => setBody(e.target.value)}
+              onChange={setBody}
               disabled={builder.bodyType === 'none'}
+              language={bodyEditorLanguage(builder.bodyType)}
               placeholder={
                 builder.bodyType === 'none'
                   ? 'Select a body type above to edit.'
@@ -448,21 +467,7 @@ export function RequestBuilder(): JSX.Element {
                     ? '{\n  "key": "value"\n}'
                     : ''
               }
-              spellCheck={false}
-              onKeyDown={(e) => {
-                // Shift+Cmd/Ctrl+F beautifies when the body editor is focused.
-                // stopPropagation prevents the global "focus sidebar search" handler
-                // (also bound to mod+shift+f) from firing simultaneously.
-                const isMod = e.metaKey || e.ctrlKey;
-                if (isMod && e.shiftKey && e.key.toLowerCase() === 'f') {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  if (builder.bodyType === 'json') {
-                    handleBeautify();
-                  }
-                }
-              }}
-              className="flex-1 resize-none border-0 bg-bg-canvas p-4 font-mono text-xs text-ink-1 outline-none placeholder:text-ink-4 disabled:bg-bg-subtle disabled:text-ink-4"
+              {...(builder.bodyType === 'json' ? { onBeautify: handleBeautify } : {})}
             />
           </div>
         )}

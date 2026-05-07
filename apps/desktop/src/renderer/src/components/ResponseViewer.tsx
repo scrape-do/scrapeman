@@ -14,6 +14,7 @@ import { JsonTree } from './JsonTree.js';
 import { CodeMirrorViewer, HtmlEditor } from './HtmlEditor.js';
 import { SseEventsView } from './SseEventsView.js';
 import { DevToolsPanel } from './DevToolsPanel.js';
+import { injectBaseHref } from '../utils/inject-base-href.js';
 
 type Tab = 'body' | 'headers' | 'devtools' | 'scripts';
 
@@ -316,6 +317,10 @@ function BodyPanel({
   durationMs: number;
   streaming: boolean;
 }): JSX.Element {
+  const requestUrl = useAppStore((s) => {
+    const active = s.tabs.find((t) => t.id === s.activeTabId);
+    return active?.builder.url ?? '';
+  });
   const searchRaw = useAppStore((s) => {
     const active = s.tabs.find((t) => t.id === s.activeTabId);
     return active?.responseSearch ?? '';
@@ -542,6 +547,14 @@ function BodyPanel({
             activeMatchIndex,
             lines,
             scrollToLineRef,
+            // Final URL — used as the iframe's `<base href>` so relative
+            // CSS / image / font URLs resolve to the right server. Prefer
+            // the last redirect destination, fall back to the executor's
+            // sentUrl, then the builder URL the user sees in the bar.
+            responseUrl:
+              response.redirectChain && response.redirectChain.length > 0
+                ? response.redirectChain[response.redirectChain.length - 1]!.location ?? requestUrl
+                : (response.sentUrl ?? requestUrl),
           })
         )}
       </div>
@@ -791,6 +804,7 @@ function renderBody({
   activeMatchIndex,
   lines,
   scrollToLineRef,
+  responseUrl,
 }: {
   kind: ContentKind;
   mode: BodyMode;
@@ -806,6 +820,7 @@ function renderBody({
   activeMatchIndex: number;
   lines: string[];
   scrollToLineRef: React.MutableRefObject<((lineIndex: number) => void) | null>;
+  responseUrl: string;
 }): JSX.Element {
   if (kind === 'json' && mode === 'tree' && parsed.ok) {
     return (
@@ -838,10 +853,19 @@ function renderBody({
   }
 
   if (kind === 'html' && mode === 'preview') {
+    // Inject <base href> so relative URLs in the scraped HTML resolve to
+    // the originating server instead of `about:srcdoc`. Without this,
+    // `<link href="/assets/main.css">` and friends 404 silently and the
+    // page renders unstyled. We only inject when there isn't already a
+    // <base> tag in the source HTML — the upstream page's choice wins.
+    const html = injectBaseHref(text, responseUrl);
     return (
       <iframe
         title="response"
-        srcDoc={text}
+        srcDoc={html}
+        // sandbox="" blocks scripts (anti-XSS) but lets the iframe load
+        // stylesheets, fonts, and images via the parent's CSP, which we
+        // loosened to allow http(s) sources for those three media types.
         sandbox=""
         className="h-full w-full border-0 bg-white"
       />

@@ -111,6 +111,73 @@ html.dark {
   .app-no-drag {
     -webkit-app-region: no-drag;
   }
+
+  /* {{var}} highlighting inside the request body CodeMirror editor.
+     Matches the URL bar / header / param highlighter palette: known
+     variables get the accent treatment, unknown ones the destructive
+     palette so the user notices they will resolve to empty at send. */
+  .cm-var-known {
+    @apply rounded-sm bg-accent-soft px-0.5 font-medium text-accent;
+  }
+  .cm-var-unknown {
+    @apply rounded-sm bg-method-delete/10 px-0.5 font-medium text-method-delete;
+  }
+
+  /* CodeMirror autocomplete popover — re-skinned to match the URL-bar
+     variable picker (ui/HighlightedInput.tsx). Default CM tooltip is a
+     bare grey rectangle that clashes with every other popover in the app. */
+  .cm-tooltip.cm-tooltip-autocomplete {
+    @apply overflow-hidden rounded-md border border-line bg-bg-canvas font-sans shadow-popover animate-slide-down-fade;
+    border-color: theme('colors.line.DEFAULT');
+  }
+  /* "Variables" header that the URL bar variable picker renders. CM
+     doesn't expose a header slot natively, so attach via ::before on
+     the tooltip — the underlying <ul> begins below. */
+  .cm-tooltip.cm-tooltip-autocomplete::before {
+    content: 'Variables';
+    @apply block border-b border-line-subtle bg-bg-subtle px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-ink-4;
+  }
+  .cm-tooltip.cm-tooltip-autocomplete > ul {
+    @apply max-h-[260px] py-1;
+    font-family: inherit;
+    font-size: 12px;
+    min-width: 240px;
+    max-width: 480px;
+  }
+  .cm-tooltip.cm-tooltip-autocomplete > ul > li {
+    @apply flex items-center gap-2 px-2.5 py-1.5 text-left text-xs text-ink-2;
+    line-height: 1.3;
+  }
+  .cm-tooltip.cm-tooltip-autocomplete > ul > li:hover {
+    @apply bg-bg-hover;
+  }
+  .cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected] {
+    @apply bg-accent-soft text-ink-1;
+  }
+  .cm-tooltip.cm-tooltip-autocomplete .cm-completionLabel {
+    @apply font-mono font-medium text-accent;
+  }
+  /* URL bar popover doesn't underline matched text — drop CM's default
+     so the two popovers read identically. */
+  .cm-tooltip.cm-tooltip-autocomplete .cm-completionMatchedText {
+    text-decoration: none;
+    color: inherit;
+  }
+  .cm-tooltip.cm-tooltip-autocomplete .cm-completionDetail {
+    @apply ml-auto truncate text-[10px] text-ink-4;
+    font-style: normal;
+    max-width: 220px;
+  }
+  /* Hide CM's default left-side icon — the URL bar popover doesn't
+     have one, and our content is keyed by colour instead. */
+  .cm-tooltip.cm-tooltip-autocomplete .cm-completionIcon {
+    display: none;
+  }
+  /* Built-in badge appended via the addToOptions render hook. Only
+     shows for variables flagged kind=builtin. */
+  .cm-completion-builtin-badge {
+    @apply rounded bg-bg-muted px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-ink-4;
+  }
 }
 
 @layer components {

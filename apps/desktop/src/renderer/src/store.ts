@@ -796,11 +796,19 @@ function builderFromRequest(request: ScrapemanRequest): BuilderState {
 }
 
 /** Prepend http:// when the URL has no schema. */
-function normalizeUrlSchema(raw: string): string {
+export function normalizeUrlSchema(raw: string): string {
   const url = raw.trim();
   if (!url) return url;
   if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(url)) return url;
   if (url.startsWith(':/')) return 'http://0.0.0.0' + url.slice(1);
+  // When the URL starts with a `{{var}}` placeholder, the actual scheme
+  // is unknown until the resolver runs in the main process. Prepending
+  // http:// here would corrupt cases where the variable already contains
+  // a full URL (e.g. `{{base_url}}/users` with `base_url=https://api.x`
+  // would become `http://https://api.x/users` and fail to parse).
+  // Leave it alone — `normalizeUrl` runs again post-resolve and adds the
+  // scheme then if still missing.
+  if (/^\{\{/.test(url)) return url;
   return 'http://' + url;
 }
 

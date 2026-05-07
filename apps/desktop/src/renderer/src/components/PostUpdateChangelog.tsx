@@ -121,25 +121,30 @@ export function PostUpdateChangelog(): JSX.Element | null {
 }
 
 /**
- * Tiny markdown renderer for our changelog format. We only need: H1/H2,
- * H3, list items, bold spans, inline code, and paragraphs. Pulling in a
- * full markdown library for ~50 lines of text would be wasteful.
+ * Tiny markdown renderer for our changelog format. Handles the subset we
+ * actually use: H2 (version), H3 (Added / Fixed / Notes / Tests), list
+ * items, paragraphs, bold, inline code, links, and bare issue references
+ * like `(#79)`. Pulling in a full markdown library for ~50 lines of text
+ * would be wasteful.
  */
 function ChangelogMarkdown({ source }: { source: string }): JSX.Element {
   const blocks = source.split(/\n\n+/);
   return (
-    <div className="space-y-3 text-xs leading-relaxed text-ink-2">
+    <div className="space-y-3 text-[13px] leading-relaxed text-ink-2">
       {blocks.map((block, i) => {
         if (/^## /.test(block)) {
           return (
-            <h2 key={i} className="mt-4 text-sm font-semibold text-ink-1 first:mt-0">
+            <h2 key={i} className="mt-5 text-sm font-semibold text-ink-1 first:mt-0">
               {block.replace(/^## /, '')}
             </h2>
           );
         }
         if (/^### /.test(block)) {
+          // Sentence case rendered verbatim from the source (Added / Fixed
+          // / Tests / Notes). Earlier versions force-uppercased these,
+          // which shouted at the reader.
           return (
-            <h3 key={i} className="mt-3 text-xs font-semibold uppercase tracking-wide text-ink-3">
+            <h3 key={i} className="mt-3 text-[13px] font-semibold text-ink-1">
               {block.replace(/^### /, '')}
             </h3>
           );
@@ -150,9 +155,12 @@ function ChangelogMarkdown({ source }: { source: string }): JSX.Element {
         if (/^- /.test(block)) {
           const items = block.split(/\n(?=- )/);
           return (
-            <ul key={i} className="ml-4 list-disc space-y-1.5">
+            <ul key={i} className="space-y-2 pl-1">
               {items.map((item, j) => (
-                <li key={j}>{renderInline(item.replace(/^- /, ''))}</li>
+                <li key={j} className="flex gap-2">
+                  <span className="mt-[7px] inline-block h-1 w-1 shrink-0 rounded-full bg-ink-3" aria-hidden />
+                  <span className="flex-1">{renderInline(item.replace(/^- /, ''))}</span>
+                </li>
               ))}
             </ul>
           );
@@ -167,14 +175,19 @@ function ChangelogMarkdown({ source }: { source: string }): JSX.Element {
   );
 }
 
+const REPO_URL = 'https://github.com/scrape-do/scrapeman';
+
+// Tokenise a paragraph's text into a sequence of: bold spans, inline code,
+// markdown links `[text](url)`, bare issue references `(#nnn)`, plain text.
+// Order matters — the regex alternates; the first matching alternative wins.
+const INLINE_RE =
+  /(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\(https?:\/\/[^)]+\)|\(#\d+\))/g;
+
 function renderInline(text: string): JSX.Element[] {
   const parts: JSX.Element[] = [];
-  // Tokenise by **bold**, `code`, and plain text. Keep it simple — no
-  // links, no italics; nothing in our changelog uses them.
-  const re = /(\*\*[^*]+\*\*|`[^`]+`)/g;
   let last = 0;
   let i = 0;
-  for (const m of text.matchAll(re)) {
+  for (const m of text.matchAll(INLINE_RE)) {
     if (m.index! > last) {
       parts.push(<span key={i++}>{text.slice(last, m.index)}</span>);
     }
@@ -185,14 +198,47 @@ function renderInline(text: string): JSX.Element[] {
           {tok.slice(2, -2)}
         </strong>,
       );
-    } else {
+    } else if (tok.startsWith('`')) {
       parts.push(
         <code
           key={i++}
-          className="rounded bg-bg-subtle px-1 py-0.5 font-mono text-[11px] text-ink-1"
+          className="rounded bg-bg-subtle px-1.5 py-0.5 font-mono text-[12px] text-ink-1"
         >
           {tok.slice(1, -1)}
         </code>,
+      );
+    } else if (tok.startsWith('[')) {
+      // [label](url) — explicit markdown link.
+      const split = tok.indexOf('](');
+      const label = tok.slice(1, split);
+      const url = tok.slice(split + 2, -1);
+      parts.push(
+        <a
+          key={i++}
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          className="text-accent hover:underline"
+        >
+          {label}
+        </a>,
+      );
+    } else if (tok.startsWith('(#')) {
+      // (#1234) — auto-link to the GitHub issue tracker.
+      const num = tok.slice(2, -1);
+      parts.push(
+        <span key={i++}>
+          (
+          <a
+            href={`${REPO_URL}/issues/${num}`}
+            target="_blank"
+            rel="noreferrer"
+            className="text-accent hover:underline"
+          >
+            #{num}
+          </a>
+          )
+        </span>,
       );
     }
     last = m.index! + tok.length;

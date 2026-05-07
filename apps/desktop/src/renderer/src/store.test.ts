@@ -35,6 +35,7 @@ vi.hoisted(() => {
 
 import {
   captureWorkspaceSnapshot,
+  normalizeUrlSchema,
   persistWorkspaceSnapshot,
   readPersistedLastActiveWorkspace,
   readPersistedOpenWorkspaces,
@@ -316,6 +317,37 @@ describe('closeWorkspace', () => {
     expect(JSON.parse(localStorage.getItem('workspaces:open') ?? '[]')).toEqual([
       { path: '/a', name: 'A' },
     ]);
+  });
+});
+
+describe('normalizeUrlSchema', () => {
+  it('passes through URLs that already have a scheme', () => {
+    expect(normalizeUrlSchema('https://api.example.com')).toBe('https://api.example.com');
+    expect(normalizeUrlSchema('http://localhost:3000/x')).toBe('http://localhost:3000/x');
+  });
+
+  it('prepends http:// when no scheme is present', () => {
+    expect(normalizeUrlSchema('localhost:3000/x')).toBe('http://localhost:3000/x');
+    expect(normalizeUrlSchema('api.example.com/users')).toBe('http://api.example.com/users');
+  });
+
+  it('handles port-only and empty-host shapes', () => {
+    expect(normalizeUrlSchema(':/path')).toBe('http://0.0.0.0/path');
+  });
+
+  it('does not prepend http:// when the URL starts with a {{var}}', () => {
+    // Issue #86 — when {{base_url}} resolves to a full URL like
+    // 'https://api.example.com', prepending http:// would produce
+    // 'http://https://api.example.com' which undici rejects.
+    expect(normalizeUrlSchema('{{base_url}}/users')).toBe('{{base_url}}/users');
+    expect(normalizeUrlSchema('{{host}}')).toBe('{{host}}');
+  });
+
+  it('still prepends http:// when {{var}} appears mid-URL', () => {
+    // The host segment is concrete; the variable is a path piece.
+    expect(normalizeUrlSchema('api.example.com/{{userId}}')).toBe(
+      'http://api.example.com/{{userId}}',
+    );
   });
 });
 
