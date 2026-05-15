@@ -2,6 +2,14 @@
 
 All notable changes land here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [SemVer](https://semver.org/).
 
+## [0.6.5] — 2026-05-11
+
+Patch release. Two bug fixes.
+
+### Fixed
+- **Compressed `text/event-stream` responses rendered as garbled bytes.** The SSE branch in the executor consumed the response stream directly without decompressing first, so an upstream sending `Content-Encoding: gzip` / `br` / `deflate` (Cloudflare, OpenAI's `/v1/chat/completions`, anti-bot CDNs) showed up as garbage in the Raw mode and produced zero events in the Events view. The fix reads the body bytes through `readBodyCapped` and runs them through the same `decodeBody` path the non-SSE branch uses, then hands the decompressed buffer to the SSE parser. Postman handled this transparently; we now match. 4 regression tests cover identity / gzip / brotli / deflate paths.
+- **A nested URL as a query parameter value exploded into separate rows** (#88). Typing `?url=https://target.com?a=1&b=2` parsed the inner `&` as a top-level param separator, producing three rows where the user wanted one. `paramsFromUrl` now greedy-merges: when the previous chunk's value already contains a `?`, subsequent `&`-split chunks fold back into that value. Falls back to the standard split the moment a clean (non-`?`) value appears, so plain `?foo=bar&baz=qux` still parses to two rows. Matches the scrape.do convention of pasting the target URL raw. 5 regression tests cover the nested URL, plain params, URL-typed value without inner query, empty query, and valueless keys.
+
 ## [0.6.4] — 2026-05-07
 
 Patch release. Bigger than the version number suggests — body editor got rebuilt on top of CodeMirror, three polish items, two bug fixes.

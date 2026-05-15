@@ -1,6 +1,6 @@
 {
   "name": "@scrapeman/desktop",
-  "version": "0.6.4",
+  "version": "0.6.5",
   "private": true,
   "description": "Free, local-first API client with unlimited history, git-friendly .sman collections, a built-in load runner, and native Scrape.do proxy.",
   "author": {
@@ -49,9 +49,12 @@
     "@tanstack/react-virtual": "^3.13.24",
     "clsx": "^2.1.0",
     "codemirror": "^6.0.2",
+    "i18next": "^26.0.10",
+    "i18next-browser-languagedetector": "^8.2.1",
     "json5": "^2.2.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-i18next": "^17.0.7",
     "zustand": "^5.0.0"
   },
   "devDependencies": {

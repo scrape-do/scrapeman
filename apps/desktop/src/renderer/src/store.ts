@@ -622,13 +622,38 @@ function freshSettings(): SettingsState {
 // which means a pasted URL survives byte-for-byte through paste → edit
 // → send → history. Users who want a decoded view can right-click a
 // cell and pick "URL decode" (already wired in CellContextMenu).
-function paramsFromUrl(url: string): ParamRow[] {
+export function paramsFromUrl(url: string): ParamRow[] {
   const qIndex = url.indexOf('?');
   if (qIndex < 0) return [];
   const queryString = url.slice(qIndex + 1);
   if (!queryString) return [];
+
+  // Greedy parse for the scrape.do-style nested URL pattern (#88):
+  // `?url=https://target.com?a=1&b=2`. A spec-compliant client encodes
+  // the inner `&`, but the convention in scraping land is to paste the
+  // target URL raw. Without help, a naive `&` split would explode the
+  // inner URL into separate rows. Heuristic: when the previous chunk's
+  // value already contains a `?` (an inner-URL query separator), fold
+  // every subsequent chunk back into that value with `&` re-inserted.
+  // Falls back to the spec behaviour the moment a clean (non-`?`)
+  // value appears.
+  const chunks = queryString.split('&');
+  const merged: string[] = [];
+  for (const chunk of chunks) {
+    const prev = merged[merged.length - 1];
+    if (prev !== undefined) {
+      const eqInPrev = prev.indexOf('=');
+      const prevValue = eqInPrev >= 0 ? prev.slice(eqInPrev + 1) : '';
+      if (prevValue.includes('?')) {
+        merged[merged.length - 1] = prev + '&' + chunk;
+        continue;
+      }
+    }
+    merged.push(chunk);
+  }
+
   const out: ParamRow[] = [];
-  for (const pair of queryString.split('&')) {
+  for (const pair of merged) {
     if (!pair) continue;
     const eq = pair.indexOf('=');
     const key = eq >= 0 ? pair.slice(0, eq) : pair;

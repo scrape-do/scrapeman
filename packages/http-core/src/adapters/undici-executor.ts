@@ -203,12 +203,23 @@ export class UndiciExecutor implements RequestExecutor {
       let sseEvents: SseEvent[] | undefined;
 
       if (isSse) {
-        // SSE path: consume the body exactly once through the SSE reader.
-        // The resulting event array is shared between UI and script sandbox.
-        const sse = await readSseStream(result.body);
+        // SSE path. Read the body bytes first, decompress against the
+        // Content-Encoding header, THEN run the SSE parser over the
+        // decoded text. Earlier versions piped the response stream
+        // straight into `readSseStream`, which produced garbled output
+        // whenever the upstream sent `Content-Encoding: gzip` / `br` /
+        // `deflate` — Cloudflare, OpenAI, and anti-bot CDNs all do.
+        // Postman decompresses automatically and looked fine; we now
+        // match that.
+        const read = await readBodyCapped(result.body, this.maxResponseBytes);
+        truncated = read.truncated;
+        const encoding = pickHeader(headerPairs, 'content-encoding');
+        const decoded = decodeBody(read.bytes, encoding);
+        const sse = await readSseStream(singleChunkIterable(decoded));
         sseEvents = sse.events;
         // Reconstruct a text body from rawLines so downstream consumers
-        // (history, UI preview) still see the stream content.
+        // (history, UI preview, search) still see the stream content
+        // in the same shape they used to.
         const text = sse.rawLines.join('\n');
         bytes = new TextEncoder().encode(text);
       } else {
@@ -583,6 +594,16 @@ function buildBody(body: BodyConfig | undefined): string | Uint8Array | undefine
   }
   // multipart and binary are handled in later milestones (M2+).
   return undefined;
+}
+
+// Wrap an already-buffered Uint8Array as an async iterable so the SSE
+// reader's stream-flavoured input contract still applies. We use this on
+// the SSE path because we need to decompress the response bytes BEFORE
+// the SSE parser sees them — and decompression is buffer-based.
+async function* singleChunkIterable(
+  bytes: Uint8Array,
+): AsyncIterable<Uint8Array> {
+  if (bytes.byteLength > 0) yield bytes;
 }
 
 async function readBodyCapped(

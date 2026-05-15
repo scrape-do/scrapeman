@@ -36,6 +36,7 @@ vi.hoisted(() => {
 import {
   captureWorkspaceSnapshot,
   normalizeUrlSchema,
+  paramsFromUrl,
   persistWorkspaceSnapshot,
   readPersistedLastActiveWorkspace,
   readPersistedOpenWorkspaces,
@@ -348,6 +349,55 @@ describe('normalizeUrlSchema', () => {
     expect(normalizeUrlSchema('api.example.com/{{userId}}')).toBe(
       'http://api.example.com/{{userId}}',
     );
+  });
+});
+
+describe('paramsFromUrl — nested-URL heuristic (#88)', () => {
+  it('returns the whole nested URL as a single param value', () => {
+    const rows = paramsFromUrl(
+      'https://sample.com?url=https://httpbin.co/anything?hello=world&merhaba=dunya&abc=1',
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.key).toBe('url');
+    expect(rows[0]!.value).toBe(
+      'https://httpbin.co/anything?hello=world&merhaba=dunya&abc=1',
+    );
+  });
+
+  it('keeps plain side-by-side params separate when none has an inner ?', () => {
+    const rows = paramsFromUrl('https://api.example.com?foo=bar&baz=qux&n=1');
+    expect(rows.map((r) => [r.key, r.value])).toEqual([
+      ['foo', 'bar'],
+      ['baz', 'qux'],
+      ['n', '1'],
+    ]);
+  });
+
+  it('still works for a URL-typed value that has no inner query string', () => {
+    // `api_url=https://api.example.com` — no `?` inside the value, so
+    // the next param stays separate. This is the common scrape.do
+    // `?url=...&token=...` shape when the user encoded the target URL.
+    const rows = paramsFromUrl(
+      'https://sample.com?api_url=https://api.example.com&token=abc',
+    );
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.key).toBe('api_url');
+    expect(rows[0]!.value).toBe('https://api.example.com');
+    expect(rows[1]!.key).toBe('token');
+    expect(rows[1]!.value).toBe('abc');
+  });
+
+  it('returns [] for an empty query string', () => {
+    expect(paramsFromUrl('https://example.com')).toEqual([]);
+    expect(paramsFromUrl('https://example.com?')).toEqual([]);
+  });
+
+  it('handles keys without values', () => {
+    const rows = paramsFromUrl('https://example.com?debug&verbose=1');
+    expect(rows.map((r) => [r.key, r.value])).toEqual([
+      ['debug', ''],
+      ['verbose', '1'],
+    ]);
   });
 });
 
