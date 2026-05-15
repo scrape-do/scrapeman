@@ -1,5 +1,7 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
-import type { UpdateInfo } from '@scrapeman/shared-types';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import type { UpdateInfo, UpdaterState } from '@scrapeman/shared-types';
 
 const RELEASES_URL =
   'https://api.github.com/repos/scrape-do/scrapeman/releases/latest';
@@ -11,6 +13,42 @@ const dismissedVersions = new Set<string>();
 
 let checkTimer: ReturnType<typeof setInterval> | null = null;
 let rateLimitedUntil = 0;
+let mainWindowRef: BrowserWindow | null = null;
+
+// Runtime state exposed to the renderer via `update:get-state`.
+let lastCheckAt: number | null = null;
+let latestKnown: UpdateInfo | null = null;
+let checking = false;
+let lastError: string | null = null;
+let autoCheck = true;
+
+function prefsPath(): string {
+  return join(app.getPath('userData'), 'updater-prefs.json');
+}
+
+function readPrefs(): { autoCheck: boolean } {
+  try {
+    if (existsSync(prefsPath())) {
+      const parsed = JSON.parse(readFileSync(prefsPath(), 'utf-8')) as {
+        autoCheck?: unknown;
+      };
+      if (typeof parsed.autoCheck === 'boolean') {
+        return { autoCheck: parsed.autoCheck };
+      }
+    }
+  } catch {
+    /* malformed prefs — fall through to default */
+  }
+  return { autoCheck: true };
+}
+
+function writePrefs(): void {
+  try {
+    writeFileSync(prefsPath(), JSON.stringify({ autoCheck }), 'utf-8');
+  } catch {
+    /* disk full or read-only — silently ignore */
+  }
+}
 
 /**
  * Compare two semver strings (e.g. "0.3.0" > "0.2.1").
@@ -29,24 +67,43 @@ function isNewerVersion(remote: string, local: string): boolean {
   return false;
 }
 
-async function checkForUpdate(mainWindow: BrowserWindow): Promise<void> {
-  if (Date.now() < rateLimitedUntil) return;
+/**
+ * Fetch the latest release from GitHub. Stores the result on
+ * `latestKnown` regardless of whether it's newer than the current
+ * version — the Settings → Updates panel wants to display "you're on
+ * the latest" too, not just notify on upgrades.
+ *
+ * `notify=true` (the default) emits `update:available` for the
+ * upgrade-banner flow. `notify=false` is used by the renderer's
+ * manual "Check now" button — the panel reads the state directly.
+ */
+async function checkForUpdate(
+  notify = true,
+): Promise<{ ok: true; info: UpdateInfo | null } | { ok: false; error: string }> {
+  if (Date.now() < rateLimitedUntil) {
+    return { ok: false, error: 'GitHub rate limit hit; try again later.' };
+  }
 
+  checking = true;
+  emitState();
   try {
     const res = await fetch(RELEASES_URL, {
       headers: { Accept: 'application/vnd.github+json' },
     });
 
-    // Handle rate limiting
     if (
       res.status === 403 &&
       res.headers.get('x-ratelimit-remaining') === '0'
     ) {
       rateLimitedUntil = Date.now() + RATE_LIMIT_BACKOFF_MS;
-      return;
+      lastError = 'GitHub rate limit hit; try again later.';
+      return { ok: false, error: lastError };
     }
 
-    if (!res.ok) return;
+    if (!res.ok) {
+      lastError = `GitHub returned ${res.status}`;
+      return { ok: false, error: lastError };
+    }
 
     const data = (await res.json()) as {
       tag_name?: string;
@@ -56,14 +113,12 @@ async function checkForUpdate(mainWindow: BrowserWindow): Promise<void> {
     };
 
     const tagName = data.tag_name;
-    if (!tagName) return;
+    if (!tagName) {
+      lastError = 'GitHub response missing tag_name';
+      return { ok: false, error: lastError };
+    }
 
     const version = tagName.replace(/^v/, '');
-    const currentVersion = app.getVersion();
-
-    if (!isNewerVersion(version, currentVersion)) return;
-    if (dismissedVersions.has(version)) return;
-
     const info: UpdateInfo = {
       version,
       tagName,
@@ -71,39 +126,95 @@ async function checkForUpdate(mainWindow: BrowserWindow): Promise<void> {
       publishedAt: data.published_at ?? '',
       ...(data.body ? { notes: data.body } : {}),
     };
+    latestKnown = info;
+    lastError = null;
 
-    if (!mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('update:available', info);
+    const currentVersion = app.getVersion();
+    if (
+      notify &&
+      isNewerVersion(version, currentVersion) &&
+      !dismissedVersions.has(version) &&
+      mainWindowRef &&
+      !mainWindowRef.isDestroyed()
+    ) {
+      mainWindowRef.webContents.send('update:available', info);
     }
-  } catch {
-    // Network error, parse error — silently ignore, retry next interval.
+    return { ok: true, info };
+  } catch (err) {
+    lastError = err instanceof Error ? err.message : 'Network error';
+    return { ok: false, error: lastError };
+  } finally {
+    checking = false;
+    lastCheckAt = Date.now();
+    emitState();
+  }
+}
+
+function startTimer(): void {
+  if (checkTimer !== null) return;
+  checkTimer = setInterval(() => {
+    void checkForUpdate();
+  }, CHECK_INTERVAL_MS);
+}
+
+function stopTimer(): void {
+  if (checkTimer === null) return;
+  clearInterval(checkTimer);
+  checkTimer = null;
+}
+
+function currentState(): UpdaterState {
+  return {
+    currentVersion: app.getVersion(),
+    latestVersion: latestKnown?.version ?? null,
+    latestUpdate: latestKnown,
+    lastCheckAt,
+    checking,
+    autoCheck,
+    error: lastError,
+  };
+}
+
+function emitState(): void {
+  if (mainWindowRef && !mainWindowRef.isDestroyed()) {
+    mainWindowRef.webContents.send('update:state', currentState());
   }
 }
 
 export function initAutoUpdater(mainWindow: BrowserWindow): void {
-  // Listen for dismiss events from the renderer.
+  mainWindowRef = mainWindow;
+  ({ autoCheck } = readPrefs());
+
+  // Dismiss (banner × button): same shape as before.
   ipcMain.on('update:dismiss', (_e, version: string) => {
     dismissedVersions.add(version);
   });
 
-  // Listen for open-release-page events from the renderer.
   ipcMain.on('update:open-release', (_e, url: string) => {
     void shell.openExternal(url);
   });
 
-  // Initial check (slight delay to not block startup).
-  void checkForUpdate(mainWindow);
+  // Settings → Updates panel IPC: read state, manual check, toggle auto-check.
+  ipcMain.handle('update:get-state', () => currentState());
+  ipcMain.handle('update:check-now', async () => {
+    const r = await checkForUpdate(false);
+    return { state: currentState(), result: r };
+  });
+  ipcMain.handle('update:set-auto-check', (_e, enabled: boolean) => {
+    autoCheck = Boolean(enabled);
+    writePrefs();
+    if (autoCheck) startTimer();
+    else stopTimer();
+    emitState();
+    return currentState();
+  });
 
-  // Periodic check every 4 hours.
-  checkTimer = setInterval(() => {
-    void checkForUpdate(mainWindow);
-  }, CHECK_INTERVAL_MS);
+  if (autoCheck) {
+    void checkForUpdate();
+    startTimer();
+  }
 
-  // Clean up on quit.
   app.on('before-quit', () => {
-    if (checkTimer !== null) {
-      clearInterval(checkTimer);
-      checkTimer = null;
-    }
+    stopTimer();
   });
 }

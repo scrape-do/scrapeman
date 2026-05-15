@@ -6,8 +6,9 @@ import { usePlatform } from '../hooks/usePlatform.js';
 import { shortcutLabel } from '../hooks/useShortcuts.js';
 import { SHORTCUTS } from '../shortcutsRegistry.js';
 import { ConfirmDialog } from '../ui/Dialog.js';
+import type { UpdaterState } from '@scrapeman/shared-types';
 
-type SettingsTab = 'storage' | 'network' | 'shortcuts';
+type SettingsTab = 'storage' | 'network' | 'updates' | 'shortcuts';
 
 const GLOBAL_IGNORE_INVALID_CERTS_KEY = 'settings:tls:ignoreInvalidCerts';
 
@@ -47,6 +48,20 @@ export function SettingsDialog({
   const [globalIgnoreInvalid, setGlobalIgnoreInvalid] = useState(() =>
     readGlobalIgnoreInvalidCerts(),
   );
+  const [updaterState, setUpdaterState] = useState<UpdaterState | null>(null);
+
+  // Subscribe to live updater state pushes from main so the panel
+  // reflects background checks without a manual refresh.
+  useEffect(() => {
+    return bridge.onUpdaterState((state) => setUpdaterState(state));
+  }, []);
+
+  // Pull the current snapshot when the panel is opened so the user
+  // sees something even if no background check has fired yet.
+  useEffect(() => {
+    if (!open || tab !== 'updates') return;
+    void bridge.updaterGetState().then(setUpdaterState);
+  }, [open, tab]);
 
   const updateGlobalIgnoreInvalid = useCallback((next: boolean): void => {
     setGlobalIgnoreInvalid(next);
@@ -119,6 +134,9 @@ export function SettingsDialog({
                 </TabButton>
                 <TabButton active={tab === 'network'} onClick={() => setTab('network')}>
                   Network
+                </TabButton>
+                <TabButton active={tab === 'updates'} onClick={() => setTab('updates')}>
+                  Updates
                 </TabButton>
                 <TabButton active={tab === 'shortcuts'} onClick={() => setTab('shortcuts')}>
                   Keyboard shortcuts
@@ -261,6 +279,19 @@ export function SettingsDialog({
                 </div>
               </section>
             )}
+            {tab === 'updates' && (
+              <UpdatesPanel
+                state={updaterState}
+                onCheckNow={async () => {
+                  const r = await bridge.updaterCheckNow();
+                  setUpdaterState(r.state);
+                }}
+                onToggleAutoCheck={async (next) => {
+                  const s = await bridge.updaterSetAutoCheck(next);
+                  setUpdaterState(s);
+                }}
+              />
+            )}
             {tab === 'shortcuts' && (
               <section className="mt-5 space-y-5">
                 {SHORTCUTS.map((g) => (
@@ -359,4 +390,144 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function formatLastCheck(epochMs: number | null): string {
+  if (epochMs === null) return 'never';
+  const diffMs = Date.now() - epochMs;
+  if (diffMs < 60_000) return 'just now';
+  if (diffMs < 60 * 60_000) return `${Math.floor(diffMs / 60_000)} min ago`;
+  if (diffMs < 24 * 60 * 60_000) return `${Math.floor(diffMs / (60 * 60_000))} hr ago`;
+  const date = new Date(epochMs);
+  return date.toLocaleString();
+}
+
+function UpdatesPanel({
+  state,
+  onCheckNow,
+  onToggleAutoCheck,
+}: {
+  state: UpdaterState | null;
+  onCheckNow: () => Promise<void>;
+  onToggleAutoCheck: (next: boolean) => Promise<void>;
+}): JSX.Element {
+  // Local pending flag so the button reflects the in-flight HTTP call
+  // even before main pushes its `checking: true` state update.
+  const [busy, setBusy] = useState(false);
+
+  if (state === null) {
+    return (
+      <section className="mt-5">
+        <div className="text-xs text-ink-3">Loading updater state…</div>
+      </section>
+    );
+  }
+
+  const isLatest =
+    state.latestVersion !== null && state.latestVersion === state.currentVersion;
+  const hasUpdate =
+    state.latestVersion !== null && state.latestVersion !== state.currentVersion;
+
+  return (
+    <section className="mt-5 space-y-4">
+      <div>
+        <div className="text-[11px] font-semibold uppercase tracking-wide text-ink-3">
+          Application version
+        </div>
+        <div className="mt-2 rounded-md border border-line bg-bg-subtle px-3 py-3">
+          <div className="flex items-baseline justify-between gap-3">
+            <div>
+              <div className="text-[11px] text-ink-3">Installed</div>
+              <div className="font-mono text-sm font-semibold text-ink-1">
+                v{state.currentVersion}
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-[11px] text-ink-3">Latest on GitHub</div>
+              <div className="font-mono text-sm font-semibold text-ink-1">
+                {state.latestVersion !== null ? `v${state.latestVersion}` : '—'}
+              </div>
+            </div>
+          </div>
+          {hasUpdate && state.latestUpdate && (
+            <div className="mt-3 flex items-center justify-between gap-3 rounded border border-accent/30 bg-accent-soft px-2.5 py-2 text-xs text-accent">
+              <span>
+                A newer version is available.
+              </span>
+              <button
+                type="button"
+                onClick={() =>
+                  state.latestUpdate &&
+                  bridge.openReleasePage(state.latestUpdate.releaseUrl)
+                }
+                className="rounded bg-accent px-2 py-0.5 text-[11px] font-medium text-white hover:bg-accent/90"
+              >
+                Open release page
+              </button>
+            </div>
+          )}
+          {isLatest && (
+            <div className="mt-3 rounded border border-status-ok/30 bg-status-ok/10 px-2.5 py-2 text-xs text-status-ok">
+              You're on the latest version.
+            </div>
+          )}
+          {state.error && (
+            <div className="mt-3 rounded border border-method-delete/30 bg-method-delete/10 px-2.5 py-2 text-xs text-method-delete">
+              Last check failed: {state.error}
+            </div>
+          )}
+          <div className="mt-3 flex items-center justify-between gap-2">
+            <div className="text-[11px] text-ink-4">
+              Last checked: {formatLastCheck(state.lastCheckAt)}
+            </div>
+            <button
+              type="button"
+              disabled={busy || state.checking}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  await onCheckNow();
+                } finally {
+                  setBusy(false);
+                }
+              }}
+              className="btn-secondary"
+              title="Force a fresh check against the GitHub releases API"
+            >
+              {busy || state.checking ? 'Checking…' : 'Check now'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div className="text-[11px] font-semibold uppercase tracking-wide text-ink-3">
+          Automatic checks
+        </div>
+        <p className="mt-1 text-xs text-ink-3">
+          When enabled, Scrapeman polls GitHub Releases every four hours and
+          shows a non-intrusive banner if a newer version is published.
+          Disable to silence the banner — you can still check manually
+          above.
+        </p>
+        <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-md border border-line bg-bg-subtle px-3 py-2.5 text-xs text-ink-2 hover:border-line-strong">
+          <input
+            type="checkbox"
+            checked={state.autoCheck}
+            onChange={(e) => void onToggleAutoCheck(e.target.checked)}
+            className="mt-0.5 h-3.5 w-3.5 accent-accent"
+          />
+          <span className="flex-1">
+            <span className="font-medium text-ink-1">
+              Check for updates automatically
+            </span>
+            <span className="mt-0.5 block text-[11px] text-ink-3">
+              Setting persists across restarts. Initial check on launch
+              respects this toggle.
+            </span>
+          </span>
+        </label>
+      </div>
+    </section>
+  );
 }

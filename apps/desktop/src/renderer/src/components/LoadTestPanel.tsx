@@ -7,6 +7,7 @@ import {
 import { bridge } from '../bridge.js';
 import { useAppStore, type BuilderState } from '../store.js';
 import { Tooltip } from '../ui/Tooltip.js';
+import { LoadTestCharts } from './LoadTestCharts.js';
 
 /**
  * Inline load test panel rendered inside the Request Builder tab bar.
@@ -470,6 +471,12 @@ export function LoadTestPanel(): JSX.Element {
                   {kind} · {count}
                 </span>
               ))}
+            </div>
+          )}
+
+          {events.length > 0 && (
+            <div className="mt-3">
+              <LoadTestCharts events={events} progress={progress} />
             </div>
           )}
         </div>

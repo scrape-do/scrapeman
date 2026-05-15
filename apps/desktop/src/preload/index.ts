@@ -30,6 +30,7 @@ import type {
   ScrapemanBridge,
   ScrapemanRequest,
   UpdateInfo,
+  UpdaterState,
   WorkspaceEvent,
   WorkspaceTree,
   WsEvent,
@@ -308,6 +309,25 @@ const api: ScrapemanBridge = {
   },
   openReleasePage: (url: string) => {
     ipcRenderer.send('update:open-release', url);
+  },
+
+  // Settings → Updates panel: state read, manual check, auto-check toggle.
+  updaterGetState: () =>
+    ipcRenderer.invoke('update:get-state') as Promise<UpdaterState>,
+  updaterCheckNow: () =>
+    ipcRenderer.invoke('update:check-now') as Promise<{
+      state: UpdaterState;
+      result:
+        | { ok: true; info: UpdateInfo | null }
+        | { ok: false; error: string };
+    }>,
+  updaterSetAutoCheck: (enabled: boolean) =>
+    ipcRenderer.invoke('update:set-auto-check', enabled) as Promise<UpdaterState>,
+  onUpdaterState: (handler: (state: UpdaterState) => void) => {
+    const listener = (_event: unknown, payload: UpdaterState): void =>
+      handler(payload);
+    ipcRenderer.on('update:state', listener);
+    return () => ipcRenderer.off('update:state', listener);
   },
 
   wsConnect: (

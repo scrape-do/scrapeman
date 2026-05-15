@@ -201,11 +201,28 @@ function accumulateHeader(
  * validation failures are tracked separately so the UI can distinguish "the
  * server threw an error" from "the server responded but didn't match".
  */
+export interface RunLoadOptions {
+  /** Hard abort. Propagates into the executor so in-flight requests are
+   *  cancelled. Use for genuine teardown (window close, app quit). */
+  signal: AbortSignal;
+  /** Soft drain. When triggered, workers stop pulling new iterations
+   *  but already-in-flight requests run to completion. Use this for the
+   *  user-facing Stop button so the metrics finish with a clean state
+   *  rather than truncating mid-handshake. */
+  drainSignal?: AbortSignal;
+}
+
 export async function runLoad(
   input: LoadRunInput,
   onProgress: (progress: LoadProgress) => void,
-  signal: AbortSignal,
+  signalOrOptions: AbortSignal | RunLoadOptions,
 ): Promise<LoadProgress> {
+  const opts: RunLoadOptions =
+    'aborted' in signalOrOptions
+      ? { signal: signalOrOptions }
+      : signalOrOptions;
+  const signal = opts.signal;
+  const drainSignal = opts.drainSignal;
   const executor = new UndiciExecutor();
   const latencies: number[] = [];
   const statusHistogram: Record<string, number> = {};
@@ -401,7 +418,10 @@ export async function runLoad(
 
   const worker = async (): Promise<void> => {
     while (true) {
-      if (signal.aborted) return;
+      // Hard abort or soft drain — either one stops pulling new
+      // iterations. In-flight requests already past this check finish
+      // naturally; only `signal` (hard) propagates into the executor.
+      if (signal.aborted || drainSignal?.aborted) return;
       const iteration = nextIteration++;
       if (iteration >= input.total) return;
       inflight++;

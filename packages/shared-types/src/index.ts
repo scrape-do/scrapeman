@@ -678,6 +678,22 @@ export interface UpdateInfo {
   notes?: string;
 }
 
+/**
+ * Snapshot of the auto-updater. Pushed to the renderer via
+ * `update:state` whenever a check starts / finishes or the auto-check
+ * preference is toggled. The Settings → Updates panel reads this to
+ * render its current-version / latest-version / last-checked summary.
+ */
+export interface UpdaterState {
+  currentVersion: string;
+  latestVersion: string | null;
+  latestUpdate: UpdateInfo | null;
+  lastCheckAt: number | null;
+  checking: boolean;
+  autoCheck: boolean;
+  error: string | null;
+}
+
 // ------------------------------------------------------------------ //
 // WebSocket                                                           //
 // ------------------------------------------------------------------ //
@@ -1008,6 +1024,15 @@ export interface ScrapemanBridge {
   onUpdateAvailable: (handler: (info: UpdateInfo) => void) => () => void;
   dismissUpdate: (version: string) => void;
   openReleasePage: (url: string) => void;
+  updaterGetState: () => Promise<UpdaterState>;
+  updaterCheckNow: () => Promise<{
+    state: UpdaterState;
+    result:
+      | { ok: true; info: UpdateInfo | null }
+      | { ok: false; error: string };
+  }>;
+  updaterSetAutoCheck: (enabled: boolean) => Promise<UpdaterState>;
+  onUpdaterState: (handler: (state: UpdaterState) => void) => () => void;
 
   // WebSocket
   wsConnect: (

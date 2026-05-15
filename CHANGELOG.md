@@ -2,6 +2,26 @@
 
 All notable changes land here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [SemVer](https://semver.org/).
 
+## [0.6.6] — 2026-05-16
+
+Patch release. Settings panel surfaces the auto-updater; load test gets two live charts and a graceful Stop.
+
+### Added
+- **Settings → Updates panel** (subset of #35). Shows the installed version, the latest version on GitHub Releases, when the last check happened, and a `Check now` button that forces a fresh poll without waiting for the four-hour interval. An auto-check toggle lets the user silence the upgrade banner — preference persists across restarts via `userData/updater-prefs.json` in the main process. When the latest equals the installed version, the panel renders a "You're on the latest version" badge. When newer, an "Open release page" button deep-links to the GitHub tag.
+- New IPC channels: `update:get-state`, `update:check-now`, `update:set-auto-check`, plus an `update:state` push from main so the panel reflects background checks live.
+- New `UpdaterState` type in `@scrapeman/shared-types`.
+- **Load test latency + status charts** (M11 follow-up). The metrics block now ends with two inline SVG charts: a latency-over-time polyline with P50 / P95 reference lines from the live progress stats, and a status-code histogram that colour-codes 2xx / 3xx / 4xx / 5xx / network-error buckets. Both update on every iteration event. Runs over 300 iterations down-sample the latency series so the SVG path stays under ~300 vertices.
+
+### Changed
+- **Load test Stop is now a soft drain.** Hitting Stop used to abort everything — workers stopped and in-flight requests were cancelled mid-handshake, so the metrics ended with synthetic `status: 0` entries. The runner now takes two signals: `signal` (hard abort, still used on app quit / window close) and `drainSignal` (soft drain, fires from the user-facing Stop). Drain stops workers from pulling new iterations but lets every in-flight request finish naturally, so the final metrics reflect actual server outcomes. 3 new tests cover the drain, hard-abort, and backwards-compatible bare-`AbortSignal` paths.
+- **Zoom level persists across launches.** Pressing `⌘+` / `⌘-` / `⌘0` saves the new zoom level to `userData/zoom-level`. Next launch restores it once the renderer finishes loading. Bounded to Electron's accepted range `[-3, 3]`.
+
+### Notes
+- Background download + one-click install (the rest of #35) is still pending and tracked in the roadmap.
+
+### Tests
+- 589 passing in `http-core` (+3 graceful-drain), 100 in `apps/desktop` (+14 chart helpers). 7 skipped. Typecheck clean.
+
 ## [0.6.5] — 2026-05-11
 
 Patch release. Two bug fixes.

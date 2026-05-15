@@ -1,7 +1,7 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, session, shell } from 'electron';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { promises as fsp } from 'node:fs';
+import { existsSync, promises as fsp, readFileSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
 import {
@@ -102,7 +102,17 @@ const workspaceManager = new WorkspaceManager();
 const oauth2Client = new OAuth2Client();
 let historyStore: HistoryStore | null = null;
 let cookieJar: WorkspaceCookieJar | null = null;
-const loadRuns = new Map<string, AbortController>();
+interface LoadRunHandle {
+  /** Hard abort. Triggered on window-all-closed / before-quit so
+   *  in-flight requests get cancelled and the process can exit. */
+  hard: AbortController;
+  /** Soft drain. Triggered by the user-facing Stop button — workers
+   *  stop pulling new iterations, in-flight requests run to natural
+   *  completion. Metrics finish on a clean state instead of truncating
+   *  mid-handshake. */
+  drain: AbortController;
+}
+const loadRuns = new Map<string, LoadRunHandle>();
 const requestRuns = new Map<string, AbortController>();
 const runnerRuns = new Map<string, AbortController>();
 // Completed runner results keyed by runId. Kept for export after the run ends.
@@ -123,6 +133,33 @@ function rememberFullBody(requestId: string, bytes: Uint8Array): void {
     const oldest = fullBodyCache.keys().next().value;
     if (oldest === undefined) break;
     fullBodyCache.delete(oldest);
+  }
+}
+
+// Zoom level persists across launches so an "I prefer slightly larger
+// text" choice survives a restart. Stored as a plain text file in
+// userData. Bounded to Electron's accepted range [-3, 3].
+function zoomPrefsPath(): string {
+  return join(app.getPath('userData'), 'zoom-level');
+}
+
+function readZoomLevel(): number | null {
+  try {
+    if (!existsSync(zoomPrefsPath())) return null;
+    const raw = readFileSync(zoomPrefsPath(), 'utf-8').trim();
+    const value = Number(raw);
+    if (!Number.isFinite(value)) return null;
+    return Math.max(-3, Math.min(3, value));
+  } catch {
+    return null;
+  }
+}
+
+function writeZoomLevel(value: number): void {
+  try {
+    writeFileSync(zoomPrefsPath(), String(Math.max(-3, Math.min(3, value))), 'utf-8');
+  } catch {
+    /* disk full or read-only — ignore */
   }
 }
 
@@ -149,6 +186,29 @@ function createWindow(): BrowserWindow {
   });
 
   win.on('ready-to-show', () => win.show());
+
+  // Restore the persisted zoom level once the renderer is ready.
+  // Electron's default zoomIn / zoomOut roles step ±0.5; we just save
+  // and replay whatever the user landed on.
+  win.webContents.on('did-finish-load', () => {
+    const saved = readZoomLevel();
+    if (saved !== null) win.webContents.setZoomLevel(saved);
+  });
+  win.webContents.on('zoom-changed', (_e, direction) => {
+    const next = win.webContents.getZoomLevel() + (direction === 'in' ? 0.5 : -0.5);
+    writeZoomLevel(next);
+  });
+  // The `zoomIn` / `zoomOut` menu accelerators dispatch via
+  // `webContents.setZoomLevel`, not the trackpad zoom-changed event,
+  // so hook the keyboard path too. Persist after each accelerator fire.
+  win.webContents.on('before-input-event', (_e, input) => {
+    if (input.type !== 'keyDown') return;
+    if (!(input.meta || input.control)) return;
+    if (input.key === '0' || input.key === '+' || input.key === '=' || input.key === '-') {
+      // Defer one tick so the role handler has already adjusted zoom.
+      setImmediate(() => writeZoomLevel(win.webContents.getZoomLevel()));
+    }
+  });
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
@@ -718,8 +778,11 @@ app.whenReady().then(() => {
       // Use client-supplied runId when provided so load:progress events emitted
       // before this Promise resolves are still routable in the renderer store.
       const runId = input.runId ?? randomUUID();
-      const controller = new AbortController();
-      loadRuns.set(runId, controller);
+      const handle: LoadRunHandle = {
+        hard: new AbortController(),
+        drain: new AbortController(),
+      };
+      loadRuns.set(runId, handle);
 
       const variables = input.workspacePath
         ? await workspaceManager.resolveActiveVariables(input.workspacePath)
@@ -776,7 +839,7 @@ app.whenReady().then(() => {
                 win.webContents.send('load:progress', payload);
               }
             },
-            controller.signal,
+            { signal: handle.hard.signal, drainSignal: handle.drain.signal },
           );
         } catch (err) {
           console.error('[scrapeman] load run failed:', err);
@@ -832,8 +895,11 @@ app.whenReady().then(() => {
   );
 
   ipcMain.handle('load:stop', (_e, runId: string) => {
-    const controller = loadRuns.get(runId);
-    if (controller) controller.abort();
+    const handle = loadRuns.get(runId);
+    if (!handle) return;
+    // User-facing Stop: soft drain. Workers exit on their next tick;
+    // requests already on the wire complete naturally.
+    handle.drain.abort();
   });
 
   ipcMain.handle(
