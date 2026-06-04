@@ -680,6 +680,11 @@ app.whenReady().then(() => {
       historyStore?.list(workspacePath, options ?? {}) ?? [],
   );
   ipcMain.handle(
+    'history:getById',
+    (_e, workspacePath: string, id: string) =>
+      historyStore?.getById(workspacePath, id) ?? null,
+  );
+  ipcMain.handle(
     'history:delete',
     (_e, workspacePath: string, id: string) =>
       historyStore?.delete(workspacePath, id),
@@ -695,15 +700,38 @@ app.whenReady().then(() => {
     ): Promise<{ count: number; diskBytes: number; path: string }> => {
       if (!historyStore) return { count: 0, diskBytes: 0, path: '' };
       const path = historyStore.getFilePath(workspacePath);
-      const entries = await historyStore.list(workspacePath, {});
       let diskBytes = 0;
+      let lineCount = 0;
       try {
         const stat = await fsp.stat(path);
         diskBytes = stat.size;
+        // Count newline bytes (0x0A) by scanning in 64KB chunks — no string
+        // decoding, no decompression. One newline == one JSONL entry.
+        const SCAN_CHUNK = 64 * 1024;
+        const scanBuf = Buffer.allocUnsafe(SCAN_CHUNK);
+        const fd = await fsp.open(path, 'r');
+        try {
+          let offset = 0;
+          while (offset < diskBytes) {
+            const { bytesRead } = await fd.read(
+              scanBuf,
+              0,
+              Math.min(SCAN_CHUNK, diskBytes - offset),
+              offset,
+            );
+            if (bytesRead === 0) break;
+            for (let i = 0; i < bytesRead; i++) {
+              if (scanBuf[i] === 0x0a) lineCount++;
+            }
+            offset += bytesRead;
+          }
+        } finally {
+          await fd.close();
+        }
       } catch {
         /* file may not exist yet */
       }
-      return { count: entries.length, diskBytes, path };
+      return { count: lineCount, diskBytes, path };
     },
   );
   ipcMain.handle('history:clearAll', async (): Promise<void> => {

@@ -376,9 +376,19 @@ Right-click a request in the sidebar and select "Stop syncing to git" to exclude
 
 Every sent request is captured to a per-workspace JSONL file under the app data directory (never the workspace folder).
 
+**Unlimited retention**: no entries are ever pruned. Files of any size (including those grown to hundreds of MB) load correctly without migration or trimming.
+
 **Template-preserving**: `{{token}}` stays as `{{token}}` on disk. Secrets are never baked into history.
 
 **Compressed**: body preview fields are gzipped on disk when 256 bytes or larger (5-10x smaller).
+
+### Day-batched loading
+
+The store reads only the most recent batch (100 entries) from the tail of the file on open. Memory usage is O(loaded window), not O(file size). Larger files do not slow boot or cause out-of-memory crashes.
+
+As you scroll to the bottom of the history panel, older batches load automatically (infinite scroll). Use the `before` cursor in the `historyList` IPC call to fetch earlier pages.
+
+Full request and response bodies are decompressed lazily: the list view returns metadata and small inline previews only. The full body is decompressed only when you open a specific entry (`history:getById`).
 
 ### History panel
 
@@ -386,12 +396,15 @@ The sidebar History panel shows recent requests with:
 - Method badge (GET/POST/PUT/etc.)
 - Status pill (200 green, 4xx red, etc.)
 - Relative time ("2 min ago")
+- Day groups (Today, Yesterday, then by calendar date)
 
 Click any entry to restore it into a new tab. Duplicate restores are detected and skipped.
 
+Scroll to the bottom of the panel to load older entries from disk.
+
 ### Search and filter
 
-The history panel has a search bar that filters by request name and URL.
+The history panel has a search bar that filters by request URL, method, and response body preview. Typing triggers a debounced full-file scan: the store reads the history file backward in 256 KB chunks and returns all matching entries, not just the ones already loaded into the panel. Pagination (infinite scroll) works during search — the "Load older" sentinel fetches the next batch with the same search term applied.
 
 ---
 

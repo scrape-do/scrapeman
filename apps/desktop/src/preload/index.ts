@@ -159,6 +159,12 @@ const api: ScrapemanBridge = {
       workspacePath,
       options,
     ) as Promise<HistoryEntry[]>,
+  historyGetById: (workspacePath: string, id: string) =>
+    ipcRenderer.invoke(
+      'history:getById',
+      workspacePath,
+      id,
+    ) as Promise<HistoryEntry | null>,
   historyDelete: (workspacePath: string, id: string) =>
     ipcRenderer.invoke('history:delete', workspacePath, id) as Promise<void>,
   historyClear: (workspacePath: string) =>

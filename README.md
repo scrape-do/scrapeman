@@ -111,8 +111,11 @@ The full marketing site lives at **[scrapeman.app](https://scrapeman.app)** and 
 
 ### Local history
 - Every sent request captured to a per-workspace JSONL file under app data dir (never the workspace)
+- **Unlimited retention** — no entries are ever pruned. Existing files of any size load without migration.
 - **Template-preserving**: `{{token}}` stays as `{{token}}` on disk — no secrets baked in
 - **gzipped**: body preview fields compressed on disk when >= 256 bytes (typical 5-10× smaller)
+- **Day-batched loading** — only the most recent batch loads on open. Scroll to the bottom of the panel to load older entries (infinite scroll). Memory usage is proportional to the loaded window, not to total file size.
+- **Lazy body decompression** — the list view shows metadata only. Full bodies are decompressed only when you open a specific entry.
 - Restore to new tab with one click, dedup if already restored
 - Sidebar panel with clear/delete, method badges, status pills, relative time
 - Cookies inspector (workspace × env scoped via `tough-cookie`) — filter by domain, add/edit cookies manually, httpOnly masking with reveal toggle, export JSON or Netscape cookies.txt, import from `document.cookie` string or cookies.txt

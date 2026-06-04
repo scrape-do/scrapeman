@@ -933,6 +933,10 @@ export interface ScrapemanBridge {
     workspacePath: string,
     options?: HistoryListOptions,
   ) => Promise<HistoryEntry[]>;
+  historyGetById: (
+    workspacePath: string,
+    id: string,
+  ) => Promise<HistoryEntry | null>;
   historyDelete: (workspacePath: string, id: string) => Promise<void>;
   historyClear: (workspacePath: string) => Promise<void>;
   historyStats: (

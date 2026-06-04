@@ -1,4 +1,4 @@
-import { forwardRef, useState, type HTMLAttributes } from 'react';
+import { forwardRef, useEffect, useRef, useState, type HTMLAttributes } from 'react';
 import { useAppStore, type Tab } from '../store.js';
 import { shortcutLabel } from '../hooks/useShortcuts.js';
 import {
@@ -39,11 +39,28 @@ export function TabBar({ guard }: TabBarProps): JSX.Element {
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
 
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Scroll the active tab into view whenever the active tab changes or tabs
+  // are added/removed. Keyed on tabs.length (not the full array) so a pure
+  // drag-reorder — which keeps tabs.length constant — does not trigger a jump.
+  useEffect(() => {
+    if (!activeTabId || !scrollContainerRef.current) return;
+    // CSS.escape prevents a SyntaxError when activeTabId contains characters
+    // that are illegal in CSS attribute selectors (e.g. quotes, backslashes).
+    // File-backed tab ids take the form `file:<relPath>` where relPath is a
+    // real filesystem path and may legally include those characters.
+    const el = scrollContainerRef.current.querySelector<HTMLElement>(
+      `[data-tab-id="${CSS.escape(activeTabId)}"]`,
+    );
+    el?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [activeTabId, tabs.length]);
+
   const savedCount = tabs.filter((t) => !t.dirty).length;
 
   return (
     <div className="flex h-10 items-center border-b border-line bg-bg-subtle">
-      <div className="flex h-full flex-1 items-stretch overflow-x-auto">
+      <div ref={scrollContainerRef} className="flex h-full flex-1 items-stretch overflow-x-auto">
         {tabs.map((tab, index) => {
           const isLast = index === tabs.length - 1;
           const canCloseOthers = tabs.length > 1;
@@ -194,6 +211,7 @@ const TabItem = forwardRef<HTMLDivElement, TabItemProps>(
     <div
       ref={ref}
       {...rest}
+      data-tab-id={tab.id}
       draggable
       onDragStart={(e) => {
         e.dataTransfer.effectAllowed = 'move';

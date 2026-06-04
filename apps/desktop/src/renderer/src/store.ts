@@ -343,6 +343,10 @@ interface AppState {
   activeEnvironment: string | null;
 
   history: HistoryEntry[];
+  historyHasMore: boolean;
+  historyLoadingOlder: boolean;
+  // Active server-side search query. Empty string means no search filter.
+  historyQuery: string;
 
   tabs: Tab[];
   activeTabId: string | null;
@@ -517,9 +521,12 @@ interface AppState {
   ) => Promise<InheritedAuthInfo | null>;
 
   loadHistory: () => Promise<void>;
+  loadOlderHistory: () => Promise<void>;
+  searchHistory: (query: string) => Promise<void>;
+  refreshHistoryHead: () => Promise<void>;
   deleteHistoryEntry: (id: string) => Promise<void>;
   clearHistory: () => Promise<void>;
-  restoreHistoryEntry: (entry: HistoryEntry) => void;
+  restoreHistoryEntry: (entry: HistoryEntry) => Promise<void>;
 
   createRequest: (parentRelPath: string, name: string) => Promise<void>;
   createFolder: (parentRelPath: string, name: string) => Promise<void>;
@@ -1154,6 +1161,9 @@ export const useAppStore = create<AppState>((set, get) => {
     collectionSettings: { variables: [] },
     folderSettingsCache: {},
     history: [],
+    historyHasMore: false,
+    historyLoadingOlder: false,
+    historyQuery: '',
     tabs: [],
     activeTabId: null,
     updateInfo: null,
@@ -1240,6 +1250,9 @@ export const useAppStore = create<AppState>((set, get) => {
         collectionSettings: { variables: [] },
         folderSettingsCache: {},
         history: [],
+        historyHasMore: false,
+        historyLoadingOlder: false,
+        historyQuery: '',
         gitStatus: null,
         gitLoaded: false,
         gitError: null,
@@ -1319,6 +1332,9 @@ export const useAppStore = create<AppState>((set, get) => {
           environments: [],
           activeEnvironment: null,
           history: [],
+          historyHasMore: false,
+          historyLoadingOlder: false,
+          historyQuery: '',
           gitStatus: null,
           gitLoaded: false,
           gitError: null,
@@ -1929,8 +1945,8 @@ export const useAppStore = create<AppState>((set, get) => {
               finishedAt,
             },
       }));
-      // Refresh history sidebar after every send so the new entry shows up.
-      void get().loadHistory();
+      // Prepend the newest history entry without resetting the loaded batches.
+      void get().refreshHistoryHead();
     },
 
     cancelSend: () => {
@@ -2062,7 +2078,7 @@ export const useAppStore = create<AppState>((set, get) => {
           ...(updated !== undefined ? { parallelBursts: updated } : {}),
         };
       });
-      void get().loadHistory();
+      void get().refreshHistoryHead();
     },
 
     clearParallelBursts: () => {
@@ -2440,8 +2456,83 @@ export const useAppStore = create<AppState>((set, get) => {
     loadHistory: async () => {
       const workspace = get().workspace;
       if (!workspace) return;
-      const history = await bridge.historyList(workspace.path, { limit: 100 });
-      set({ history });
+      // Initial load: fetch the most recent batch from the tail of the file.
+      // The server-side default batch is 100 entries. We request 101 to detect
+      // whether there are older entries available (hasMore sentinel).
+      const BATCH = 100;
+      const batch = await bridge.historyList(workspace.path, { limit: BATCH + 1 });
+      const hasMore = batch.length > BATCH;
+      set({
+        history: hasMore ? batch.slice(0, BATCH) : batch,
+        historyHasMore: hasMore,
+      });
+    },
+
+    loadOlderHistory: async () => {
+      const workspace = get().workspace;
+      if (!workspace) return;
+      const { history, historyHasMore, historyLoadingOlder, historyQuery } = get();
+      if (!historyHasMore || historyLoadingOlder) return;
+
+      set({ historyLoadingOlder: true });
+      try {
+        const BATCH = 100;
+        // Use the oldest sentAt in the current list as the before-cursor.
+        const oldest = history[history.length - 1];
+        const before = oldest?.sentAt;
+        const batch = await bridge.historyList(workspace.path, {
+          limit: BATCH + 1,
+          ...(before !== undefined ? { before } : {}),
+          // Carry the active search query so pagination scans the full file.
+          ...(historyQuery ? { search: historyQuery } : {}),
+        });
+        const hasMore = batch.length > BATCH;
+        set({
+          history: [...history, ...(hasMore ? batch.slice(0, BATCH) : batch)],
+          historyHasMore: hasMore,
+        });
+      } finally {
+        set({ historyLoadingOlder: false });
+      }
+    },
+
+    searchHistory: async (query: string) => {
+      const workspace = get().workspace;
+      if (!workspace) return;
+      const BATCH = 100;
+      if (!query.trim()) {
+        // Empty query: reset to the normal unpaginated head window.
+        set({ historyQuery: '' });
+        await get().loadHistory();
+        return;
+      }
+      // Full-file bounded search: tailRead scans all chunks backward and
+      // checks url / method / responseBodyPreview against the needle.
+      const batch = await bridge.historyList(workspace.path, {
+        limit: BATCH + 1,
+        search: query.trim(),
+      });
+      const hasMore = batch.length > BATCH;
+      set({
+        history: hasMore ? batch.slice(0, BATCH) : batch,
+        historyHasMore: hasMore,
+        historyQuery: query.trim(),
+      });
+    },
+
+    refreshHistoryHead: async () => {
+      // Called after every send. Fetches only the newest entry from the store
+      // cache (limit=1) and prepends it if it is not already in the list.
+      // Does NOT reset history or historyHasMore — older loaded batches are preserved.
+      const workspace = get().workspace;
+      if (!workspace) return;
+      const fresh = await bridge.historyList(workspace.path, { limit: 1 });
+      if (fresh.length === 0) return;
+      const newest = fresh[0]!;
+      const { history } = get();
+      // Skip prepend if already present (e.g. duplicate send race).
+      if (history.length > 0 && history[0]!.id === newest.id) return;
+      set({ history: [newest, ...history.filter((e) => e.id !== newest.id)] });
     },
 
     deleteHistoryEntry: async (id: string) => {
@@ -2455,10 +2546,10 @@ export const useAppStore = create<AppState>((set, get) => {
       const workspace = get().workspace;
       if (!workspace) return;
       await bridge.historyClear(workspace.path);
-      set({ history: [] });
+      set({ history: [], historyHasMore: false });
     },
 
-    restoreHistoryEntry: (entry: HistoryEntry) => {
+    restoreHistoryEntry: async (entry: HistoryEntry) => {
       // Dedup: if a tab is already restored from this exact entry, focus it
       // instead of opening another copy.
       const existing = get().tabs.find((t) => t.sourceHistoryId === entry.id);
@@ -2467,7 +2558,22 @@ export const useAppStore = create<AppState>((set, get) => {
         return;
       }
 
-      const headers: HeaderRow[] = Object.entries(entry.headers).map(
+      // Fetch the full entry (with decompressed bodies) by id. The entry
+      // passed in from the list() call has bodyPreview/responseBodyPreview
+      // as empty strings when the body was stored gzipped. Fall back to the
+      // meta-only entry if getById returns null (e.g. entry was deleted).
+      const workspace = get().workspace;
+      let full = entry;
+      if (workspace) {
+        try {
+          const fetched = await bridge.historyGetById(workspace.path, entry.id);
+          if (fetched) full = fetched;
+        } catch {
+          // Graceful degradation: use meta-only entry.
+        }
+      }
+
+      const headers: HeaderRow[] = Object.entries(full.headers).map(
         ([key, value]) => ({
           id: crypto.randomUUID(),
           key,
@@ -2477,64 +2583,64 @@ export const useAppStore = create<AppState>((set, get) => {
       );
       if (headers.length === 0) headers.push(freshHeader());
 
-      const params = paramsFromUrl(entry.url);
+      const params = paramsFromUrl(full.url);
       if (params.length === 0) params.push(freshParam());
 
       const bodyType: BuilderState['bodyType'] =
-        entry.bodyPreview && entry.bodyPreview.trim().startsWith('{')
+        full.bodyPreview && full.bodyPreview.trim().startsWith('{')
           ? 'json'
-          : entry.bodyPreview
+          : full.bodyPreview
             ? 'text'
             : 'none';
 
       // Hydrate the response panel from the saved entry so clicking a history
       // row shows status/body/headers immediately, no re-send required.
-      const contentType = entry.responseHeaders.find(
+      const contentType = full.responseHeaders.find(
         ([name]) => name.toLowerCase() === 'content-type',
       )?.[1];
 
-      const execution: ExecutionState = entry.error
+      const execution: ExecutionState = full.error
         ? {
             status: 'error',
             response: null,
-            error: entry.error,
+            error: full.error,
             startedAt: null,
             finishedAt: null,
           }
         : {
             status: 'success',
             response: {
-              status: entry.status,
+              status: full.status,
               statusText: '',
-              httpVersion: entry.protocol,
-              headers: entry.responseHeaders,
-              bodyBase64: utf8ToBase64(entry.responseBodyPreview ?? ''),
+              httpVersion: full.protocol,
+              headers: full.responseHeaders,
+              bodyBase64: utf8ToBase64(full.responseBodyPreview ?? ''),
               // Trust new caps: stale truncated flags from older entries
               // (when the cap was 25MB) are ignored on restore. If we have
               // the full body in storage now, it is not truncated.
               bodyTruncated: false,
-              sizeBytes: entry.responseSizeBytes,
+              sizeBytes: full.responseSizeBytes,
               ...(contentType ? { contentType } : {}),
-              timings: { totalMs: entry.durationMs },
-              sentAt: entry.sentAt,
+              timings: { totalMs: full.durationMs },
+              sentAt: full.sentAt,
             },
             error: null,
             startedAt: null,
-            finishedAt: new Date(entry.sentAt).getTime() + entry.durationMs,
+            finishedAt: new Date(full.sentAt).getTime() + full.durationMs,
           };
 
       const tab: Tab = {
         id: `draft:${crypto.randomUUID()}`,
         kind: 'draft',
         relPath: null,
-        name: `${entry.method} ${new URL(entry.url, 'http://x').host}`,
-        method: entry.method,
+        name: `${full.method} ${new URL(full.url, 'http://x').host}`,
+        method: full.method,
         builder: {
-          method: entry.method,
-          url: entry.url,
+          method: full.method,
+          url: full.url,
           params,
           headers,
-          body: entry.bodyPreview,
+          body: full.bodyPreview,
           bodyType,
           auth: { type: 'none' },
           settings: freshSettings(),
@@ -2548,7 +2654,7 @@ export const useAppStore = create<AppState>((set, get) => {
     activePane: 'params',
         responseSearch: '',
         responseMode: null,
-        sourceHistoryId: entry.id,
+        sourceHistoryId: full.id,
       };
 
       set({ tabs: [...get().tabs, tab], activeTabId: tab.id });

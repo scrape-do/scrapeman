@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { HistoryEntry } from '@scrapeman/shared-types';
 import { useAppStore } from '../store.js';
 import {
@@ -9,6 +9,9 @@ import {
   ContextMenuTrigger,
 } from '../ui/ContextMenu.js';
 import { ConfirmDialog } from '../ui/Dialog.js';
+
+// Delay before firing a server-side search after the user stops typing (ms).
+const SEARCH_DEBOUNCE_MS = 300;
 
 const METHOD_COLOR: Record<string, string> = {
   GET: 'text-method-get',
@@ -22,9 +25,13 @@ const METHOD_COLOR: Record<string, string> = {
 
 export function HistoryPanel(): JSX.Element {
   const history = useAppStore((s) => s.history);
+  const historyHasMore = useAppStore((s) => s.historyHasMore);
+  const historyLoadingOlder = useAppStore((s) => s.historyLoadingOlder);
   const restore = useAppStore((s) => s.restoreHistoryEntry);
   const deleteEntry = useAppStore((s) => s.deleteHistoryEntry);
   const clearAll = useAppStore((s) => s.clearHistory);
+  const loadOlderHistory = useAppStore((s) => s.loadOlderHistory);
+  const searchHistory = useAppStore((s) => s.searchHistory);
 
   const [expanded, setExpanded] = useState(true);
   const [confirmClear, setConfirmClear] = useState(false);
@@ -32,18 +39,54 @@ export function HistoryPanel(): JSX.Element {
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const searchActive = query.trim().length > 0;
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return history;
-    return history.filter((e) => {
-      if (e.method.toLowerCase().includes(q)) return true;
-      if (e.url.toLowerCase().includes(q)) return true;
-      if (String(e.status).includes(q)) return true;
-      return false;
-    });
-  }, [history, query]);
+  // Server-side search: debounce the query and call searchHistory so the full
+  // file is scanned, not just the loaded window.
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleQueryChange = useCallback(
+    (value: string) => {
+      setQuery(value);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => {
+        void searchHistory(value);
+      }, SEARCH_DEBOUNCE_MS);
+    },
+    [searchHistory],
+  );
+  useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current); }, []);
 
-  const groups = useMemo(() => groupByDate(filtered), [filtered]);
+  // history from the store is already filtered server-side when a search is active.
+  const groups = useMemo(() => groupByDate(history), [history]);
+
+  // Sentinel element at the bottom of the scroll container. When it becomes
+  // visible, trigger loading older entries (infinite scroll).
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const loadOlderRef = useRef(loadOlderHistory);
+  loadOlderRef.current = loadOlderHistory;
+
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          void loadOlderRef.current();
+        }
+      },
+      { threshold: 0.1 },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const handleToggleGroup = useCallback(
+    (label: string) => {
+      setCollapsedGroups((prev) => ({
+        ...prev,
+        [label]: !(prev[label] ?? false),
+      }));
+    },
+    [],
+  );
 
   return (
     <div className="flex h-full flex-col border-t border-line">
@@ -54,7 +97,7 @@ export function HistoryPanel(): JSX.Element {
       >
         <span className="w-4 text-center text-lg leading-none">{expanded ? '▾' : '▸'}</span>
         <span className="flex-1">History</span>
-        <span className="text-ink-4">{history.length}</span>
+        <span className="text-ink-4">{history.length}{historyHasMore ? '+' : ''}</span>
         {history.length > 0 && (
           <button
             onClick={(e) => {
@@ -70,60 +113,75 @@ export function HistoryPanel(): JSX.Element {
       </button>
       {expanded && (
         <div className="flex flex-1 flex-col overflow-hidden">
-          {history.length > 0 && (
+          {(history.length > 0 || searchActive) && (
             <div className="sticky top-0 z-10 flex-shrink-0 border-b border-line bg-bg-canvas px-2 py-1.5">
               <input
                 type="text"
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={(e) => handleQueryChange(e.target.value)}
                 placeholder="Search history…"
                 className="h-6 w-full rounded border border-line bg-bg-sunken px-2 text-[11px] text-ink-1 placeholder:text-ink-4 focus:border-accent focus:outline-none"
               />
             </div>
           )}
           <div className="flex-1 overflow-y-auto pb-1">
-            {history.length === 0 ? (
+            {history.length === 0 && !searchActive ? (
               <div className="px-3 py-4 text-center text-[11px] text-ink-4">
                 No requests sent yet. Hit Send to start populating history.
               </div>
-            ) : filtered.length === 0 ? (
+            ) : history.length === 0 && searchActive ? (
               <div className="px-3 py-4 text-center text-[11px] text-ink-4">
-                No matches for “{query}”.
+                No matches for &quot;{query}&quot;.
               </div>
             ) : (
-              groups.map((group) => {
-                const collapsed = !searchActive && collapsedGroups[group.label] === true;
-                return (
-                  <div key={group.key}>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setCollapsedGroups((prev) => ({
-                          ...prev,
-                          [group.label]: !(prev[group.label] ?? false),
-                        }))
-                      }
-                      title="Toggle date group"
-                      className="sticky top-0 z-[5] flex w-full items-center gap-1.5 bg-bg-canvas/95 px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-wider text-ink-3 backdrop-blur hover:text-ink-1"
-                    >
-                      <span className="w-4 text-center text-lg leading-none">
-                        {collapsed ? '▸' : '▾'}
-                      </span>
-                      <span className="flex-1">{group.label}</span>
-                      <span className="text-ink-4">{group.entries.length}</span>
-                    </button>
-                    {!collapsed &&
-                      group.entries.map((entry) => (
-                        <HistoryRow
-                          key={entry.id}
-                          entry={entry}
-                          onRestore={() => restore(entry)}
-                          onDelete={() => void deleteEntry(entry.id)}
-                        />
-                      ))}
+              <>
+                {groups.map((group) => {
+                  const collapsed = !searchActive && collapsedGroups[group.label] === true;
+                  return (
+                    <div key={group.key}>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleGroup(group.label)}
+                        title="Toggle date group"
+                        className="sticky top-0 z-[5] flex w-full items-center gap-1.5 bg-bg-canvas/95 px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-wider text-ink-3 backdrop-blur hover:text-ink-1"
+                      >
+                        <span className="w-4 text-center text-lg leading-none">
+                          {collapsed ? '▸' : '▾'}
+                        </span>
+                        <span className="flex-1">{group.label}</span>
+                        <span className="text-ink-4">{group.entries.length}</span>
+                      </button>
+                      {!collapsed &&
+                        group.entries.map((entry) => (
+                          <HistoryRow
+                            key={entry.id}
+                            entry={entry}
+                            onRestore={() => void restore(entry)}
+                            onDelete={() => void deleteEntry(entry.id)}
+                          />
+                        ))}
+                    </div>
+                  );
+                })}
+                {/* Infinite-scroll sentinel: triggers loadOlderHistory when visible.
+                    Shown during search too — loadOlderHistory carries the active
+                    historyQuery so it paginates search results from the full file. */}
+                {historyHasMore && (
+                  <div ref={sentinelRef} className="px-3 py-2">
+                    {historyLoadingOlder ? (
+                      <span className="text-[10px] text-ink-4">Loading older entries…</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => void loadOlderHistory()}
+                        className="text-[10px] text-accent hover:underline"
+                      >
+                        Load older
+                      </button>
+                    )}
                   </div>
-                );
-              })
+                )}
+              </>
             )}
           </div>
         </div>
