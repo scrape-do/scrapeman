@@ -593,7 +593,7 @@ function buildBaseDispatcher(
     const scheme = parseProxyScheme(request.proxy.url);
     if (scheme === 'http' || scheme === 'https') {
       const proxyOpts: ProxyAgent.Options = {
-        uri: request.proxy.url,
+        uri: request.proxy.url.trim(),
         bodyTimeout,
         headersTimeout,
         maxHeaderSize: MAX_HEADER_SIZE,
