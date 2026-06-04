@@ -2,7 +2,9 @@
 
 All notable changes land here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.6.7] — 2026-06-04
+
+First release since 0.6.5. Crash and correctness fixes for request history, a memory audit that bounds several structures that grew during long sessions, and UI polish. Includes everything prepared for 0.6.6 (which was never tagged).
 
 ### Fixed
 - **History could OOM the app on boot.** The store eagerly read, parsed, and gunzip-decompressed every entry on open. On a large workspace (4692 entries, 284MB file) the renderer heap passed 3.8GB and crashed at ~8s. The store now reads only the tail of the file in 256KB chunks (O(window), not O(file)) and decompresses a full body only when an entry is opened. Retention stays unlimited — no entries are pruned, and the existing file is read untouched. UTF-8 multibyte characters that straddle a chunk boundary are rejoined at the byte level.
