@@ -14,6 +14,14 @@ All notable changes land here. Format follows [Keep a Changelog](https://keepach
 ### Added
 - **Large history bodies offload to per-entry sidecar blobs.** A request or response body over 64KB is written to `history/blobs/<hash>/<id>.{body,resp}.gz`; the JSONL index keeps only a reference and size, so list and tail reads stay small. The full body is read from the sidecar on entry open. Backward compatible: inline entries still read and the on-disk file is never rewritten. `delete` unlinks the blobs, `clear` drops the blob directory, and a missing sidecar falls back to an empty body.
 
+### Performance
+An audit found several structures that grew without bound during normal use. Each is now capped:
+- **History windows.** The main-process window cache prepended the full entry on every send and was never trimmed; the renderer history array grew the same way (one per send, plus a batch per scroll). Cap the main cache at 200 and the renderer window at 2000 rows. Older entries stay on disk and remain reachable through search.
+- **WebSocket.** The message timeline grew without bound on both the main client and the renderer tab — cap both at 5000. Each (re)connect leaked a `ProxyAgent`; it is now stored and closed on reconnect and disconnect. Closing a WS tab never disconnected, leaving the socket, ping interval, and timeline alive for the app lifetime — closing a tab now disconnects.
+- **Connection pooling.** `execute()` built a new undici `Agent`/`ProxyAgent` per request and never closed it, so a load or collection run created one per request and defeated pooling. Base dispatchers are cached by config and reused, and disposed on run completion and app quit.
+- **Load runner.** The latency sample and per-header value arrays grew O(iterations), and percentiles were re-sorted on every iteration (O(N² log N)). Cap the samples and recompute the heavy stats at most every 100ms; the final result stays exact.
+- **Runner results and tab responses.** Collection-run results are capped at the most recent 2000 (main and renderer) and finished runs are dropped when the panel closes. Open tabs keep at most 20 full response bodies; switching tabs clears the oldest (the request builder is untouched — re-send to view).
+
 ### Tests
 - 606 passing in `http-core` (+6 sidecar), 105 in `apps/desktop` (+5 nested-URL parse). 7 skipped. Typecheck clean.
 
