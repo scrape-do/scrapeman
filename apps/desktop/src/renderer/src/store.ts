@@ -106,6 +106,15 @@ const MAX_HISTORY_ROWS = 2000;
 // would otherwise grow this array (and the rendered list) without bound.
 const MAX_WS_TIMELINE = 5000;
 
+// Most recent per-request results kept per collection run. Each result can
+// carry a body preview, so an unbounded list balloons on large runs.
+const MAX_RUNNER_RESULTS = 2000;
+
+/** Append `item`, keeping at most `cap` most-recent entries. */
+function appendCapped<T>(arr: T[], item: T, cap: number): T[] {
+  return arr.length >= cap ? [...arr.slice(arr.length - cap + 1), item] : [...arr, item];
+}
+
 // localStorage keys for multi-workspace persistence (issue #61, Phase 1).
 const LS_OPEN_WORKSPACES = 'workspaces:open';
 const LS_LAST_ACTIVE_WORKSPACE = 'workspaces:lastActive';
@@ -2754,7 +2763,19 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     closeRunnerPanel: () => {
-      set((state) => ({ runner: { ...state.runner, open: false } }));
+      // Drop accumulated results of finished runs so they don't linger in
+      // memory for the session; keep any still-running run so its live
+      // updates are not lost.
+      set((state) => {
+        const runs = new Map(
+          [...state.runner.runs].filter(([, run]) => run.running),
+        );
+        const activeRunId =
+          state.runner.activeRunId && runs.has(state.runner.activeRunId)
+            ? state.runner.activeRunId
+            : null;
+        return { runner: { ...state.runner, open: false, runs, activeRunId } };
+      });
     },
 
     updateRunnerConfig: (patch) => {
@@ -2924,7 +2945,7 @@ export const useAppStore = create<AppState>((set, get) => {
           };
           runs.set(runId, {
             ...run,
-            results: [...run.results, result],
+            results: appendCapped(run.results, result, MAX_RUNNER_RESULTS),
             completedRequests: run.completedRequests + 1,
             succeeded: run.succeeded + (result.ok ? 1 : 0),
           });
@@ -2946,7 +2967,7 @@ export const useAppStore = create<AppState>((set, get) => {
           };
           runs.set(runId, {
             ...run,
-            results: [...run.results, result],
+            results: appendCapped(run.results, result, MAX_RUNNER_RESULTS),
             completedRequests: run.completedRequests + 1,
             failed: run.failed + 1,
           });

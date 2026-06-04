@@ -39,6 +39,19 @@ export interface LoadRunInput {
 // 64 KB cap on captured failure bodies.
 const FAILED_BODY_CAP_BYTES = 64 * 1024;
 
+// Caps so a very large run cannot grow these accumulators without bound.
+// Runs at or below the cap are exact; beyond it, latency/header percentiles
+// are computed over the first N samples collected.
+const LATENCY_SAMPLE_CAP = 100_000;
+const HEADER_NUMERIC_CAP = 50_000;
+// Distinct header values tracked per bucket; high-cardinality headers
+// (request ids, tokens) would otherwise add one Map key per request.
+const VALUE_COUNTS_CAP = 1_000;
+// The heavy per-snapshot work (sort latencies, finalize header stats) is
+// recomputed at most this often during a run; the final snapshot is always
+// exact. Decouples sort cost from iteration count (was O(N^2 log N)).
+const HEAVY_RECOMPUTE_MS = 100;
+
 export interface LoadProgress {
   sent: number;
   succeeded: number;
@@ -152,6 +165,17 @@ function shouldTrack(
   return false;
 }
 
+/**
+ * Increment a value's count, but stop adding NEW distinct keys once the map
+ * hits VALUE_COUNTS_CAP. Existing keys keep counting. Bounds high-cardinality
+ * headers (request ids, tokens) that would otherwise add a key per request.
+ */
+function bumpValueCount(m: Map<string, number>, value: string): void {
+  const cur = m.get(value);
+  if (cur !== undefined) m.set(value, cur + 1);
+  else if (m.size < VALUE_COUNTS_CAP) m.set(value, 1);
+}
+
 function accumulateHeader(
   acc: Map<string, HeaderAcc>,
   name: string,
@@ -177,8 +201,10 @@ function accumulateHeader(
   const isNumeric = Number.isFinite(numVal);
 
   // Global bucket
-  entry.valueCounts.set(value, (entry.valueCounts.get(value) ?? 0) + 1);
-  if (isNumeric) entry.numericValues.push(numVal);
+  bumpValueCount(entry.valueCounts, value);
+  if (isNumeric && entry.numericValues.length < HEADER_NUMERIC_CAP) {
+    entry.numericValues.push(numVal);
+  }
   entry.totalValues++;
 
   // Per-status bucket
@@ -187,8 +213,10 @@ function accumulateHeader(
     statusAcc = { valueCounts: new Map(), numericValues: [], totalValues: 0 };
     entry.byStatus.set(status, statusAcc);
   }
-  statusAcc.valueCounts.set(value, (statusAcc.valueCounts.get(value) ?? 0) + 1);
-  if (isNumeric) statusAcc.numericValues.push(numVal);
+  bumpValueCount(statusAcc.valueCounts, value);
+  if (isNumeric && statusAcc.numericValues.length < HEADER_NUMERIC_CAP) {
+    statusAcc.numericValues.push(numVal);
+  }
   statusAcc.totalValues++;
 }
 
@@ -257,14 +285,36 @@ export async function runLoad(
     return sortedArr[idx]!;
   };
 
+  // The cheap part of a snapshot (counts, rps, lastEvent) is computed every
+  // call so the events stream stays complete. The heavy part (sorting the
+  // latency sample, finalizing header stats) is cached and recomputed at most
+  // every HEAVY_RECOMPUTE_MS, and always on the final snapshot.
+  let lastHeavyAt = -Infinity;
+  let cachedLatency = { p50: 0, p95: 0, p99: 0, min: 0, max: 0 };
+  let cachedHeaderStats: Record<string, WatchedHeaderStats> | undefined;
+
   const snapshot = (
     lastEvent: LoadEvent | null,
     done: boolean,
     lastFailedBodyEvent?: LoadFailedBodyEvent,
   ): LoadProgress => {
-    const sorted = [...latencies].sort((a, b) => a - b);
     const elapsedMs = Date.now() - started;
     const currentRps = elapsedMs > 0 ? (sent * 1000) / elapsedMs : 0;
+
+    if (done || elapsedMs - lastHeavyAt >= HEAVY_RECOMPUTE_MS) {
+      const sorted = [...latencies].sort((a, b) => a - b);
+      cachedLatency = {
+        p50: percentile(sorted, 0.5),
+        p95: percentile(sorted, 0.95),
+        p99: percentile(sorted, 0.99),
+        min: sorted[0] ?? 0,
+        max: sorted[sorted.length - 1] ?? 0,
+      };
+      cachedHeaderStats =
+        trackingEnabled && headerAcc.size > 0 ? finalizeStats(headerAcc) : undefined;
+      lastHeavyAt = elapsedMs;
+    }
+
     const base: LoadProgress = {
       sent,
       succeeded,
@@ -272,11 +322,11 @@ export async function runLoad(
       validationFailures,
       inflight,
       currentRps,
-      latencyP50: percentile(sorted, 0.5),
-      latencyP95: percentile(sorted, 0.95),
-      latencyP99: percentile(sorted, 0.99),
-      latencyMin: sorted[0] ?? 0,
-      latencyMax: sorted[sorted.length - 1] ?? 0,
+      latencyP50: cachedLatency.p50,
+      latencyP95: cachedLatency.p95,
+      latencyP99: cachedLatency.p99,
+      latencyMin: cachedLatency.min,
+      latencyMax: cachedLatency.max,
       statusHistogram: { ...statusHistogram },
       errorKinds: { ...errorKinds },
       elapsedMs,
@@ -285,9 +335,7 @@ export async function runLoad(
       ...(lastFailedBodyEvent !== undefined ? { lastFailedBodyEvent } : {}),
       done,
     };
-    if (trackingEnabled && headerAcc.size > 0) {
-      base.watchedHeaderStats = finalizeStats(headerAcc);
-    }
+    if (cachedHeaderStats) base.watchedHeaderStats = cachedHeaderStats;
     return base;
   };
 
@@ -325,7 +373,7 @@ export async function runLoad(
     try {
       const response = await executor.execute(prepared, { signal });
       const durationMs = performance.now() - t0;
-      latencies.push(durationMs);
+      if (latencies.length < LATENCY_SAMPLE_CAP) latencies.push(durationMs);
       const bucket = String(response.status);
       statusHistogram[bucket] = (statusHistogram[bucket] ?? 0) + 1;
 
@@ -382,7 +430,7 @@ export async function runLoad(
       return { event, ...(failedBodyEvent !== undefined ? { failedBodyEvent } : {}) };
     } catch (err) {
       const durationMs = performance.now() - t0;
-      latencies.push(durationMs);
+      if (latencies.length < LATENCY_SAMPLE_CAP) latencies.push(durationMs);
       failed++;
       const kind = err instanceof ExecutorError ? err.kind : 'unknown';
       errorKinds[kind] = (errorKinds[kind] ?? 0) + 1;

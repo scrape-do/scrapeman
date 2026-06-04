@@ -150,6 +150,10 @@ export interface RunnerResult {
 /** Max body bytes to include in per-request event payloads / results. */
 const PREVIEW_LIMIT = 512 * 1024;
 
+/** Most recent per-request results retained in a run; bounds memory on huge
+ *  runs where each result can carry a body preview up to PREVIEW_LIMIT. */
+const MAX_RUNNER_RESULTS = 2000;
+
 // Core runner ----------------------------------------------------------------
 
 /**
@@ -366,6 +370,12 @@ export async function runCollection(input: RunnerInput): Promise<RunnerResult> {
     const iterFailed = iterResults.filter((r) => !r.ok).length;
 
     allResults.push(...iterResults);
+    // Bound retained detail so a huge run cannot hold one result (with a body
+    // preview up to 512KB) per request forever. Summary counts above stay
+    // exact; only the detailed list is windowed to the most recent entries.
+    if (allResults.length > MAX_RUNNER_RESULTS) {
+      allResults.splice(0, allResults.length - MAX_RUNNER_RESULTS);
+    }
 
     emit({
       kind: 'iteration-done',
