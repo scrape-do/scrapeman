@@ -16,6 +16,13 @@ const TAIL_CHUNK_BYTES = 256 * 1024;
 // files from ballooning. Smaller bodies stay as plain UTF-8 strings.
 const GZIP_THRESHOLD_BYTES = 256;
 
+// Bodies larger than this (raw, uncompressed) are offloaded to a per-entry
+// sidecar blob file instead of being stored inline in the JSONL. The index
+// line then carries only a reference + size, so list/tail reads stay cheap
+// and the index file does not balloon with multi-MB responses. The full
+// body is read from the sidecar only on getById (entry open).
+const SIDECAR_THRESHOLD_BYTES = 64 * 1024;
+
 // Default preview cap (effectively unlimited; tests may pass smaller values).
 const DEFAULT_BODY_PREVIEW_BYTES = Number.MAX_SAFE_INTEGER;
 
@@ -42,6 +49,14 @@ interface StoredEntry
   responseBodyPreview?: string;
   _bodyGz?: string;
   _respGz?: string;
+  // Large bodies are offloaded to sidecar blobs at
+  // history/blobs/<hash>/<id>.{body,resp}.gz. The flag marks that the full
+  // body lives in the sidecar (no inline body is kept); _bodySize / _respSize
+  // record the full raw byte length.
+  _bodyRef?: boolean;
+  _respRef?: boolean;
+  _bodySize?: number;
+  _respSize?: number;
 }
 
 /**
@@ -97,8 +112,11 @@ export class HistoryStore {
     };
 
     // Append only — O(1), no read of existing entries, no decompression.
+    // Large bodies are offloaded to sidecar blobs first; the JSONL keeps a
+    // short summary so the index file stays small.
+    const stored = await this.serializeWithSidecars(workspacePath, full);
     const file = this.fileFor(workspacePath);
-    await this.appendOne(file, full);
+    await this.appendOne(file, stored);
 
     // Prepend to the cached window so the new entry is immediately visible
     // to the renderer without requiring a reload.
@@ -187,7 +205,9 @@ export class HistoryStore {
       return null;
     }
 
-    return tailFindById(file, stat.size, id);
+    const stored = await tailFindById(file, stat.size, id);
+    if (!stored) return null;
+    return this.hydrate(workspacePath, stored);
   }
 
   /**
@@ -228,6 +248,9 @@ export class HistoryStore {
       'utf8',
     );
 
+    // Drop any sidecar blobs for the removed entry (best-effort).
+    await this.removeBlobs(workspacePath, id);
+
     // Evict cache so the next list() re-reads the updated file.
     this.windowCache.delete(workspacePath);
   }
@@ -237,6 +260,10 @@ export class HistoryStore {
     const file = this.fileFor(workspacePath);
     await fsp.mkdir(dirname(file), { recursive: true });
     await fsp.writeFile(file, '', 'utf8');
+    // Remove the whole sidecar blob directory for this workspace.
+    await fsp
+      .rm(this.blobDir(workspacePath), { recursive: true, force: true })
+      .catch(() => {});
   }
 
   /** Absolute path of the on-disk history file for this workspace. */
@@ -255,21 +282,173 @@ export class HistoryStore {
     else this.windowCache.clear();
   }
 
-  private async appendOne(file: string, entry: HistoryEntry): Promise<void> {
+  private async appendOne(file: string, stored: StoredEntry): Promise<void> {
     await fsp.mkdir(dirname(file), { recursive: true });
-    await fsp.appendFile(
-      file,
-      JSON.stringify(serializeEntry(entry)) + '\n',
-      'utf8',
+    await fsp.appendFile(file, JSON.stringify(stored) + '\n', 'utf8');
+  }
+
+  /**
+   * Build the on-disk StoredEntry, offloading large bodies to sidecar blob
+   * files. Small bodies keep the inline behaviour (plain, or gzip+base64
+   * over GZIP_THRESHOLD_BYTES). When a sidecar write fails the body falls
+   * back to inline gzip, so nothing is ever lost.
+   */
+  private async serializeWithSidecars(
+    workspacePath: string,
+    entry: HistoryEntry,
+  ): Promise<StoredEntry> {
+    const out: StoredEntry = { ...entry };
+    delete (out as { bodyPreview?: string }).bodyPreview;
+    delete (out as { responseBodyPreview?: string }).responseBodyPreview;
+
+    if (entry.bodyPreview) {
+      const rawBytes = Buffer.byteLength(entry.bodyPreview, 'utf8');
+      if (
+        rawBytes > SIDECAR_THRESHOLD_BYTES &&
+        (await this.writeBlob(workspacePath, entry.id, 'body', entry.bodyPreview))
+      ) {
+        // Offloaded: keep only a reference + size. The list shows metadata
+        // only; the full body is read from the sidecar on getById.
+        out._bodyRef = true;
+        out._bodySize = rawBytes;
+      } else if (rawBytes >= GZIP_THRESHOLD_BYTES) {
+        out._bodyGz = gzipSync(Buffer.from(entry.bodyPreview, 'utf8')).toString(
+          'base64',
+        );
+      } else {
+        out.bodyPreview = entry.bodyPreview;
+      }
+    }
+
+    if (entry.responseBodyPreview) {
+      const rawBytes = Buffer.byteLength(entry.responseBodyPreview, 'utf8');
+      if (
+        rawBytes > SIDECAR_THRESHOLD_BYTES &&
+        (await this.writeBlob(
+          workspacePath,
+          entry.id,
+          'resp',
+          entry.responseBodyPreview,
+        ))
+      ) {
+        out._respRef = true;
+        out._respSize = rawBytes;
+      } else if (rawBytes >= GZIP_THRESHOLD_BYTES) {
+        out._respGz = gzipSync(
+          Buffer.from(entry.responseBodyPreview, 'utf8'),
+        ).toString('base64');
+      } else {
+        out.responseBodyPreview = entry.responseBodyPreview;
+      }
+    }
+
+    return out;
+  }
+
+  /**
+   * Write a gzipped body to its sidecar file. Returns false on any failure
+   * so the caller can fall back to inline storage (never lose the body).
+   */
+  private async writeBlob(
+    workspacePath: string,
+    id: string,
+    kind: 'body' | 'resp',
+    content: string,
+  ): Promise<boolean> {
+    try {
+      await fsp.mkdir(this.blobDir(workspacePath), { recursive: true });
+      await fsp.writeFile(
+        this.blobPath(workspacePath, id, kind),
+        gzipSync(Buffer.from(content, 'utf8')),
+      );
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Resolve a stored entry's full bodies: read the sidecar blob when the
+   * body was offloaded, decompress inline gzip otherwise. Used by getById.
+   */
+  private async hydrate(
+    workspacePath: string,
+    stored: StoredEntry,
+  ): Promise<HistoryEntry> {
+    const bodyPreview = await this.resolveBody(
+      workspacePath,
+      stored.id,
+      'body',
+      stored._bodyRef === true,
+      stored._bodyGz,
+      stored.bodyPreview,
     );
+    const responseBodyPreview = await this.resolveBody(
+      workspacePath,
+      stored.id,
+      'resp',
+      stored._respRef === true,
+      stored._respGz,
+      stored.responseBodyPreview,
+    );
+    const out = { ...stored, bodyPreview, responseBodyPreview } as HistoryEntry;
+    deleteInternalFields(out);
+    return out;
+  }
+
+  private async resolveBody(
+    workspacePath: string,
+    id: string,
+    kind: 'body' | 'resp',
+    isRef: boolean,
+    gz: string | undefined,
+    inlinePreview: string | undefined,
+  ): Promise<string> {
+    if (isRef) {
+      try {
+        const buf = await fsp.readFile(this.blobPath(workspacePath, id, kind));
+        return gunzipSync(buf).toString('utf8');
+      } catch {
+        // Sidecar missing or corrupt — fall back to the inline summary.
+        return inlinePreview ?? '';
+      }
+    }
+    if (gz) {
+      try {
+        return gunzipSync(Buffer.from(gz, 'base64')).toString('utf8');
+      } catch {
+        return '';
+      }
+    }
+    return inlinePreview ?? '';
+  }
+
+  /** Remove both sidecar blobs for an entry (best-effort). */
+  private async removeBlobs(workspacePath: string, id: string): Promise<void> {
+    await Promise.all([
+      fsp.unlink(this.blobPath(workspacePath, id, 'body')).catch(() => {}),
+      fsp.unlink(this.blobPath(workspacePath, id, 'resp')).catch(() => {}),
+    ]);
+  }
+
+  private hashFor(workspacePath: string): string {
+    return createHash('sha1').update(workspacePath).digest('hex').slice(0, 16);
   }
 
   private fileFor(workspacePath: string): string {
-    const hash = createHash('sha1')
-      .update(workspacePath)
-      .digest('hex')
-      .slice(0, 16);
-    return join(this.rootDir, 'history', `${hash}.jsonl`);
+    return join(this.rootDir, 'history', `${this.hashFor(workspacePath)}.jsonl`);
+  }
+
+  private blobDir(workspacePath: string): string {
+    return join(this.rootDir, 'history', 'blobs', this.hashFor(workspacePath));
+  }
+
+  private blobPath(
+    workspacePath: string,
+    id: string,
+    kind: 'body' | 'resp',
+  ): string {
+    return join(this.blobDir(workspacePath), `${id}.${kind}.gz`);
   }
 }
 
@@ -401,13 +580,14 @@ async function tailRead(
 
 /**
  * Scan the file from the tail backward, looking for an entry with the given
- * ID. When found, returns it with full bodies decompressed.
+ * ID. Returns the raw stored line; the caller (getById) hydrates bodies,
+ * reading sidecar blobs or decompressing inline gzip as needed.
  */
 async function tailFindById(
   file: string,
   fileSize: number,
   id: string,
-): Promise<HistoryEntry | null> {
+): Promise<StoredEntry | null> {
   let remaining = fileSize;
   // Carry raw bytes — same buffer-level approach as tailRead to avoid
   // multibyte UTF-8 corruption when a character straddles a chunk boundary.
@@ -450,7 +630,7 @@ async function tailFindById(
         try {
           const stored = JSON.parse(line) as StoredEntry;
           if (stored.id === id) {
-            return deserializeEntry(stored);
+            return stored;
           }
         } catch {
           continue;
@@ -465,7 +645,7 @@ async function tailFindById(
         try {
           const stored = JSON.parse(line) as StoredEntry;
           if (stored.id === id) {
-            return deserializeEntry(stored);
+            return stored;
           }
         } catch {
           /* skip */
@@ -483,39 +663,11 @@ async function tailFindById(
 // Serialization helpers
 // ---------------------------------------------------------------------------
 
-function serializeEntry(entry: HistoryEntry): StoredEntry {
-  const out: StoredEntry = { ...entry };
-  delete (out as { bodyPreview?: string }).bodyPreview;
-  delete (out as { responseBodyPreview?: string }).responseBodyPreview;
-
-  if (entry.bodyPreview) {
-    if (Buffer.byteLength(entry.bodyPreview, 'utf8') >= GZIP_THRESHOLD_BYTES) {
-      out._bodyGz = gzipSync(Buffer.from(entry.bodyPreview, 'utf8')).toString(
-        'base64',
-      );
-    } else {
-      out.bodyPreview = entry.bodyPreview;
-    }
-  }
-  if (entry.responseBodyPreview) {
-    if (
-      Buffer.byteLength(entry.responseBodyPreview, 'utf8') >=
-      GZIP_THRESHOLD_BYTES
-    ) {
-      out._respGz = gzipSync(
-        Buffer.from(entry.responseBodyPreview, 'utf8'),
-      ).toString('base64');
-    } else {
-      out.responseBodyPreview = entry.responseBodyPreview;
-    }
-  }
-  return out;
-}
-
 /**
- * Deserialize a stored entry WITHOUT decompressing _bodyGz / _respGz.
- * Returns metadata + any inline (small) preview only.
- * Used by list() so batches never allocate decompressed body memory.
+ * Deserialize a stored entry WITHOUT decompressing or reading any body.
+ * Returns metadata + any inline (small) preview / summary only.
+ * Used by list() so batches never allocate decompressed body memory and
+ * never touch sidecar blobs.
  */
 function deserializeMetaOnly(stored: StoredEntry): HistoryEntry {
   const out = {
@@ -523,45 +675,19 @@ function deserializeMetaOnly(stored: StoredEntry): HistoryEntry {
     bodyPreview: stored.bodyPreview ?? '',
     responseBodyPreview: stored.responseBodyPreview ?? '',
   } as HistoryEntry;
-  // Remove compressed fields — intentionally not decompressed here.
-  delete (out as { _bodyGz?: string })._bodyGz;
-  delete (out as { _respGz?: string })._respGz;
+  deleteInternalFields(out);
   return out;
 }
 
-/**
- * Full deserialize — decompresses _bodyGz and _respGz.
- * Only called from getById().
- */
-function deserializeEntry(stored: StoredEntry): HistoryEntry {
-  let bodyPreview = stored.bodyPreview ?? '';
-  if (stored._bodyGz) {
-    try {
-      bodyPreview = gunzipSync(
-        Buffer.from(stored._bodyGz, 'base64'),
-      ).toString('utf8');
-    } catch {
-      bodyPreview = '';
-    }
-  }
-  let responseBodyPreview = stored.responseBodyPreview ?? '';
-  if (stored._respGz) {
-    try {
-      responseBodyPreview = gunzipSync(
-        Buffer.from(stored._respGz, 'base64'),
-      ).toString('utf8');
-    } catch {
-      responseBodyPreview = '';
-    }
-  }
-  const out = {
-    ...stored,
-    bodyPreview,
-    responseBodyPreview,
-  } as HistoryEntry;
-  delete (out as { _bodyGz?: string })._bodyGz;
-  delete (out as { _respGz?: string })._respGz;
-  return out;
+/** Strip the on-disk-only bookkeeping fields from a hydrated entry. */
+function deleteInternalFields(out: HistoryEntry): void {
+  const o = out as unknown as Record<string, unknown>;
+  delete o._bodyGz;
+  delete o._respGz;
+  delete o._bodyRef;
+  delete o._respRef;
+  delete o._bodySize;
+  delete o._respSize;
 }
 
 /**

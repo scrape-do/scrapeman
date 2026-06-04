@@ -515,3 +515,94 @@ describe('real file format compatibility', () => {
     expect(full!.responseBodyPreview).toBe(bigBody);
   });
 });
+
+/** List every sidecar blob file under the temp root (relative to blobs/). */
+async function blobFiles(): Promise<string[]> {
+  const { readdir } = await import('node:fs/promises');
+  const base = join(tmp, 'history', 'blobs');
+  try {
+    const out: string[] = [];
+    for (const hash of await readdir(base)) {
+      for (const f of await readdir(join(base, hash))) out.push(`${hash}/${f}`);
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+describe('HistoryStore — sidecar blobs for large bodies', () => {
+  it('offloads a large body to a sidecar and keeps the index line small', async () => {
+    const big = 'x'.repeat(200_000); // 200 KB > 64 KB threshold
+    const e = await store.insert(workspace, draft({ responseBodyPreview: big }));
+
+    // A sidecar blob was written.
+    expect((await blobFiles()).some((p) => p.endsWith('.resp.gz'))).toBe(true);
+
+    // The JSONL index line stays tiny — the body is not stored inline.
+    const { readFile } = await import('node:fs/promises');
+    const indexText = await readFile(store.getFilePath(workspace), 'utf8');
+    expect(indexText.length).toBeLessThan(4096);
+
+    // list() returns metadata only — no body, no decompression, no blob read.
+    const list = await store.list(workspace);
+    expect(list).toHaveLength(1);
+    expect(list[0].responseBodyPreview).toBe('');
+
+    // getById() reads the sidecar and returns the full body.
+    const full = await store.getById(workspace, e.id);
+    expect(full!.responseBodyPreview).toBe(big);
+  });
+
+  it('preserves multibyte UTF-8 through the sidecar round-trip', async () => {
+    const big = 'ş'.repeat(80_000); // 160 KB of 2-byte chars
+    const e = await store.insert(workspace, draft({ responseBodyPreview: big }));
+    const full = await store.getById(workspace, e.id);
+    expect(full!.responseBodyPreview).toBe(big);
+    expect(full!.responseBodyPreview.length).toBe(80_000);
+  });
+
+  it('keeps small bodies inline (no sidecar file)', async () => {
+    await store.insert(workspace, draft({ responseBodyPreview: 'small body' }));
+    expect(await blobFiles()).toHaveLength(0);
+    const list = await store.list(workspace);
+    expect(list[0].responseBodyPreview).toBe('small body');
+  });
+
+  it('removes sidecar blobs when an entry is deleted', async () => {
+    const e = await store.insert(
+      workspace,
+      draft({ responseBodyPreview: 'y'.repeat(100_000) }),
+    );
+    expect(await blobFiles()).not.toHaveLength(0);
+    await store.delete(workspace, e.id);
+    expect(await blobFiles()).toHaveLength(0);
+  });
+
+  it('removes the blob directory when history is cleared', async () => {
+    await store.insert(
+      workspace,
+      draft({ responseBodyPreview: 'z'.repeat(100_000) }),
+    );
+    expect(await blobFiles()).not.toHaveLength(0);
+    await store.clear(workspace);
+    expect(await blobFiles()).toHaveLength(0);
+  });
+
+  it('falls back to empty body when the sidecar is missing', async () => {
+    const e = await store.insert(
+      workspace,
+      draft({ responseBodyPreview: 'q'.repeat(100_000) }),
+    );
+    // Delete the sidecar out from under the index line.
+    const { readdir, rm: rmFile } = await import('node:fs/promises');
+    const base = join(tmp, 'history', 'blobs');
+    for (const hash of await readdir(base)) {
+      await rmFile(join(base, hash), { recursive: true, force: true });
+    }
+    // getById must not throw; it returns '' for the lost body.
+    const full = await store.getById(workspace, e.id);
+    expect(full).not.toBeNull();
+    expect(full!.responseBodyPreview).toBe('');
+  });
+});
