@@ -48,9 +48,14 @@ export class WebSocketClient extends EventEmitter {
   private pingTimer: ReturnType<typeof setInterval> | null = null;
   private pendingPing: PendingPing | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private dispatcher: ProxyAgent | null = null;
   private stopped = false;
   private currentUrl = '';
   private currentOptions: WebSocketClientOptions = {};
+
+  // Cap the recorded timeline so a long-lived, chatty connection cannot grow
+  // it without bound. Oldest entries are dropped once the cap is exceeded.
+  private static readonly MAX_TIMELINE = 5_000;
 
   getState(): WsConnectionState {
     return this.state;
@@ -58,6 +63,13 @@ export class WebSocketClient extends EventEmitter {
 
   getTimeline(): WsMessage[] {
     return [...this.timeline];
+  }
+
+  /** Append to the timeline, evicting the oldest entries past the cap. */
+  private pushTimeline(msg: WsMessage): void {
+    this.timeline.push(msg);
+    const overflow = this.timeline.length - WebSocketClient.MAX_TIMELINE;
+    if (overflow > 0) this.timeline.splice(0, overflow);
   }
 
   /** Connect to a WebSocket URL. Resolves once the socket is OPEN or rejects on first error. */
@@ -89,7 +101,7 @@ export class WebSocketClient extends EventEmitter {
       data: typeof data === 'string' ? data : `[binary ${data.byteLength}B]`,
       isBinary: typeof data !== 'string',
     };
-    this.timeline.push(msg);
+    this.pushTimeline(msg);
     this.emit('message', msg);
   }
 
@@ -100,6 +112,10 @@ export class WebSocketClient extends EventEmitter {
     if (this.ws && (this.state === 'OPEN' || this.state === 'CONNECTING')) {
       this._setState('CLOSING');
       this.ws.close(code, reason);
+    }
+    if (this.dispatcher) {
+      void this.dispatcher.close().catch(() => {});
+      this.dispatcher = null;
     }
   }
 
@@ -119,9 +135,14 @@ export class WebSocketClient extends EventEmitter {
     let onOpen = onOpenCb;
     let onError = onErrorCb;
 
-    const dispatcher = options.proxyUrl
-      ? new ProxyAgent(options.proxyUrl)
-      : undefined;
+    // Close any dispatcher from a previous (re)connect before making a new one;
+    // otherwise each reconnect orphans a ProxyAgent and its pooled sockets.
+    if (this.dispatcher) {
+      void this.dispatcher.close().catch(() => {});
+      this.dispatcher = null;
+    }
+    this.dispatcher = options.proxyUrl ? new ProxyAgent(options.proxyUrl) : null;
+    const dispatcher = this.dispatcher ?? undefined;
 
     let socket: InstanceType<typeof WebSocket>;
     try {
@@ -149,7 +170,7 @@ export class WebSocketClient extends EventEmitter {
         timestamp: Date.now(),
         data: 'Connected',
       };
-      this.timeline.push(statusMsg);
+      this.pushTimeline(statusMsg);
       this._startPing(options.pingIntervalMs ?? 30_000);
       if (onOpen) {
         onOpen();
@@ -180,7 +201,7 @@ export class WebSocketClient extends EventEmitter {
         data: displayData,
         isBinary,
       };
-      this.timeline.push(msg);
+      this.pushTimeline(msg);
       this.emit('message', msg);
     });
 
@@ -193,7 +214,7 @@ export class WebSocketClient extends EventEmitter {
         timestamp: Date.now(),
         data: `Disconnected (code ${ev.code}${ev.reason ? `: ${ev.reason}` : ''})`,
       };
-      this.timeline.push(statusMsg);
+      this.pushTimeline(statusMsg);
       if (onError) {
         // Open never fired — treat close as a connection error.
         onError(new Error(`WebSocket closed before open (code ${ev.code})`));
@@ -251,7 +272,7 @@ export class WebSocketClient extends EventEmitter {
             timestamp: sentAt,
             data: 'ping (no response)',
           };
-          this.timeline.push(msg);
+          this.pushTimeline(msg);
           this.emit('ping', msg);
         }
       }, 10_000);
@@ -273,7 +294,7 @@ export class WebSocketClient extends EventEmitter {
       latencyMs,
       data: `pong (${latencyMs}ms)`,
     };
-    this.timeline.push(msg);
+    this.pushTimeline(msg);
     this.emit('pong', msg);
   }
 
@@ -285,7 +306,7 @@ export class WebSocketClient extends EventEmitter {
       timestamp: Date.now(),
       data: `Reconnecting in ${delay}ms…`,
     };
-    this.timeline.push(statusMsg);
+    this.pushTimeline(statusMsg);
     this.reconnectTimer = setTimeout(() => {
       if (this.stopped) return;
       this._open(this.currentUrl, this.currentOptions, null, null);

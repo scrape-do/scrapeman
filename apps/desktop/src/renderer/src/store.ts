@@ -102,6 +102,10 @@ const closedTabStack: Array<{ tab: Tab; index: number }> = [];
 // this window, older entries stay on disk and remain reachable through search.
 const MAX_HISTORY_ROWS = 2000;
 
+// Hard cap on a tab's WebSocket message timeline. A long-lived, chatty stream
+// would otherwise grow this array (and the rendered list) without bound.
+const MAX_WS_TIMELINE = 5000;
+
 // localStorage keys for multi-workspace persistence (issue #61, Phase 1).
 const LS_OPEN_WORKSPACES = 'workspaces:open';
 const LS_LAST_ACTIVE_WORKSPACE = 'workspaces:lastActive';
@@ -119,6 +123,12 @@ function disposeTabRuntime(tab: Tab): void {
   if (runId !== null && (tab.loadTest.progress === null || !tab.loadTest.progress.done)) {
     // Fire-and-forget — we don't need to await the IPC call.
     void bridge.loadStop(runId);
+  }
+  // Tear down a live WebSocket so closing the tab does not orphan the main
+  // client — otherwise its open socket, ping interval, and growing timeline
+  // would survive for the whole app lifetime.
+  if (tab.websocket && tab.websocket.state !== 'CLOSED') {
+    void bridge.wsDisconnect(tab.websocket.connectionId);
   }
   inflightRequestIds.delete(tab.id);
 }
@@ -2338,7 +2348,13 @@ export const useAppStore = create<AppState>((set, get) => {
       const tabId = target.id;
       mutateById(tabId, (t) => {
         if (!t.websocket) return t;
-        const newTimeline = [...t.websocket.timeline, message];
+        // Cap the timeline so a chatty/long-lived stream cannot grow it without
+        // bound; keep the most recent MAX_WS_TIMELINE messages.
+        const prev = t.websocket.timeline;
+        const newTimeline =
+          prev.length >= MAX_WS_TIMELINE
+            ? [...prev.slice(prev.length - MAX_WS_TIMELINE + 1), message]
+            : [...prev, message];
         // Infer connection state from status messages.
         let state = t.websocket.state;
         if (message.direction === 'status') {
