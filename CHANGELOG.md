@@ -2,6 +2,21 @@
 
 All notable changes land here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- **History could OOM the app on boot.** The store eagerly read, parsed, and gunzip-decompressed every entry on open. On a large workspace (4692 entries, 284MB file) the renderer heap passed 3.8GB and crashed at ~8s. The store now reads only the tail of the file in 256KB chunks (O(window), not O(file)) and decompresses a full body only when an entry is opened. Retention stays unlimited — no entries are pruned, and the existing file is read untouched. UTF-8 multibyte characters that straddle a chunk boundary are rejoined at the byte level.
+- **Older history needed a manual "Load older" click.** The infinite-scroll observer attached once on mount, but the sentinel only renders after history loads, so it observed nothing and never fired. The observer now re-attaches when the sentinel appears, scopes to the scroll container, and prefetches ~600px ahead. The button is gone; older days stream in on scroll.
+- **A trailing scrape.do option was swallowed into the nested URL value.** Pasting `https://api.scrape.do/?token={{token}}&url=https://site/?a=1&b=2&super=true` folded `&super=true` into the `url` value instead of giving it its own param row, because the nested-URL fold never terminated. The fold now ends when a chunk's key is a known scrape.do option (on scrape.do hosts); generic proxy hosts keep folding.
+- **URL caret drifted onto the letters after a `{{var}}`.** The `{{var}}` highlight overlay used padding and a heavier font weight, so the overlaid token was wider than the real input text and the native caret slid past every variable. Highlights are now width-neutral (colour and background only). Affects every highlighted input — URL bar, params, headers, auth.
+- **Active tab stayed off-screen when the tab strip overflowed.** Switching tabs (click, Cmd+W, keyboard, boot restore) now scrolls the active tab into view. File-backed tab ids are escaped with `CSS.escape` so paths with selector-special characters do not throw.
+
+### Added
+- **Large history bodies offload to per-entry sidecar blobs.** A request or response body over 64KB is written to `history/blobs/<hash>/<id>.{body,resp}.gz`; the JSONL index keeps only a reference and size, so list and tail reads stay small. The full body is read from the sidecar on entry open. Backward compatible: inline entries still read and the on-disk file is never rewritten. `delete` unlinks the blobs, `clear` drops the blob directory, and a missing sidecar falls back to an empty body.
+
+### Tests
+- 606 passing in `http-core` (+6 sidecar), 105 in `apps/desktop` (+5 nested-URL parse). 7 skipped. Typecheck clean.
+
 ## [0.6.6] — 2026-05-16
 
 Patch release. Settings panel surfaces the auto-updater; load test gets two live charts and a graceful Stop.

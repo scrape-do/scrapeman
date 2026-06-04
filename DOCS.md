@@ -382,6 +382,8 @@ Every sent request is captured to a per-workspace JSONL file under the app data 
 
 **Compressed**: body preview fields are gzipped on disk when 256 bytes or larger (5-10x smaller).
 
+**Large bodies → sidecar**: a request or response body over 64KB is written to a sidecar blob file (`history/blobs/<hash>/<id>.{body,resp}.gz`) instead of inline. The index line keeps only a reference and the byte size, so the JSONL stays small and tail reads stay fast. The full body is read from the sidecar only when you open the entry. Existing inline entries still read; the on-disk file is never rewritten.
+
 ### Day-batched loading
 
 The store reads only the most recent batch (100 entries) from the tail of the file on open. Memory usage is O(loaded window), not O(file size). Larger files do not slow boot or cause out-of-memory crashes.
@@ -400,11 +402,13 @@ The sidebar History panel shows recent requests with:
 
 Click any entry to restore it into a new tab. Duplicate restores are detected and skipped.
 
-Scroll to the bottom of the panel to load older entries from disk.
+Older entries load by themselves as you scroll: the panel prefetches the next batch about 600px before you reach the bottom, so there is no "load older" button to click.
 
 ### Search and filter
 
-The history panel has a search bar that filters by request URL, method, and response body preview. Typing triggers a debounced full-file scan: the store reads the history file backward in 256 KB chunks and returns all matching entries, not just the ones already loaded into the panel. Pagination (infinite scroll) works during search — the "Load older" sentinel fetches the next batch with the same search term applied.
+The history panel has a search bar that filters by request URL, method, and response body preview. Typing triggers a debounced full-file scan: the store reads the history file backward in 256 KB chunks and returns all matching entries, not just the ones already loaded into the panel. Pagination works during search — older batches prefetch automatically as you approach the bottom, with the same search term applied.
+
+Body-content search matches only the small inline preview stored per entry. Larger bodies (gzipped inline, or offloaded to a sidecar over 64KB) are matched by URL and method, not by body content.
 
 ---
 
