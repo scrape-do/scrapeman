@@ -445,7 +445,7 @@ export function CommandPalette({ open, onClose, commands }: Props): JSX.Element 
             const input = (e.currentTarget as HTMLElement).querySelector<HTMLInputElement>('input');
             input?.focus();
           }}
-          className="fixed left-1/2 top-[20%] z-50 flex w-[860px] -translate-x-1/2 overflow-hidden rounded-lg border border-line bg-bg-canvas shadow-popover animate-slide-down-fade"
+          className="fixed left-1/2 top-[20%] z-50 flex w-[860px] -translate-x-1/2 overflow-hidden rounded-lg border border-line bg-bg-canvas shadow-popover animate-fade-in"
         >
           <RadixDialog.Title className="sr-only">Command palette</RadixDialog.Title>
 

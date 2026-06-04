@@ -295,7 +295,7 @@ function ImportDialog({
     <RadixDialog.Root open={open} onOpenChange={(next) => !next && onClose()}>
       <RadixDialog.Portal>
         <RadixDialog.Overlay className="fixed inset-0 z-[60] bg-ink-1/20 backdrop-blur-[2px] animate-fade-in" />
-        <RadixDialog.Content className="fixed left-1/2 top-1/2 z-[60] w-[560px] -translate-x-1/2 -translate-y-1/2 flex flex-col overflow-hidden rounded-lg border border-line bg-bg-canvas shadow-popover animate-slide-down-fade">
+        <RadixDialog.Content className="fixed left-1/2 top-1/2 z-[60] w-[560px] -translate-x-1/2 -translate-y-1/2 flex flex-col overflow-hidden rounded-lg border border-line bg-bg-canvas shadow-popover animate-fade-in">
           <div className="flex items-center justify-between border-b border-line px-5 py-4">
             <RadixDialog.Title className="text-sm font-semibold text-ink-1">
               Import cookies
@@ -455,7 +455,7 @@ export function CookiesPanel({
       <RadixDialog.Root open={open} onOpenChange={(next) => !next && onClose()}>
         <RadixDialog.Portal>
           <RadixDialog.Overlay className="fixed inset-0 z-50 bg-ink-1/20 backdrop-blur-[2px] animate-fade-in" />
-          <RadixDialog.Content className="fixed left-1/2 top-1/2 z-50 flex max-h-[80vh] w-[820px] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-line bg-bg-canvas shadow-popover animate-slide-down-fade">
+          <RadixDialog.Content className="fixed left-1/2 top-1/2 z-50 flex max-h-[80vh] w-[820px] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-line bg-bg-canvas shadow-popover animate-fade-in">
             {/* Header */}
             <div className="flex items-center justify-between border-b border-line px-5 py-4">
               <div>
