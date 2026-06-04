@@ -110,6 +110,12 @@ const MAX_WS_TIMELINE = 5000;
 // carry a body preview, so an unbounded list balloons on large runs.
 const MAX_RUNNER_RESULTS = 2000;
 
+// How many open tabs may keep a full response body in memory at once. Each
+// body is capped at ~2MB, so many open tabs can still add up. Beyond this,
+// the oldest tabs' responses are cleared on tab switch (the request builder
+// state is untouched — re-send to view the response again).
+const MAX_TABS_WITH_RESPONSE = 20;
+
 /** Append `item`, keeping at most `cap` most-recent entries. */
 function appendCapped<T>(arr: T[], item: T, cap: number): T[] {
   return arr.length >= cap ? [...arr.slice(arr.length - cap + 1), item] : [...arr, item];
@@ -1633,7 +1639,29 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     setActiveTab: (id: string) => {
-      if (get().tabs.some((t) => t.id === id)) set({ activeTabId: id });
+      const { tabs } = get();
+      if (!tabs.some((t) => t.id === id)) return;
+
+      // Bound how many open tabs keep a full response in memory. Keep the
+      // active tab plus the most recent (by strip order) responses up to the
+      // cap; clear the rest. Only the response view is reset — the request
+      // builder state is untouched, so a re-send brings it back.
+      const withResponse = tabs.filter((t) => t.execution.response !== null);
+      if (withResponse.length <= MAX_TABS_WITH_RESPONSE) {
+        set({ activeTabId: id });
+        return;
+      }
+      const keep = new Set<string>([id]);
+      for (let i = tabs.length - 1; i >= 0 && keep.size < MAX_TABS_WITH_RESPONSE; i--) {
+        const t = tabs[i]!;
+        if (t.execution.response !== null) keep.add(t.id);
+      }
+      const next = tabs.map((t) =>
+        t.execution.response !== null && !keep.has(t.id)
+          ? { ...t, execution: freshExecution() }
+          : t,
+      );
+      set({ activeTabId: id, tabs: next });
     },
 
     openRequest: async (relPath: string) => {
