@@ -71,6 +71,35 @@ export class UndiciExecutor implements RequestExecutor {
     this.rotateCounter = options.rotateCounter ?? { value: 0 };
   }
 
+  // Cache base dispatchers (Agent / ProxyAgent) keyed by the config that
+  // actually affects an Agent, so connection pools are reused instead of
+  // creating — and orphaning — a fresh Agent per request. Disposed via
+  // dispose() on teardown (app quit, run end).
+  private readonly dispatcherCache = new Map<string, Dispatcher>();
+
+  private getBaseDispatcher(
+    request: ScrapemanRequest,
+    totalTimeout: number,
+  ): Dispatcher {
+    const key = dispatcherKey(request, totalTimeout);
+    const cached = this.dispatcherCache.get(key);
+    if (cached) return cached;
+    const dispatcher = buildBaseDispatcher(request, totalTimeout);
+    this.dispatcherCache.set(key, dispatcher);
+    return dispatcher;
+  }
+
+  /**
+   * Close all pooled dispatchers and clear the cache. Call on teardown —
+   * app quit and after a load / collection run finishes — so connection
+   * pools and their sockets are released promptly.
+   */
+  async dispose(): Promise<void> {
+    const dispatchers = [...this.dispatcherCache.values()];
+    this.dispatcherCache.clear();
+    await Promise.all(dispatchers.map((d) => d.close().catch(() => {})));
+  }
+
   async execute(
     request: ScrapemanRequest,
     options: { signal?: AbortSignal } = {},
@@ -164,7 +193,7 @@ export class UndiciExecutor implements RequestExecutor {
     const redirectChain: RedirectHop[] = [];
 
     try {
-      const baseDispatcher = buildBaseDispatcher(requestWithProxy, totalTimeout);
+      const baseDispatcher = this.getBaseDispatcher(requestWithProxy, totalTimeout);
       const dispatcher = baseDispatcher.compose(
         // Our redirect tracker runs inside the redirect interceptor so that
         // each hop is captured before the redirect is followed.
@@ -512,6 +541,33 @@ function buildUrl(request: ScrapemanRequest): string {
 // cleanly. Bounded to stop a malicious server from forcing unbounded
 // allocations.
 const MAX_HEADER_SIZE = 256 * 1024;
+
+/**
+ * Cache key for a base dispatcher: every field that changes the resulting
+ * Agent / ProxyAgent. Requests sharing a key reuse the same connection pool.
+ */
+function dispatcherKey(request: ScrapemanRequest, totalTimeout: number): string {
+  const bodyTimeout = request.options?.timeout?.read ?? totalTimeout;
+  const headersTimeout = request.options?.timeout?.connect ?? totalTimeout;
+  const allowH2 = (request.options?.httpVersion ?? 'auto') === 'http2';
+  const ignoreInvalidCerts = request.options?.tls?.ignoreInvalidCerts === true;
+  const proxy =
+    request.proxy?.enabled && request.proxy.url.trim()
+      ? request.proxy.url.trim()
+      : '';
+  const auth =
+    proxy && request.proxy?.auth
+      ? `${request.proxy.auth.username}:${request.proxy.auth.password}`
+      : '';
+  return JSON.stringify([
+    bodyTimeout,
+    headersTimeout,
+    allowH2,
+    ignoreInvalidCerts,
+    proxy,
+    auth,
+  ]);
+}
 
 function buildBaseDispatcher(
   request: ScrapemanRequest,

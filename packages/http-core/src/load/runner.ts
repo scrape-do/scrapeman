@@ -455,6 +455,9 @@ export async function runLoad(
   const workers = Array.from({ length: concurrency }, () => worker());
   await Promise.all(workers);
 
+  // Release the executor's pooled dispatchers now the run is done.
+  await executor.dispose();
+
   const final = snapshot(null, true);
   onProgress(final);
   return final;

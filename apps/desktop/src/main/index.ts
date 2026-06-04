@@ -1519,6 +1519,8 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   disposeWebSocketClients();
   void workspaceManager.dispose();
+  // Release the long-lived executor's pooled connection dispatchers.
+  void executor.dispose();
 });
 
 function extractRequestBodyPreview(request: ScrapemanRequest): string {

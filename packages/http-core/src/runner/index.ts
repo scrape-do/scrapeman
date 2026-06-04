@@ -379,6 +379,9 @@ export async function runCollection(input: RunnerInput): Promise<RunnerResult> {
   const finishedAt = new Date().toISOString();
   const totalDurationMs = Date.now() - started;
 
+  // Release the executor's pooled dispatchers now the run is done.
+  await executor.dispose();
+
   if (aborted) {
     emit({ kind: 'aborted', elapsedMs: elapsed() });
   } else {
