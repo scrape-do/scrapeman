@@ -401,6 +401,70 @@ describe('paramsFromUrl — nested-URL heuristic (#88)', () => {
   });
 });
 
+describe('paramsFromUrl — scrape.do nested-URL termination (#88 follow-up)', () => {
+  // The reported regression: trailing scrape.do options like &super=true were
+  // swallowed into the url= value because the old fold loop never stopped.
+
+  it('splits off a trailing scrape.do option after an inner URL (reported case)', () => {
+    const url =
+      'https://api.scrape.do/?token={{token}}&url=https://www.amazon.de/-/en/LEGO-.../dp/B0DHS9Y433/?_encoding=UTF8&pd_rd_w=CsjdI&content-id=amzn1.sym.x&pf_rd_p=x&pf_rd_r=x&pd_rd_wg=x&pd_rd_r=x&ref_=x&th=1&super=true';
+    const rows = paramsFromUrl(url);
+    const keys = rows.map((r) => r.key);
+    expect(keys).toContain('super');
+    expect(keys).toContain('token');
+    expect(keys).toContain('url');
+
+    const superRow = rows.find((r) => r.key === 'super')!;
+    expect(superRow.value).toBe('true');
+
+    const urlRow = rows.find((r) => r.key === 'url')!;
+    // Inner amazon params must stay inside the url value.
+    expect(urlRow.value).toContain('_encoding=UTF8');
+    expect(urlRow.value).toContain('pd_rd_w=CsjdI');
+    expect(urlRow.value).toContain('th=1');
+    // The scrape.do option must NOT be folded into the url value.
+    expect(urlRow.value).not.toContain('super=true');
+  });
+
+  it('splits multiple scrape.do options after an inner URL', () => {
+    const url = 'https://api.scrape.do/?token=t&url=https://x.com?a=1&b=2&super=true&render=true';
+    const rows = paramsFromUrl(url);
+    expect(rows.map((r) => r.key)).toEqual(['token', 'url', 'super', 'render']);
+    const urlRow = rows.find((r) => r.key === 'url')!;
+    expect(urlRow.value).toBe('https://x.com?a=1&b=2');
+  });
+
+  it('handles a scrape.do option BEFORE url= without disrupting url folding', () => {
+    const url = 'https://api.scrape.do/?token=t&super=true&url=https://x.com?a=1&b=2';
+    const rows = paramsFromUrl(url);
+    expect(rows.map((r) => r.key)).toEqual(['token', 'super', 'url']);
+    const urlRow = rows.find((r) => r.key === 'url')!;
+    expect(urlRow.value).toBe('https://x.com?a=1&b=2');
+  });
+
+  it('folds everything on a generic non-scrape.do host (no allowlist)', () => {
+    // For unknown proxy hosts there is no allowlist, so all trailing
+    // chunks fold into the target= value.
+    const url = 'https://proxy.example.com/?target=https://x.com?a=1&b=2&c=3';
+    const rows = paramsFromUrl(url);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.key).toBe('target');
+    expect(rows[0]!.value).toBe('https://x.com?a=1&b=2&c=3');
+  });
+
+  it('preserves existing #88 behaviour: single nested url with only inner params', () => {
+    const rows = paramsFromUrl(
+      'https://api.scrape.do/?url=https://httpbin.co/anything?hello=world&merhaba=dunya&abc=1',
+    );
+    // No scrape.do terminator keys present — all inner params fold into url.
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.key).toBe('url');
+    expect(rows[0]!.value).toBe(
+      'https://httpbin.co/anything?hello=world&merhaba=dunya&abc=1',
+    );
+  });
+});
+
 describe('setUrl — Params sync', () => {
   beforeEach(() => {
     useAppStore.getState().newTab();

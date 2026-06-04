@@ -629,6 +629,21 @@ function freshSettings(): SettingsState {
 // which means a pasted URL survives byte-for-byte through paste → edit
 // → send → history. Users who want a decoded view can right-click a
 // cell and pick "URL decode" (already wired in CellContextMenu).
+
+// Known scrape.do query-parameter names. Used by paramsFromUrl to end
+// nested-URL folding: a trailing `&super=true` is an outer scrape.do
+// option, not part of the inner url= value. Mirrors the options scrape.do
+// documents (see packages/http-core/src/scrapeDo/compose.ts).
+const SCRAPE_DO_PARAMS = new Set<string>([
+  'token', 'url', 'super', 'render', 'geoCode', 'regionalGeoCode',
+  'sessionId', 'customHeaders', 'extraHeaders', 'forwardHeaders',
+  'setCookies', 'device', 'output', 'transparentResponse', 'returnJSON',
+  'waitUntil', 'customWait', 'waitSelector', 'blockResources', 'blockAds',
+  'width', 'height', 'playWithBrowser', 'disableRedirection', 'callback',
+  'timeout', 'retryTimeout', 'disableRetry', 'screenShot', 'fullScreenShot',
+  'particularScreenShot', 'showFrames', 'showWebsocketRequests', 'proxyCountry',
+]);
+
 export function paramsFromUrl(url: string): ParamRow[] {
   const qIndex = url.indexOf('?');
   if (qIndex < 0) return [];
@@ -639,24 +654,45 @@ export function paramsFromUrl(url: string): ParamRow[] {
   // `?url=https://target.com?a=1&b=2`. A spec-compliant client encodes
   // the inner `&`, but the convention in scraping land is to paste the
   // target URL raw. Without help, a naive `&` split would explode the
-  // inner URL into separate rows. Heuristic: when the previous chunk's
-  // value already contains a `?` (an inner-URL query separator), fold
-  // every subsequent chunk back into that value with `&` re-inserted.
-  // Falls back to the spec behaviour the moment a clean (non-`?`)
-  // value appears.
+  // inner URL into separate rows, so once a value contains a `?` (the inner
+  // URL's query separator) we fold subsequent chunks back into it.
+  //
+  // The fold must terminate, otherwise an outer scrape.do option trailing
+  // the nested URL (e.g. `&super=true`) gets swallowed into the `url` value
+  // instead of becoming its own row. On scrape.do endpoints we know the
+  // option names, so a chunk whose key is a known scrape.do parameter ends
+  // the fold and starts a fresh row. The allowlist is only applied when the
+  // outer base URL is a scrape.do host; for arbitrary proxy hosts there is
+  // no reliable signal, so folding continues as before.
+  const base = url.slice(0, qIndex);
+  const isScrapeDo = base.includes('scrape.do');
+
   const chunks = queryString.split('&');
   const merged: string[] = [];
+  let folding = false;
   for (const chunk of chunks) {
-    const prev = merged[merged.length - 1];
-    if (prev !== undefined) {
-      const eqInPrev = prev.indexOf('=');
-      const prevValue = eqInPrev >= 0 ? prev.slice(eqInPrev + 1) : '';
-      if (prevValue.includes('?')) {
-        merged[merged.length - 1] = prev + '&' + chunk;
-        continue;
+    if (folding) {
+      // On a scrape.do host, a chunk whose key is a known scrape.do option
+      // ends the nested-URL fold and starts its own row (e.g. &super=true).
+      if (isScrapeDo) {
+        const eqPos = chunk.indexOf('=');
+        const chunkKey = eqPos >= 0 ? chunk.slice(0, eqPos) : chunk;
+        if (SCRAPE_DO_PARAMS.has(chunkKey)) {
+          merged.push(chunk);
+          folding = false;
+          continue;
+        }
       }
+      // Inner-URL param — fold back into the nested url= value.
+      const last = merged.length - 1;
+      merged[last] = `${merged[last] ?? ''}&${chunk}`;
+      continue;
     }
     merged.push(chunk);
+    // Enter folding once a value contains '?' (the inner URL's query start).
+    const eqPos = chunk.indexOf('=');
+    const value = eqPos >= 0 ? chunk.slice(eqPos + 1) : '';
+    if (value.includes('?')) folding = true;
   }
 
   const out: ParamRow[] = [];
