@@ -365,9 +365,14 @@ function renderHighlighted(
     // palette so users notice they will be sent as empty at request time.
     const name = match[0].slice(2, -2).trim();
     const isKnown = knownVariables.has(name);
+    // The highlight overlay must stay exactly as wide as the real input text,
+    // otherwise the native caret (positioned by the input's plain-text
+    // metrics) drifts past every `{{var}}` and lands on top of later glyphs.
+    // So: colour + background only — no horizontal padding, no font-weight
+    // change. Both would widen the overlaid token relative to the input.
     const cls = isKnown
-      ? 'rounded-sm bg-accent-soft px-0.5 font-medium text-accent'
-      : 'rounded-sm bg-method-delete/10 px-0.5 font-medium text-method-delete';
+      ? 'rounded-sm bg-accent-soft text-accent'
+      : 'rounded-sm bg-method-delete/10 text-method-delete';
     parts.push(
       <span
         key={`v-${match.index}`}
