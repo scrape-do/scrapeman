@@ -12,6 +12,7 @@ import { SplitPane, type SplitOrientation } from './components/SplitPane.js';
 import { GitStatusBar } from './components/GitStatusBar.js';
 import { ParallelBurstHud } from './components/ParallelBurstHud.js';
 import { PostUpdateChangelog } from './components/PostUpdateChangelog.js';
+import { WelcomeDialog } from './components/WelcomeDialog.js';
 import { useAppStore } from './store.js';
 import { bridge } from './bridge.js';
 import { usePlatform } from './hooks/usePlatform.js';
@@ -437,6 +438,7 @@ export function App(): JSX.Element {
       />
       <ParallelBurstHud />
       <PostUpdateChangelog />
+      <WelcomeDialog />
       <RunnerPanel />
     </div>
   );
