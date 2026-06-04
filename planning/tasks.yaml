@@ -1310,9 +1310,47 @@ tasks:
       - If the user has never checked "don't ask again", the default behavior is always to show the dialog for dirty tabs
       - The dialog text clearly shows which tab is about to be closed (request name or "Untitled")
 
+  - id: T1308
+    title: "Auto-scroll active tab into view when tab strip overflows"
+    milestone: M13
+    owner: developer-ui
+    estimate_hours: 2
+    depends_on: []
+    tags: [ui, ux-polish, bug]
+    acceptance:
+      - When open tabs overflow the horizontal space and the active tab is off-screen, the tab strip scrolls so the active tab becomes visible automatically. No manual left/right scrolling to locate it.
+      - Triggers on every activeTabId change, including switching via click, Cmd+W close (focus moves to neighbor), Ctrl+Tab / Cmd+1..9 keyboard switching, restoring tabs on boot, and reveal/open-in-tab actions from the sidebar or command palette.
+      - Uses scrollIntoView with inline 'nearest' so an already-visible active tab is not re-centered or jumped around (matches the existing patterns in CommandPalette.tsx and Sidebar.tsx).
+      - Does not interfere with drag-to-reorder — reordering a tab must not trigger an unwanted scroll jump.
+      - Implementation lives in apps/desktop/src/renderer/src/components/TabBar.tsx. Add a data-tab-id={tab.id} attribute to the TabItem DOM node and a ref on the overflow-x-auto scroll container (line 46), then a useEffect keyed on [activeTabId, tabs.length] that scrolls the matching node into view.
+      - No regression on the no-overflow case (few tabs that all fit): nothing scrolls, no layout shift.
+
+  - id: T1309
+    title: "Fix history OOM: day-batched lazy loading, no trimming, full retention"
+    milestone: M13
+    owner: ninja-fullstack
+    estimate_hours: 10
+    depends_on: []
+    tags: [core, ui, bug, performance]
+    priority: high
+    acceptance:
+      - "Repro: a per-workspace history file (history/<sha1>.jsonl) grown to hundreds of MB (real case: 4692 entries, ~284MB, single gzipped response bodies over 1MB) crashes the app on boot with 'JavaScript heap out of memory'. After the fix the app boots normally with that SAME file in place, untouched. Verify against the user's real 284MB file."
+      - "Root cause: packages/http-core/src/history/store.ts load() (lines 130-150) reads the ENTIRE .jsonl into a string, splits it, and runs deserializeEntry on every line — which gunzipSync-decompresses _bodyGz and _respGz (lines 224-244) for ALL entries. list() applies the limit only AFTER the full file is loaded and every body decompressed, so the decompressed payload balloons the heap to multiple GB."
+      - "PRODUCT DECISION (do not deviate): history is NEVER trimmed. Full retention, all days kept on disk forever. The existing maxEntries=5000 prune behavior must be REMOVED or made effectively unbounded — confirm with PM if unsure, but the user explicitly wants no trimming."
+      - "Loading model: history is grouped by local day. On boot / panel open, load ONLY the most recent day (or most recent batch). As the user scrolls the history panel toward older entries, fetch older days in batches (infinite scroll / 'load older'). Use the existing HistoryListOptions.before cursor for pagination; extend options if a day-window is cleaner (e.g. before + limit, or an explicit day key)."
+      - "Read layer must be O(window) memory, never O(file size). The append-only file has newest entries at the end. Read backward from the tail in chunks, parsing only enough lines to satisfy the requested batch; do NOT read or split the whole file. Reading the recent window of a 284MB file must allocate only a small bounded buffer."
+      - "Bodies are decompressed LAZILY. The list/day view needs metadata only (method, url, status, sentAt, durationMs, sizes) plus the small stored preview for search. Full request/response bodies are decompressed only when a specific entry is opened — add a history:get-by-id IPC + bridge method that reads and decompresses exactly one entry. list() must not gunzip full bodies for the batch at all, or at most the small preview."
+      - "Bound the in-memory cache: this.cache currently holds every fully-decompressed entry per workspace forever. After the fix, held memory is O(loaded window), not O(file size). An LRU/most-recent-batches cache is fine."
+      - "insert()/append stays O(1) in the common case via appendOne (no full-file load, no decompression of existing entries). delete() and any rewrite must not decompress all bodies. Since prune is removed, the writeAll-on-prune path can go away."
+      - "Search (HistoryListOptions.search) must not load every full body into memory at once. Search over the small stored preview, scanning the file in bounded chunks; never decompress all _respGz to search."
+      - "Renderer (apps/desktop/src/renderer/src/store.ts loadHistory + the history panel component): replace the single { limit: 100 } fetch with day-grouped batched fetching and infinite scroll. Show day headers; load next older batch on scroll-near-bottom. Keep already-loaded batches in the store; do not refetch everything on each new request sent."
+      - "Existing 284MB file is the recovery path itself: because load only reads the recent window, the oversized file boots without migration or trimming. A corrupted/partial last line must be skipped gracefully, never hard-crash."
+      - "Tests in packages/http-core: (1) a file with N entries each carrying a >500KB decompressed body — list of the recent batch returns the batch WITHOUT decompressing all N bodies (assert via a gunzip spy/counter); this test fails against the current eager-load impl. (2) backward/tail batch read returns correct newest-first entries and paginates older batches correctly via before. (3) opening one entry by id decompresses exactly that one body."
+      - "README.md + DOCS.md history sections updated in the same commit (retention = unlimited, day-batched loading, lazy body view)."
+
 totals:
-  task_count: 108
-  total_estimate_hours: 655
+  task_count: 110
+  total_estimate_hours: 667
   working_days_at_6h_focus: 106
   calendar_weeks_2_devs: 12
   notes: |
