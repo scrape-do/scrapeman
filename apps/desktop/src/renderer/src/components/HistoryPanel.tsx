@@ -58,11 +58,19 @@ export function HistoryPanel(): JSX.Element {
   const groups = useMemo(() => groupByDate(history), [history]);
 
   // Sentinel element at the bottom of the scroll container. When it becomes
-  // visible, trigger loading older entries (infinite scroll).
+  // visible, older entries load automatically (infinite scroll, no click).
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const loadOlderRef = useRef(loadOlderHistory);
   loadOlderRef.current = loadOlderHistory;
 
+  // Re-attach the observer whenever the sentinel appears or disappears.
+  // The sentinel only renders once history has loaded and there are older
+  // entries, so a one-shot [] effect would observe a null element and never
+  // fire — that was why older entries needed a manual click. Keying on
+  // historyHasMore re-runs the effect when the sentinel mounts. rootMargin
+  // prefetches the next batch ~600px before the sentinel scrolls into view,
+  // so older days stream in without the user reaching the very bottom.
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el) return;
@@ -72,11 +80,11 @@ export function HistoryPanel(): JSX.Element {
           void loadOlderRef.current();
         }
       },
-      { threshold: 0.1 },
+      { root: scrollRef.current, rootMargin: '600px 0px', threshold: 0 },
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, []);
+  }, [historyHasMore]);
 
   const handleToggleGroup = useCallback(
     (label: string) => {
@@ -124,7 +132,7 @@ export function HistoryPanel(): JSX.Element {
               />
             </div>
           )}
-          <div className="flex-1 overflow-y-auto pb-1">
+          <div ref={scrollRef} className="flex-1 overflow-y-auto pb-1">
             {history.length === 0 && !searchActive ? (
               <div className="px-3 py-4 text-center text-[11px] text-ink-4">
                 No requests sent yet. Hit Send to start populating history.
@@ -163,22 +171,13 @@ export function HistoryPanel(): JSX.Element {
                     </div>
                   );
                 })}
-                {/* Infinite-scroll sentinel: triggers loadOlderHistory when visible.
-                    Shown during search too — loadOlderHistory carries the active
-                    historyQuery so it paginates search results from the full file. */}
+                {/* Infinite-scroll sentinel: older entries load automatically
+                    when it nears view. Shown during search too — loadOlderHistory
+                    carries the active historyQuery so it paginates search results
+                    from the full file. No manual button: the observer prefetches. */}
                 {historyHasMore && (
-                  <div ref={sentinelRef} className="px-3 py-2">
-                    {historyLoadingOlder ? (
-                      <span className="text-[10px] text-ink-4">Loading older entries…</span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => void loadOlderHistory()}
-                        className="text-[10px] text-accent hover:underline"
-                      >
-                        Load older
-                      </button>
-                    )}
+                  <div ref={sentinelRef} className="px-3 py-2 text-[10px] text-ink-4">
+                    {historyLoadingOlder ? 'Loading older entries…' : ''}
                   </div>
                 )}
               </>
