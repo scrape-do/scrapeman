@@ -29,6 +29,13 @@ const DEFAULT_BODY_PREVIEW_BYTES = Number.MAX_SAFE_INTEGER;
 // Default batch size when no explicit limit is requested.
 const DEFAULT_BATCH_SIZE = 100;
 
+// Hard cap on the in-memory window cache per workspace. insert() prepends the
+// freshly sent entry (with its full, uncompressed body preview) to the cache;
+// without a cap the cache would grow by one entry per request for the whole
+// session. 200 is comfortably above the largest list() limit ever requested
+// (101, from loadHistory's hasMore probe), so capping never breaks pagination.
+const MAX_WINDOW_CACHE = 200;
+
 export interface HistoryStoreOptions {
   /** Directory used as the app data root (e.g. Electron `userData`). */
   rootDir: string;
@@ -119,10 +126,16 @@ export class HistoryStore {
     await this.appendOne(file, stored);
 
     // Prepend to the cached window so the new entry is immediately visible
-    // to the renderer without requiring a reload.
+    // to the renderer without requiring a reload. Cap the window so it cannot
+    // grow one full entry per request for the whole session — older entries
+    // are paged from disk via tailRead with a before-cursor anyway.
     const cached = this.windowCache.get(workspacePath);
     if (cached) {
-      this.windowCache.set(workspacePath, [full, ...cached]);
+      const next = [full, ...cached];
+      this.windowCache.set(
+        workspacePath,
+        next.length > MAX_WINDOW_CACHE ? next.slice(0, MAX_WINDOW_CACHE) : next,
+      );
     }
 
     return full;

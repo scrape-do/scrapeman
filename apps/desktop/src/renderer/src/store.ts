@@ -96,6 +96,12 @@ function updateBurst(
 const CLOSED_TAB_STACK_LIMIT = 10;
 const closedTabStack: Array<{ tab: Tab; index: number }> = [];
 
+// Hard cap on how many history rows the panel keeps in memory at once. The
+// array grew one entry per send (refreshHistoryHead) plus a batch per scroll
+// (loadOlderHistory) with no trim, and every row is a live DOM node. Beyond
+// this window, older entries stay on disk and remain reachable through search.
+const MAX_HISTORY_ROWS = 2000;
+
 // localStorage keys for multi-workspace persistence (issue #61, Phase 1).
 const LS_OPEN_WORKSPACES = 'workspaces:open';
 const LS_LAST_ACTIVE_WORKSPACE = 'workspaces:lastActive';
@@ -2510,6 +2516,13 @@ export const useAppStore = create<AppState>((set, get) => {
       const { history, historyHasMore, historyLoadingOlder, historyQuery } = get();
       if (!historyHasMore || historyLoadingOlder) return;
 
+      // Stop paging once the in-memory window is full. Older entries remain
+      // on disk and reachable through search; this bounds both heap and DOM.
+      if (history.length >= MAX_HISTORY_ROWS) {
+        set({ historyHasMore: false });
+        return;
+      }
+
       set({ historyLoadingOlder: true });
       try {
         const BATCH = 100;
@@ -2523,10 +2536,14 @@ export const useAppStore = create<AppState>((set, get) => {
           ...(historyQuery ? { search: historyQuery } : {}),
         });
         const hasMore = batch.length > BATCH;
-        set({
-          history: [...history, ...(hasMore ? batch.slice(0, BATCH) : batch)],
-          historyHasMore: hasMore,
-        });
+        const combined = [...history, ...(hasMore ? batch.slice(0, BATCH) : batch)];
+        // If the batch pushes us past the window cap, keep the head and stop
+        // paging (hasMore=false) so the sentinel does not refetch-and-drop.
+        if (combined.length >= MAX_HISTORY_ROWS) {
+          set({ history: combined.slice(0, MAX_HISTORY_ROWS), historyHasMore: false });
+        } else {
+          set({ history: combined, historyHasMore: hasMore });
+        }
       } finally {
         set({ historyLoadingOlder: false });
       }
@@ -2568,7 +2585,9 @@ export const useAppStore = create<AppState>((set, get) => {
       const { history } = get();
       // Skip prepend if already present (e.g. duplicate send race).
       if (history.length > 0 && history[0]!.id === newest.id) return;
-      set({ history: [newest, ...history.filter((e) => e.id !== newest.id)] });
+      const next = [newest, ...history.filter((e) => e.id !== newest.id)];
+      // Cap the window so it cannot grow one entry per send for the session.
+      set({ history: next.length > MAX_HISTORY_ROWS ? next.slice(0, MAX_HISTORY_ROWS) : next });
     },
 
     deleteHistoryEntry: async (id: string) => {
