@@ -164,7 +164,6 @@ The full marketing site lives at **[scrapeman.app](https://scrapeman.app)** and 
 - Stop mid-run with AbortSignal, partial results preserved
 - **Per-tab isolation** — start a load test in one tab, switch to another, come back — your config and progress are preserved. Hover any metric for a description.
 
-<<<<<<< HEAD
 ### WebSocket client
 - Full bidirectional messaging from a "WebSocket" pane on any tab
 - Live timeline: each message shows direction arrow (↓ in / ↑ out), timestamp, and payload
@@ -174,7 +173,7 @@ The full marketing site lives at **[scrapeman.app](https://scrapeman.app)** and 
 - Per-connection proxy support (standard HTTP proxy or Scrape.do WS proxy)
 - Export full timeline as JSON
 - Connection state persists when switching tabs — switch away and back without losing messages
-=======
+
 ### Collection runner
 - Run an entire folder of requests as a sequence or in parallel
 - **Sequential** mode: each request fires and waits for its response before the next starts
@@ -186,7 +185,6 @@ The full marketing site lives at **[scrapeman.app](https://scrapeman.app)** and 
 - Abort mid-run; partial results are preserved
 - Export report as **JSON**, **CSV**, or self-contained **HTML**
 - Opens from any folder's right-click context menu ("Run folder…")
->>>>>>> ed92491 (feat: collection runner — sequential/parallel, CSV iterations, JSON/CSV/HTML export)
 
 ### Import/export
 - curl command (paste or file)

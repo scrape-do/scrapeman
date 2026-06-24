@@ -2,6 +2,16 @@
 
 All notable changes land here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [SemVer](https://semver.org/).
 
+## [0.6.8] — 2026-06-24
+
+Patch release. Trims the load test panel and resolves stale merge markers that had shipped in the docs.
+
+### Removed
+- **Load test latency and status SVG charts.** The two inline charts added in 0.6.6 (latency-over-time polyline, status-code histogram) are gone. They duplicated data already shown above them: p50/p95/p99 latency in the live metrics, and the per-status / error-kind count chips. Deletes `LoadTestCharts.tsx` and its test (496 lines). The metrics row and count chips are unchanged.
+
+### Fixed
+- **Unresolved merge conflict markers in README.md and DOCS.md.** Two feature merges (collection runner, watched headers) left `<<<<<<<` / `=======` / `>>>>>>>` markers in both docs. Both sides documented features that exist, so both are kept; only the markers are removed.
+
 ## [0.6.7] — 2026-06-04
 
 First release since 0.6.5. Crash and correctness fixes for request history, a memory audit that bounds several structures that grew during long sessions, and UI polish. Includes everything prepared for 0.6.6 (which was never tagged).
