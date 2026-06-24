@@ -21,7 +21,7 @@ concurrency:
 jobs:
   build:
     name: ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+    runs-on: self-hosted
     strategy:
       fail-fast: false
       matrix:
@@ -82,7 +82,7 @@ jobs:
   release:
     name: Publish GitHub Release
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -126,7 +126,7 @@ jobs:
   bump-cask:
     name: Bump Homebrew cask
     needs: release
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - name: Checkout tap repo
         uses: actions/checkout@v4
