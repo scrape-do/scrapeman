@@ -29,13 +29,13 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: pnpm
@@ -66,7 +66,7 @@ jobs:
         run: pnpm --filter=@scrapeman/desktop dist:linux
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: scrapeman-${{ matrix.os }}
           path: |
@@ -85,7 +85,7 @@ jobs:
     runs-on: self-hosted
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
 
@@ -96,7 +96,7 @@ jobs:
           ls -la release/
 
       - name: Create / update GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}
           name: ${{ inputs.tag || github.ref_name }}
@@ -129,7 +129,7 @@ jobs:
     runs-on: self-hosted
     steps:
       - name: Checkout tap repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: scrape-do/homebrew-scrapeman
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
