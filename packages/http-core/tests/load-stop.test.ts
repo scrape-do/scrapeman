@@ -13,7 +13,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createServer, type Server } from 'node:http';
-import { once } from 'node:events';
+import { getEventListeners, once } from 'node:events';
 import { AddressInfo } from 'node:net';
 import { FORMAT_VERSION, type ScrapemanRequest } from '@scrapeman/shared-types';
 import { runLoad } from '../src/load/runner.js';
@@ -120,6 +120,27 @@ describe('runLoad — graceful drain via drainSignal', () => {
     // The whole point of Force stop: it returns promptly instead of waiting
     // for the 5s in-flight requests to finish.
     expect(elapsed).toBeLessThan(2000);
+  });
+
+  it('does not leak abort listeners on the shared signal across iterations', async () => {
+    // Regression: each executor.execute merged the caller signal with a
+    // per-request timeout signal and left its listener attached. Over a run
+    // sharing one long-lived hard signal, listeners piled up (tripping
+    // MaxListenersExceededWarning). Every request must detach its listener.
+    const hard = new AbortController();
+    const drain = new AbortController();
+    await runLoad(
+      {
+        request: req(0),
+        variables: {},
+        total: 50,
+        concurrency: 4,
+        validator: {},
+      },
+      () => {},
+      { signal: hard.signal, drainSignal: drain.signal },
+    );
+    expect(getEventListeners(hard.signal, 'abort').length).toBe(0);
   });
 
   it('backwards-compatible: bare AbortSignal still works as hard abort', async () => {

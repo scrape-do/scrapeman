@@ -129,7 +129,8 @@ export class UndiciExecutor implements RequestExecutor {
       timedOut = true;
       timeoutController.abort(new Error('total timeout exceeded'));
     }, totalTimeout);
-    const signal = mergeSignals(options.signal, timeoutController.signal);
+    const merged = mergeSignals(options.signal, timeoutController.signal);
+    const signal = merged.signal;
 
     const sentAt = new Date().toISOString();
     const startedNs = process.hrtime.bigint();
@@ -322,6 +323,9 @@ export class UndiciExecutor implements RequestExecutor {
     } finally {
       clearTimeout(timeoutId);
       connectedChannel.unsubscribe(socketListener);
+      // Detach the abort listeners from the (possibly long-lived) caller signal
+      // so they don't accumulate across requests.
+      merged.dispose();
     }
   }
 
@@ -753,15 +757,38 @@ function decodeBody(bytes: Uint8Array, encoding: string | undefined): Uint8Array
   return buf;
 }
 
-function mergeSignals(a: AbortSignal | undefined, b: AbortSignal): AbortSignal {
-  if (!a) return b;
+/**
+ * Combine a caller signal `a` with the per-request timeout signal `b` into one.
+ *
+ * `a` is often long-lived and shared across many requests (e.g. a load run's
+ * hard-abort signal), so the listener MUST be removed once the request settles.
+ * The old implementation used `{ once: true }`, which only removes the listener
+ * when it fires — for a signal that never aborts, that meant one leaked listener
+ * per request piling up on `a` (thousands during a big load run, tripping
+ * MaxListenersExceededWarning). Return a `dispose()` the caller runs in a
+ * `finally` to detach both listeners deterministically.
+ */
+function mergeSignals(
+  a: AbortSignal | undefined,
+  b: AbortSignal,
+): { signal: AbortSignal; dispose: () => void } {
+  if (!a) return { signal: b, dispose: () => {} };
   const controller = new AbortController();
-  const onAbort = (signal: AbortSignal) => () => controller.abort(signal.reason);
-  if (a.aborted) controller.abort(a.reason);
-  else a.addEventListener('abort', onAbort(a), { once: true });
-  if (b.aborted) controller.abort(b.reason);
-  else b.addEventListener('abort', onAbort(b), { once: true });
-  return controller.signal;
+  const onA = (): void => controller.abort(a.reason);
+  const onB = (): void => controller.abort(b.reason);
+  const dispose = (): void => {
+    a.removeEventListener('abort', onA);
+    b.removeEventListener('abort', onB);
+  };
+  if (a.aborted) {
+    controller.abort(a.reason);
+  } else if (b.aborted) {
+    controller.abort(b.reason);
+  } else {
+    a.addEventListener('abort', onA);
+    b.addEventListener('abort', onB);
+  }
+  return { signal: controller.signal, dispose };
 }
 
 function round2(n: number): number {

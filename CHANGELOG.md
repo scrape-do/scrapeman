@@ -12,6 +12,9 @@ All notable changes land here. Format follows [Keep a Changelog](https://keepach
 - **Param values with an inner `&` are encoded as `%26` in the URL.** So a value like `https://site.com/p?a=1&b=2` folds into the outer URL as one param and reaches the server as one value, instead of the inner `&b=2` being read as a separate outer param. The encoding is idempotent (an existing `%26` is left alone) and the Params cell still shows the readable `&`. Only `&` and `#` are encoded; the rest of the value stays readable in the URL bar.
 - **`.sman` `params` is now an ordered list of `{key, value, enabled}` rows** instead of a map plus a `disabledParams` key list. Duplicate keys and row order now round-trip. Files in the old format are migrated to the list on the next save.
 
+### Performance
+- **Load runner leaked abort listeners under sustained load.** Each request merged the caller's abort signal with its per-request timeout signal but attached the listener with `{ once: true }`, which only detaches when the signal fires. On a load run sharing one long-lived signal across thousands of iterations, a listener piled up per request — unbounded growth that tripped Node's `MaxListenersExceededWarning` and slowed long runs. The merge now detaches both listeners when each request settles.
+
 ## [0.6.8] — 2026-06-24
 
 Patch release. Trims the load test panel and resolves stale merge markers that had shipped in the docs.
