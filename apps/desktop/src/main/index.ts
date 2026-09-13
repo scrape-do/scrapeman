@@ -922,12 +922,18 @@ app.whenReady().then(() => {
     },
   );
 
-  ipcMain.handle('load:stop', (_e, runId: string) => {
+  ipcMain.handle('load:stop', (_e, runId: string, force?: boolean) => {
     const handle = loadRuns.get(runId);
     if (!handle) return;
-    // User-facing Stop: soft drain. Workers exit on their next tick;
-    // requests already on the wire complete naturally.
-    handle.drain.abort();
+    if (force) {
+      // Force stop: hard abort. Propagates into the executor so requests
+      // already on the wire are cancelled immediately (see runLoad's signal).
+      handle.hard.abort();
+    } else {
+      // Soft drain: workers exit on their next tick; requests already on the
+      // wire complete naturally so the metrics finish clean.
+      handle.drain.abort();
+    }
   });
 
   ipcMain.handle(

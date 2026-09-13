@@ -26,14 +26,16 @@ export function LoadTestPanel(): JSX.Element {
   // Read load test state directly from the active tab.
   const loadTest = activeTab?.loadTest ?? null;
   const config = loadTest?.config;
-  const { runId, progress, events, failedBodies, starting, startError } = loadTest ?? {
-    runId: null,
-    progress: null,
-    events: [],
-    failedBodies: [],
-    starting: false,
-    startError: null,
-  };
+  const { runId, progress, events, failedBodies, starting, startError, stopping } =
+    loadTest ?? {
+      runId: null,
+      progress: null,
+      events: [],
+      failedBodies: [],
+      starting: false,
+      startError: null,
+      stopping: false,
+    };
 
   // --- Task 2: Raw string state for number inputs ---
   // Track the raw text in component state to allow clearing the leading digit.
@@ -165,7 +167,16 @@ export function LoadTestPanel(): JSX.Element {
   };
 
   const stop = async (): Promise<void> => {
-    if (runId) await bridge.loadStop(runId);
+    if (!runId || !activeTab) return;
+    if (stopping) {
+      // Second click — force stop: hard abort cancels in-flight requests now.
+      await bridge.loadStop(runId, true);
+    } else {
+      // First click — soft drain: stop pulling new iterations and let in-flight
+      // requests finish. Flip the button to "Force stop" while they wind down.
+      setLoadTestRun(activeTab.id, { stopping: true });
+      await bridge.loadStop(runId, false);
+    }
   };
 
   const reset = (): void => {
@@ -251,10 +262,19 @@ export function LoadTestPanel(): JSX.Element {
           {running && (
             <button
               onClick={() => void stop()}
-              className="inline-flex h-8 items-center justify-center rounded-md bg-method-delete px-3.5 text-xs font-semibold text-white hover:bg-[#B6383D]"
-              title="Stop load test"
+              className={
+                stopping
+                  ? 'inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-method-delete bg-method-delete/10 px-3.5 text-xs font-semibold text-method-delete transition-colors hover:bg-method-delete/20'
+                  : 'inline-flex h-8 items-center justify-center rounded-md bg-method-delete px-3.5 text-xs font-semibold text-white hover:bg-[#B6383D]'
+              }
+              title={
+                stopping
+                  ? 'Force stop — cancel in-flight requests now'
+                  : 'Stop load test (lets in-flight requests finish)'
+              }
             >
-              Stop
+              {stopping && <span className="spinner" aria-hidden="true" />}
+              {stopping ? 'Force stop' : 'Stop'}
             </button>
           )}
           {finished && (

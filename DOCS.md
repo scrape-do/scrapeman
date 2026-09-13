@@ -544,7 +544,7 @@ Set expected status codes (e.g., `200, 201`) and an optional body-contains subst
 
 ### Controls
 
-- **Stop** mid-run with partial results preserved.
+- **Stop** is two-stage. The first click is a graceful drain: workers stop pulling new iterations but requests already on the wire finish, so the metrics settle cleanly. While they wind down the button becomes a red-outlined **Force stop**; clicking it hard-aborts the in-flight requests immediately. Use Force stop when a run has high concurrency and slow requests and you don't want to wait out the in-flight batch. Requests cancelled by Force stop are not counted as failures. Partial results are preserved either way.
 - Console log with color-coded rows: green for success, yellow for validation fail, red for network error.
 
 ### Number input editing

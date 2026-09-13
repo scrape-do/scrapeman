@@ -81,8 +81,8 @@ const api: ScrapemanBridge = {
 
   loadStart: (input: LoadRunStartInput) =>
     ipcRenderer.invoke('load:start', input) as Promise<string>,
-  loadStop: (runId: string) =>
-    ipcRenderer.invoke('load:stop', runId) as Promise<void>,
+  loadStop: (runId: string, force?: boolean) =>
+    ipcRenderer.invoke('load:stop', runId, force) as Promise<void>,
   onLoadProgress: (handler: (progress: LoadProgress) => void) => {
     const listener = (_event: unknown, payload: LoadProgress): void =>
       handler(payload);

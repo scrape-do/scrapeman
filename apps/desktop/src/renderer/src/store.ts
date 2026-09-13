@@ -136,8 +136,10 @@ const LS_LAST_ACTIVE_WORKSPACE = 'workspaces:lastActive';
 function disposeTabRuntime(tab: Tab): void {
   const { runId } = tab.loadTest;
   if (runId !== null && (tab.loadTest.progress === null || !tab.loadTest.progress.done)) {
+    // Tab is being torn down — hard abort so in-flight requests are cancelled
+    // immediately rather than left draining after the tab is gone.
     // Fire-and-forget — we don't need to await the IPC call.
-    void bridge.loadStop(runId);
+    void bridge.loadStop(runId, true);
   }
   // Tear down a live WebSocket so closing the tab does not orphan the main
   // client — otherwise its open socket, ping interval, and growing timeline
@@ -240,6 +242,9 @@ export interface LoadTestState {
   failedBodies: LoadFailedBodyEvent[];
   starting: boolean;
   startError: string | null;
+  /** true after the first Stop click (soft drain requested) while the run is
+   *  still winding down. Drives the "Force stop" button state. */
+  stopping: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -511,7 +516,7 @@ interface AppState {
   // Load test — per-tab state management
   updateLoadTestConfig: (tabId: string, patch: Partial<LoadTestState['config']>) => void;
   /** Partial patch on the load test run fields (runId, starting, startError). */
-  setLoadTestRun: (tabId: string, update: Partial<Pick<LoadTestState, 'runId' | 'starting' | 'startError'>>) => void;
+  setLoadTestRun: (tabId: string, update: Partial<Pick<LoadTestState, 'runId' | 'starting' | 'startError' | 'stopping'>>) => void;
   appendLoadEvent: (tabId: string, event: LoadEvent) => void;
   updateLoadProgress: (tabId: string, progress: LoadProgress) => void;
   clearLoadTest: (tabId: string) => void;
@@ -760,6 +765,7 @@ function freshLoadTest(): LoadTestState {
     failedBodies: [],
     starting: false,
     startError: null,
+    stopping: false,
   };
 }
 
@@ -2193,6 +2199,7 @@ export const useAppStore = create<AppState>((set, get) => {
           failedBodies: [],
           starting: true,
           startError: null,
+          stopping: false,
         },
       }));
     },

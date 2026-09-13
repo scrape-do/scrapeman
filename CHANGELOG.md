@@ -5,6 +5,7 @@ All notable changes land here. Format follows [Keep a Changelog](https://keepach
 ## [0.6.11] — 2026-09-13
 
 ### Fixed
+- **Load test Stop waited for in-flight requests to finish.** Stop only triggered a soft drain: workers stopped pulling new iterations, but the requests already on the wire ran to completion. With high concurrency and slow requests, Stop appeared to hang for as long as the slowest in-flight request (up to a full request timeout). Stop is now two-stage — the first click drains gracefully, and while requests wind down the button becomes **Force stop**, which hard-aborts the in-flight requests on the wire immediately. Requests cancelled by Force stop are not counted as failures and do not pollute the status or error breakdown. Closing a tab now hard-aborts its run instead of leaving it draining.
 - **Query params after a nested-URL value got swallowed into it.** With a param whose value carried its own query string (`url=https://site.com/p?a=1`), any state update that re-parsed the URL folded the params that followed into that value and dropped their rows. The folding heuristic that caused this (a scrape.do-only allowlist for where a nested URL ended) is gone. The Params table is now the source of truth: it is stored as an ordered list of rows, loaded verbatim on reload instead of being re-derived from the URL string, and it keeps duplicate keys and row order. Parsing the URL bar is now a plain `&` split where an inner `?` is a literal, matching what the server receives.
 
 ### Changed

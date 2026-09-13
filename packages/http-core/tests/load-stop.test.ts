@@ -85,13 +85,16 @@ describe('runLoad — graceful drain via drainSignal', () => {
     expect(final.done).toBe(true);
   });
 
-  it('hard abort still cancels in-flight requests', async () => {
+  it('force stop (hard abort) cancels in-flight quickly without polluting metrics', async () => {
     const hard = new AbortController();
     const drain = new AbortController();
 
+    // 100 iterations of 5s each at concurrency 4. Without a working hard abort
+    // this run would take minutes; with one it returns shortly after the abort.
+    const startedAt = Date.now();
     const finalPromise = runLoad(
       {
-        request: req(200),
+        request: req(5000),
         variables: {},
         total: 100,
         concurrency: 4,
@@ -101,14 +104,22 @@ describe('runLoad — graceful drain via drainSignal', () => {
       { signal: hard.signal, drainSignal: drain.signal },
     );
 
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 150));
     hard.abort();
 
     const final = await finalPromise;
-    // Hard abort surfaces cancelled iterations as failures (status=0,
-    // errorKind=aborted) — the executor propagated the signal.
+    const elapsed = Date.now() - startedAt;
+
+    // Cancelled-in-flight requests are the user's doing, not the server's:
+    // they must NOT be counted as failures or surface as status=0 / aborted.
+    expect(final.failed).toBe(0);
+    expect(final.statusHistogram['0']).toBeUndefined();
+    expect(final.errorKinds['aborted']).toBeUndefined();
     expect(final.sent).toBeLessThan(100);
     expect(final.done).toBe(true);
+    // The whole point of Force stop: it returns promptly instead of waiting
+    // for the 5s in-flight requests to finish.
+    expect(elapsed).toBeLessThan(2000);
   });
 
   it('backwards-compatible: bare AbortSignal still works as hard abort', async () => {

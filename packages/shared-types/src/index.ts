@@ -897,7 +897,12 @@ export interface ScrapemanBridge {
   previewHeaders: (request: ScrapemanRequest) => Promise<AutoHeadersPreview>;
 
   loadStart: (input: LoadRunStartInput) => Promise<string>;
-  loadStop: (runId: string) => Promise<void>;
+  /**
+   * Stop a load run. `force: false` (default) is a soft drain — workers stop
+   * pulling new iterations but in-flight requests finish. `force: true` hard
+   * aborts, cancelling in-flight requests on the wire immediately.
+   */
+  loadStop: (runId: string, force?: boolean) => Promise<void>;
   onLoadProgress: (handler: (progress: LoadProgress) => void) => () => void;
 
   captureScreenshot: (

@@ -361,7 +361,7 @@ export async function runLoad(
 
   const runOne = async (
     iteration: number,
-  ): Promise<{ event: LoadEvent; failedBodyEvent?: LoadFailedBodyEvent }> => {
+  ): Promise<{ event: LoadEvent; failedBodyEvent?: LoadFailedBodyEvent } | null> => {
     // Per-iteration resolve → {{random}} / {{timestamp}} produce fresh values.
     let prepared = resolveRequest(input.request, {
       variables: input.variables,
@@ -429,6 +429,10 @@ export async function runLoad(
 
       return { event, ...(failedBodyEvent !== undefined ? { failedBodyEvent } : {}) };
     } catch (err) {
+      // Force stop hard-aborts the shared signal, so requests still on the wire
+      // reject here. They were cancelled by the user, not the server — do not
+      // count them as failures, record their latency, or emit an event.
+      if (signal.aborted) return null;
       const durationMs = performance.now() - t0;
       if (latencies.length < LATENCY_SAMPLE_CAP) latencies.push(durationMs);
       failed++;
@@ -473,10 +477,13 @@ export async function runLoad(
       const iteration = nextIteration++;
       if (iteration >= input.total) return;
       inflight++;
-      const { event, failedBodyEvent } = await runOne(iteration);
-      sent++;
+      const result = await runOne(iteration);
       inflight--;
-      onProgress(snapshot(event, false, failedBodyEvent));
+      // Force-stopped mid-flight: skip counting and exit — the loop guard
+      // above would return on the next tick anyway.
+      if (result === null) return;
+      sent++;
+      onProgress(snapshot(result.event, false, result.failedBodyEvent));
 
       // Per-run delay (from the UI load-test config) + per-request rate-limit.
       // They stack: run-level delay is the baseline, request rate-limit adds

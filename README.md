@@ -161,7 +161,7 @@ The full marketing site lives at **[scrapeman.app](https://scrapeman.app)** and 
 - **Built-in response validator**: expected status codes + body-contains substring
 - Console log with success/validation-fail/network-error color coding
 - Status histogram + error kind breakdown
-- Stop mid-run with AbortSignal, partial results preserved
+- Two-stage stop: first click drains gracefully (in-flight requests finish), then the button becomes Force stop to hard-abort in-flight requests on the wire. Partial results preserved
 - **Per-tab isolation** — start a load test in one tab, switch to another, come back — your config and progress are preserved. Hover any metric for a description.
 
 ### WebSocket client
