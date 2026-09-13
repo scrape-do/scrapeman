@@ -95,6 +95,27 @@ describe('WorkspaceFs', () => {
     expect(readBack).toEqual(updated);
   });
 
+  it('saves and reloads the params list verbatim (nested URL, duplicate, disabled)', async () => {
+    // End-to-end local save: the exact shapes the params-list change is about
+    // must survive write → disk → read unchanged.
+    const relPath = await fs.createRequest('', 'Params');
+    const updated = makeRequest('Params');
+    updated.url = 'https://httpbin.co/anything';
+    updated.params = [
+      { key: 'token', value: 'token', enabled: true },
+      // A value carrying its own query — the old fold/map corrupted this.
+      { key: 'url', value: 'https://example.com/path?parameter=new&parameter2=new2', enabled: true },
+      // Duplicate key — only a list can hold it.
+      { key: 'url', value: 'https://second.example.com?c=3', enabled: true },
+      { key: 'test', value: '1', enabled: true },
+      { key: 'debug', value: 'yes', enabled: false },
+    ];
+
+    await fs.writeRequest(relPath, updated);
+    const readBack = await fs.readRequest(relPath);
+    expect(readBack.params).toEqual(updated.params);
+  });
+
   it('renames a folder', async () => {
     const orig = await fs.createFolder('', 'Old');
     const renamed = await fs.rename(orig, 'New');

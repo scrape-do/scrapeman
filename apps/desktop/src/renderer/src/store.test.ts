@@ -34,6 +34,7 @@ vi.hoisted(() => {
 });
 
 import {
+  builderFromRequest,
   captureWorkspaceSnapshot,
   normalizeUrlSchema,
   paramsFromUrl,
@@ -41,7 +42,9 @@ import {
   readPersistedLastActiveWorkspace,
   readPersistedOpenWorkspaces,
   readWorkspaceSnapshot,
+  urlFromParams,
   useAppStore,
+  type ParamRow,
   type Tab,
   type WorkspaceSnapshot,
 } from './store.js';
@@ -352,19 +355,28 @@ describe('normalizeUrlSchema', () => {
   });
 });
 
-describe('paramsFromUrl — nested-URL heuristic (#88)', () => {
-  it('returns the whole nested URL as a single param value', () => {
+describe('paramsFromUrl — plain query split (URL-bar parse)', () => {
+  // The Params table is the source of truth; paramsFromUrl only runs when the
+  // user edits the URL bar directly. A query string is delimited by '&': we
+  // split on '&' and treat a '?' inside a value as a literal character, which
+  // is exactly how every server parses the query it receives. The old fold
+  // heuristic (#88), which glued trailing params into a nested `url=` value,
+  // is gone — it corrupted the table on any host that wasn't scrape.do.
+
+  it('treats an inner "?" as a literal, not a delimiter (the reported bug)', () => {
+    // `test=1` after a nested `url=` stays its own row instead of being
+    // absorbed into the url value.
     const rows = paramsFromUrl(
-      'https://sample.com?url=https://httpbin.co/anything?hello=world&merhaba=dunya&abc=1',
+      'https://httpbin.co/anything?token=t&url=https://example.com/path?parameter=new&test=1',
     );
-    expect(rows).toHaveLength(1);
-    expect(rows[0]!.key).toBe('url');
-    expect(rows[0]!.value).toBe(
-      'https://httpbin.co/anything?hello=world&merhaba=dunya&abc=1',
-    );
+    expect(rows.map((r) => [r.key, r.value])).toEqual([
+      ['token', 't'],
+      ['url', 'https://example.com/path?parameter=new'],
+      ['test', '1'],
+    ]);
   });
 
-  it('keeps plain side-by-side params separate when none has an inner ?', () => {
+  it('keeps plain side-by-side params separate', () => {
     const rows = paramsFromUrl('https://api.example.com?foo=bar&baz=qux&n=1');
     expect(rows.map((r) => [r.key, r.value])).toEqual([
       ['foo', 'bar'],
@@ -373,18 +385,43 @@ describe('paramsFromUrl — nested-URL heuristic (#88)', () => {
     ]);
   });
 
-  it('still works for a URL-typed value that has no inner query string', () => {
-    // `api_url=https://api.example.com` — no `?` inside the value, so
-    // the next param stays separate. This is the common scrape.do
-    // `?url=...&token=...` shape when the user encoded the target URL.
+  it('decodes an encoded inner "&" (%26) back into one readable value', () => {
+    // urlFromParams encodes a nested value's inner '&' as %26 so it does not
+    // split; paramsFromUrl reverses that for display in the cell.
     const rows = paramsFromUrl(
-      'https://sample.com?api_url=https://api.example.com&token=abc',
+      'https://httpbin.co/anything?url=https://example.com/path?a=1%26b=2&test=1',
     );
-    expect(rows).toHaveLength(2);
-    expect(rows[0]!.key).toBe('api_url');
-    expect(rows[0]!.value).toBe('https://api.example.com');
-    expect(rows[1]!.key).toBe('token');
-    expect(rows[1]!.value).toBe('abc');
+    expect(rows.map((r) => [r.key, r.value])).toEqual([
+      ['url', 'https://example.com/path?a=1&b=2'],
+      ['test', '1'],
+    ]);
+  });
+
+  it('a raw (unencoded) inner "&" pasted into the URL bar splits into rows', () => {
+    // Accepted limitation: a raw query string is genuinely ambiguous. To keep
+    // a nested URL's query as one value, edit it in the Params table (which
+    // encodes the inner '&') rather than pasting the whole thing raw.
+    const rows = paramsFromUrl(
+      'https://proxy.example.com/?target=https://x.com?a=1&b=2&c=3',
+    );
+    expect(rows.map((r) => [r.key, r.value])).toEqual([
+      ['target', 'https://x.com?a=1'],
+      ['b', '2'],
+      ['c', '3'],
+    ]);
+  });
+
+  it('normalizes a pre-encoded %26 to & for display but keeps the wire bytes', () => {
+    // A value the user pre-encoded with %26 shows as & in the cell after a
+    // URL-bar parse. Re-encoding produces the byte-identical URL, so the server
+    // still receives %26 — a display normalization, not a wire change. (We
+    // cannot encode a literal '%' to keep this fully verbatim without
+    // reintroducing the %20 -> %2520 double-encode bug, so this is the
+    // deliberate trade.)
+    const url = 'https://httpbin.co/anything?key=a%26b';
+    const rows = paramsFromUrl(url);
+    expect(rows.map((r) => [r.key, r.value])).toEqual([['key', 'a&b']]);
+    expect(urlFromParams('https://httpbin.co/anything', rows)).toBe(url);
   });
 
   it('returns [] for an empty query string', () => {
@@ -401,67 +438,127 @@ describe('paramsFromUrl — nested-URL heuristic (#88)', () => {
   });
 });
 
-describe('paramsFromUrl — scrape.do nested-URL termination (#88 follow-up)', () => {
-  // The reported regression: trailing scrape.do options like &super=true were
-  // swallowed into the url= value because the old fold loop never stopped.
-
-  it('splits off a trailing scrape.do option after an inner URL (reported case)', () => {
-    const url =
-      'https://api.scrape.do/?token={{token}}&url=https://www.amazon.de/-/en/LEGO-.../dp/B0DHS9Y433/?_encoding=UTF8&pd_rd_w=CsjdI&content-id=amzn1.sym.x&pf_rd_p=x&pf_rd_r=x&pd_rd_wg=x&pd_rd_r=x&ref_=x&th=1&super=true';
-    const rows = paramsFromUrl(url);
-    const keys = rows.map((r) => r.key);
-    expect(keys).toContain('super');
-    expect(keys).toContain('token');
-    expect(keys).toContain('url');
-
-    const superRow = rows.find((r) => r.key === 'super')!;
-    expect(superRow.value).toBe('true');
-
-    const urlRow = rows.find((r) => r.key === 'url')!;
-    // Inner amazon params must stay inside the url value.
-    expect(urlRow.value).toContain('_encoding=UTF8');
-    expect(urlRow.value).toContain('pd_rd_w=CsjdI');
-    expect(urlRow.value).toContain('th=1');
-    // The scrape.do option must NOT be folded into the url value.
-    expect(urlRow.value).not.toContain('super=true');
+describe('urlFromParams ↔ paramsFromUrl round-trip', () => {
+  // The core guarantee: a param list survives list → URL → list unchanged,
+  // even when a value carries its own query with multiple params. This is what
+  // keeps the Params table stable when the URL bar re-parses on an edit.
+  const row = (key: string, value: string): ParamRow => ({
+    id: `id-${key}-${value}`,
+    key,
+    value,
+    enabled: true,
   });
 
-  it('splits multiple scrape.do options after an inner URL', () => {
-    const url = 'https://api.scrape.do/?token=t&url=https://x.com?a=1&b=2&super=true&render=true';
-    const rows = paramsFromUrl(url);
-    expect(rows.map((r) => r.key)).toEqual(['token', 'url', 'super', 'render']);
-    const urlRow = rows.find((r) => r.key === 'url')!;
-    expect(urlRow.value).toBe('https://x.com?a=1&b=2');
+  const cases: Array<{ name: string; rows: ParamRow[] }> = [
+    {
+      name: 'nested url with a single inner param + trailing param',
+      rows: [
+        row('token', 'token'),
+        row('super', 'true'),
+        row('url', 'https://example.com/path?parameter=new'),
+        row('test', '1'),
+      ],
+    },
+    {
+      name: 'nested url with TWO inner params + trailing param (the hard case)',
+      rows: [
+        row('token', 'token'),
+        row('url', 'https://example.com/path?parameter=new&parameter2=new2'),
+        row('test', '1'),
+      ],
+    },
+    {
+      name: 'duplicate keys',
+      rows: [
+        row('url', 'https://a.example.com?x=1'),
+        row('url', 'https://b.example.com?y=2'),
+        row('n', '3'),
+      ],
+    },
+  ];
+
+  for (const c of cases) {
+    it(`round-trips: ${c.name}`, () => {
+      const url = urlFromParams('https://httpbin.co/anything', c.rows);
+      const back = paramsFromUrl(url);
+      expect(back.map((r) => [r.key, r.value])).toEqual(
+        c.rows.map((r) => [r.key, r.value]),
+      );
+    });
+  }
+});
+
+describe('param-list stability on state update (the reported bug)', () => {
+  // The reported bug, driven WITHOUT any UI: a param whose value is a URL
+  // carrying its own query string. On a state update, the params AFTER it used
+  // to get swallowed into its value and their own rows vanished. These assert
+  // the two paths that re-touch the params: a URL-bar edit and a reload.
+  beforeEach(() => {
+    useAppStore.getState().newTab();
   });
 
-  it('handles a scrape.do option BEFORE url= without disrupting url folding', () => {
-    const url = 'https://api.scrape.do/?token=t&super=true&url=https://x.com?a=1&b=2';
-    const rows = paramsFromUrl(url);
-    expect(rows.map((r) => r.key)).toEqual(['token', 'super', 'url']);
-    const urlRow = rows.find((r) => r.key === 'url')!;
-    expect(urlRow.value).toBe('https://x.com?a=1&b=2');
+  it('a URL-bar edit keeps the list intact (inner query + trailing param)', () => {
+    const tabId = useAppStore.getState().activeTabId!;
+    const rows: ParamRow[] = [
+      { id: 'r1', key: 'token', value: 'token', enabled: true },
+      { id: 'r2', key: 'super', value: 'true', enabled: true },
+      {
+        id: 'r3',
+        key: 'url',
+        value: 'https://example.com/path?parameter=new&parameter2=new2',
+        enabled: true,
+      },
+      { id: 'r4', key: 'test', value: '1', enabled: true },
+    ];
+    // The URL the app derives from that list (this is what the URL bar shows).
+    const builtUrl = urlFromParams('https://httpbin.co/anything', rows);
+
+    useAppStore.setState((s) => ({
+      tabs: s.tabs.map((t) =>
+        t.id === tabId
+          ? { ...t, builder: { ...t.builder, url: builtUrl, params: rows } }
+          : t,
+      ),
+    }));
+
+    // The URL bar re-emits its current value (what happens on any edit).
+    useAppStore.getState().setUrl(builtUrl);
+
+    const tab = useAppStore.getState().tabs.find((t) => t.id === tabId)!;
+    const got = tab.builder.params
+      .filter((p) => p.key.length > 0)
+      .map((p) => [p.key, p.value]);
+    expect(got).toEqual([
+      ['token', 'token'],
+      ['super', 'true'],
+      ['url', 'https://example.com/path?parameter=new&parameter2=new2'],
+      ['test', '1'],
+    ]);
   });
 
-  it('folds everything on a generic non-scrape.do host (no allowlist)', () => {
-    // For unknown proxy hosts there is no allowlist, so all trailing
-    // chunks fold into the target= value.
-    const url = 'https://proxy.example.com/?target=https://x.com?a=1&b=2&c=3';
-    const rows = paramsFromUrl(url);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]!.key).toBe('target');
-    expect(rows[0]!.value).toBe('https://x.com?a=1&b=2&c=3');
-  });
-
-  it('preserves existing #88 behaviour: single nested url with only inner params', () => {
-    const rows = paramsFromUrl(
-      'https://api.scrape.do/?url=https://httpbin.co/anything?hello=world&merhaba=dunya&abc=1',
-    );
-    // No scrape.do terminator keys present — all inner params fold into url.
-    expect(rows).toHaveLength(1);
-    expect(rows[0]!.key).toBe('url');
-    expect(rows[0]!.value).toBe(
-      'https://httpbin.co/anything?hello=world&merhaba=dunya&abc=1',
-    );
+  it('a reload loads the rows from the params list, not the URL', () => {
+    // builderFromRequest is the reload/hydration path. It must take the rows
+    // from the structured list verbatim — including a nested-url value, a
+    // duplicate key, and a disabled row — and never re-parse request.url.
+    const builder = builderFromRequest({
+      scrapeman: '1.0',
+      meta: { name: 'r' },
+      method: 'GET',
+      // A stale/ambiguous URL — must be ignored in favour of the list.
+      url: 'https://httpbin.co/anything?url=https://example.com/path?a=1&b=2&test=1',
+      params: [
+        { key: 'url', value: 'https://example.com/path?a=1&b=2', enabled: true },
+        { key: 'url', value: 'https://second.example.com?c=3', enabled: true },
+        { key: 'test', value: '1', enabled: true },
+        { key: 'debug', value: 'yes', enabled: false },
+      ],
+    });
+    expect(builder.params.map((p) => [p.key, p.value, p.enabled])).toEqual([
+      ['url', 'https://example.com/path?a=1&b=2', true],
+      ['url', 'https://second.example.com?c=3', true],
+      ['test', '1', true],
+      ['debug', 'yes', false],
+    ]);
   });
 });
 

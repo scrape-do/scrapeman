@@ -89,9 +89,11 @@ describe('importPostmanCollection', () => {
     const result = importPostmanCollection(SAMPLE_COLLECTION);
     const getUsers = result.folders[0]!.requests[0]!;
     expect(getUsers.url).toBe('https://api.example.com/users?page=1');
-    expect(getUsers.params).toEqual({ page: '1' });
-    // Disabled param excluded
-    expect(getUsers.params).not.toHaveProperty('disabled_param');
+    // Ordered list; Postman's per-row disabled flag is preserved as enabled:false.
+    expect(getUsers.params).toEqual([
+      { key: 'page', value: '1', enabled: true },
+      { key: 'disabled_param', value: 'x', enabled: false },
+    ]);
   });
 
   it('maps headers and skips disabled ones', () => {

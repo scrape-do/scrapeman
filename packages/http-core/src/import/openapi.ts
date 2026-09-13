@@ -9,6 +9,7 @@ import {
   type ImportResult,
   type ScrapemanRequest,
 } from '@scrapeman/shared-types';
+import { queryParamsFromMap } from './query-params.js';
 
 // ---------------------------------------------------------------------------
 // Loose typings for OpenAPI 3.x / Swagger 2.0 specs.
@@ -259,7 +260,9 @@ function importOpenApi3(doc: OpenApi3Doc, warnings: string[]): ImportResult {
         },
         method: httpMethod,
         url,
-        ...(Object.keys(params).length > 0 ? { params } : {}),
+        ...(Object.keys(params).length > 0
+          ? { params: queryParamsFromMap(params) }
+          : {}),
         ...(Object.keys(headers).length > 0 ? { headers } : {}),
         ...(auth ? { auth } : {}),
         ...(body ? { body } : {}),
@@ -362,7 +365,9 @@ function importSwagger2(doc: Swagger2Doc, warnings: string[]): ImportResult {
         },
         method: httpMethod,
         url,
-        ...(Object.keys(params).length > 0 ? { params } : {}),
+        ...(Object.keys(params).length > 0
+          ? { params: queryParamsFromMap(params) }
+          : {}),
         ...(Object.keys(headers).length > 0 ? { headers } : {}),
         ...(auth ? { auth } : {}),
         ...(body ? { body } : {}),

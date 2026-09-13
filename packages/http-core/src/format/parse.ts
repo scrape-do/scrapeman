@@ -6,6 +6,7 @@ import {
   type BodyConfig,
   type MultipartPart,
   type ProxyConfig,
+  type QueryParam,
   type RequestOptions,
   type RequestScripts,
   type ScrapeDoConfig,
@@ -80,12 +81,40 @@ export async function parseRequest(
     url: raw['url'],
   };
 
-  if (isObject(raw['params'])) {
-    request.params = normalizeStringMap(raw['params']);
-  }
-  if (Array.isArray(raw['disabledParams'])) {
-    const keys = raw['disabledParams'].filter((k): k is string => typeof k === 'string');
-    if (keys.length > 0) request.disabledParams = keys;
+  if (Array.isArray(raw['params'])) {
+    // Current form: an ordered list of {key, value, enabled?} rows.
+    const list: QueryParam[] = [];
+    for (const item of raw['params']) {
+      if (!isObject(item)) continue;
+      const key = asString(item['key'], '');
+      const rawValue = item['value'];
+      const value =
+        typeof rawValue === 'string'
+          ? rawValue
+          : rawValue === null || rawValue === undefined
+            ? ''
+            : String(rawValue);
+      // `enabled` defaults to true; only an explicit `false` disables the row.
+      list.push({ key, value, enabled: item['enabled'] !== false });
+    }
+    if (list.length > 0) request.params = list;
+  } else if (isObject(raw['params'])) {
+    // Legacy form: `params` was a Record<string,string> map with disabled keys
+    // tracked in a separate `disabledParams` list. Migrate to the ordered
+    // list, deriving `enabled` from `disabledParams`. Written back in the new
+    // form on the next save.
+    const map = normalizeStringMap(raw['params']);
+    const disabled = new Set(
+      Array.isArray(raw['disabledParams'])
+        ? raw['disabledParams'].filter((k): k is string => typeof k === 'string')
+        : [],
+    );
+    const list: QueryParam[] = Object.entries(map).map(([key, value]) => ({
+      key,
+      value,
+      enabled: !disabled.has(key),
+    }));
+    if (list.length > 0) request.params = list;
   }
   if (isObject(raw['headers'])) {
     request.headers = normalizeStringMap(raw['headers']);

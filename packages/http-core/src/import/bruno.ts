@@ -7,6 +7,7 @@ import {
   type BodyConfig,
   type KeyValue,
 } from '@scrapeman/shared-types';
+import { queryParamsFromMap } from './query-params.js';
 
 // HTTP methods that Bruno uses as block names.
 const HTTP_METHODS = new Set([
@@ -248,7 +249,9 @@ function parseBruFile(content: string, fileName: string): ParsedBruFile {
   };
 
   if (Object.keys(headers).length > 0) request.headers = headers;
-  if (Object.keys(params).length > 0) request.params = params;
+  if (Object.keys(params).length > 0) {
+    request.params = queryParamsFromMap(params);
+  }
   if (auth) request.auth = auth;
   if (body) request.body = body;
 

@@ -661,94 +661,59 @@ function freshSettings(): SettingsState {
 // → send → history. Users who want a decoded view can right-click a
 // cell and pick "URL decode" (already wired in CellContextMenu).
 
-// Known scrape.do query-parameter names. Used by paramsFromUrl to end
-// nested-URL folding: a trailing `&super=true` is an outer scrape.do
-// option, not part of the inner url= value. Mirrors the options scrape.do
-// documents (see packages/http-core/src/scrapeDo/compose.ts).
-const SCRAPE_DO_PARAMS = new Set<string>([
-  'token', 'url', 'super', 'render', 'geoCode', 'regionalGeoCode',
-  'sessionId', 'customHeaders', 'extraHeaders', 'forwardHeaders',
-  'setCookies', 'device', 'output', 'transparentResponse', 'returnJSON',
-  'waitUntil', 'customWait', 'waitSelector', 'blockResources', 'blockAds',
-  'width', 'height', 'playWithBrowser', 'disableRedirection', 'callback',
-  'timeout', 'retryTimeout', 'disableRetry', 'screenShot', 'fullScreenShot',
-  'particularScreenShot', 'showFrames', 'showWebsocketRequests', 'proxyCountry',
-]);
-
+// Parse the query string of a URL into param rows. Used ONLY when the user
+// edits the URL bar directly (setUrl) and when restoring a history entry that
+// carries a URL but no structured params list — the Params table is otherwise
+// the source of truth (see builderFromRequest), so this never runs on a
+// normal render.
+//
+// A query string is delimited by '&', full stop. We split on '&' and take the
+// text up to the first '=' as the key. A '?' inside a value is a literal
+// character, NOT a delimiter — it does not cause the following '&'-chunks to
+// fold into that value. This matches exactly how every server (httpbin,
+// scrape.do, anything) parses the query it receives. A user who wants an inner
+// URL to carry its own '&'-separated query encodes those inner '&' as %26;
+// editing that value in the Params table keeps it verbatim in one row.
 export function paramsFromUrl(url: string): ParamRow[] {
   const qIndex = url.indexOf('?');
   if (qIndex < 0) return [];
   const queryString = url.slice(qIndex + 1);
   if (!queryString) return [];
 
-  // Greedy parse for the scrape.do-style nested URL pattern (#88):
-  // `?url=https://target.com?a=1&b=2`. A spec-compliant client encodes
-  // the inner `&`, but the convention in scraping land is to paste the
-  // target URL raw. Without help, a naive `&` split would explode the
-  // inner URL into separate rows, so once a value contains a `?` (the inner
-  // URL's query separator) we fold subsequent chunks back into it.
-  //
-  // The fold must terminate, otherwise an outer scrape.do option trailing
-  // the nested URL (e.g. `&super=true`) gets swallowed into the `url` value
-  // instead of becoming its own row. On scrape.do endpoints we know the
-  // option names, so a chunk whose key is a known scrape.do parameter ends
-  // the fold and starts a fresh row. The allowlist is only applied when the
-  // outer base URL is a scrape.do host; for arbitrary proxy hosts there is
-  // no reliable signal, so folding continues as before.
-  const base = url.slice(0, qIndex);
-  const isScrapeDo = base.includes('scrape.do');
-
-  const chunks = queryString.split('&');
-  const merged: string[] = [];
-  let folding = false;
-  for (const chunk of chunks) {
-    if (folding) {
-      // On a scrape.do host, a chunk whose key is a known scrape.do option
-      // ends the nested-URL fold and starts its own row (e.g. &super=true).
-      if (isScrapeDo) {
-        const eqPos = chunk.indexOf('=');
-        const chunkKey = eqPos >= 0 ? chunk.slice(0, eqPos) : chunk;
-        if (SCRAPE_DO_PARAMS.has(chunkKey)) {
-          merged.push(chunk);
-          folding = false;
-          continue;
-        }
-      }
-      // Inner-URL param — fold back into the nested url= value.
-      const last = merged.length - 1;
-      merged[last] = `${merged[last] ?? ''}&${chunk}`;
-      continue;
-    }
-    merged.push(chunk);
-    // Enter folding once a value contains '?' (the inner URL's query start).
-    const eqPos = chunk.indexOf('=');
-    const value = eqPos >= 0 ? chunk.slice(eqPos + 1) : '';
-    if (value.includes('?')) folding = true;
-  }
-
   const out: ParamRow[] = [];
-  for (const pair of merged) {
+  for (const pair of queryString.split('&')) {
     if (!pair) continue;
     const eq = pair.indexOf('=');
     const key = eq >= 0 ? pair.slice(0, eq) : pair;
-    const value = eq >= 0 ? pair.slice(eq + 1) : '';
-    out.push({
-      id: crypto.randomUUID(),
-      key,
-      value,
-      enabled: true,
-    });
+    const value = eq >= 0 ? decodeParamValue(pair.slice(eq + 1)) : '';
+    out.push({ id: crypto.randomUUID(), key, value, enabled: true });
   }
   return out;
 }
 
-function urlFromParams(url: string, params: ParamRow[]): string {
+export function urlFromParams(url: string, params: ParamRow[]): string {
   const qIndex = url.indexOf('?');
   const base = qIndex < 0 ? url : url.slice(0, qIndex);
   const enabled = params.filter((p) => p.enabled && p.key.trim().length > 0);
   if (enabled.length === 0) return base;
-  // Raw join — values are stored exactly as the user entered or pasted.
-  return `${base}?${enabled.map((p) => `${p.key}=${p.value}`).join('&')}`;
+  return `${base}?${enabled
+    .map((p) => `${p.key}=${encodeParamValue(p.value)}`)
+    .join('&')}`;
+}
+
+// A query string is delimited by '&' (and cut short by '#'). To fold a param
+// value that carries its own query (e.g. a nested `url=` target) into the URL
+// without those inner delimiters splitting it, we encode ONLY those two
+// characters. Everything else — ':' '/' '?' '=' — stays readable in the URL
+// bar. Idempotent: an existing '%26'/'%23' contains no raw '&'/'#', so it is
+// left as-is (no `%20` → `%2520` double-encoding). `paramsFromUrl` reverses
+// this so the Params table shows the verbatim value.
+function encodeParamValue(value: string): string {
+  return value.replace(/&/g, '%26').replace(/#/g, '%23');
+}
+
+function decodeParamValue(value: string): string {
+  return value.replace(/%26/gi, '&').replace(/%23/gi, '#');
 }
 
 function utf8ToBase64(text: string): string {
@@ -798,29 +763,30 @@ function freshLoadTest(): LoadTestState {
   };
 }
 
-function builderFromRequest(request: ScrapemanRequest): BuilderState {
+export function builderFromRequest(request: ScrapemanRequest): BuilderState {
   const headers: HeaderRow[] = Object.entries(request.headers ?? {}).map(
     ([key, value]) => ({ id: crypto.randomUUID(), key, value, enabled: true }),
   );
   if (headers.length === 0) headers.push(freshHeader());
 
-  // params can come from request.params OR from the URL query string.
-  // request.params holds ALL params (enabled and disabled); disabledParams
-  // lists the keys that are turned off so we can restore the enabled flag.
-  const disabledSet = new Set(request.disabledParams ?? []);
-  const fromParamsField: ParamRow[] = Object.entries(request.params ?? {}).map(
-    ([key, value]) => ({
+  // The structured params list is authoritative: load the rows verbatim,
+  // preserving order, duplicate keys, and the enabled flag. We do NOT re-parse
+  // request.url here — that string is ambiguous for values carrying their own
+  // unencoded query (`url=https://x.com?a=1&b=2`) and re-parsing it is exactly
+  // what corrupted the table on every reload. The URL only seeds the rows when
+  // a request has no structured params list (e.g. a minimal file with just a
+  // url, or a legacy import). parse.ts already migrates the old map form.
+  let params: ParamRow[];
+  if (request.params && request.params.length > 0) {
+    params = request.params.map((p) => ({
       id: crypto.randomUUID(),
-      key,
-      value,
-      enabled: !disabledSet.has(key),
-    }),
-  );
-  // Only parse URL query params that are not already present in request.params.
-  // This avoids duplicating enabled params that were also encoded in the URL.
-  const paramsFieldKeys = new Set(Object.keys(request.params ?? {}));
-  const fromUrl = paramsFromUrl(request.url).filter((p) => !paramsFieldKeys.has(p.key));
-  const params = [...fromParamsField, ...fromUrl];
+      key: p.key,
+      value: p.value,
+      enabled: p.enabled,
+    }));
+  } else {
+    params = paramsFromUrl(request.url);
+  }
   if (params.length === 0) params.push(freshParam());
 
   let body = '';
@@ -919,17 +885,14 @@ function buildRequest(
   for (const row of builder.headers) {
     if (row.enabled && row.key.trim()) headers[row.key.trim()] = row.value;
   }
-  // Persist ALL params (enabled + disabled) in row order so that reload
-  // restores the exact UI ordering the user built. The executor skips
-  // disabled keys and avoids duplicating keys already present in the URL
-  // query string, so this does not introduce the duplicate-append bug.
-  const allParams: Record<string, string> = {};
-  const disabledParamKeys: string[] = [];
-  for (const row of builder.params) {
-    if (!row.key.trim()) continue;
-    allParams[row.key.trim()] = row.value;
-    if (!row.enabled) disabledParamKeys.push(row.key.trim());
-  }
+  // Persist the full param list in row order — including disabled rows and
+  // duplicate keys — so reload restores the exact table the user built. The
+  // enabled flag rides on each row; the executor derives the wire URL from
+  // builder.url (which already carries the enabled rows), so params here are
+  // purely for round-trip fidelity of the Params table.
+  const params = builder.params
+    .filter((row) => row.key.trim().length > 0)
+    .map((row) => ({ key: row.key.trim(), value: row.value, enabled: row.enabled }));
 
   const request: ScrapemanRequest = {
     scrapeman: FORMAT_VERSION,
@@ -937,8 +900,7 @@ function buildRequest(
     method: builder.method,
     url: builder.url,
   };
-  if (Object.keys(allParams).length > 0) request.params = allParams;
-  if (disabledParamKeys.length > 0) request.disabledParams = disabledParamKeys;
+  if (params.length > 0) request.params = params;
   if (Object.keys(headers).length > 0) request.headers = headers;
   if (builder.bodyType !== 'none' && builder.body.trim().length > 0) {
     const contentType: 'json' | 'text' = builder.bodyType;

@@ -34,13 +34,14 @@ export function serializeRequest(
   lines.push(`method: ${yamlString(request.method)}`);
   lines.push(`url: ${yamlString(request.url)}`);
 
-  if (request.params && Object.keys(request.params).length > 0) {
+  if (request.params && request.params.length > 0) {
     lines.push('params:');
-    writeMap(lines, request.params, '  ');
-  }
-
-  if (request.disabledParams && request.disabledParams.length > 0) {
-    lines.push(`disabledParams: [${request.disabledParams.map(yamlString).join(', ')}]`);
+    for (const p of request.params) {
+      lines.push(`  - key: ${yamlString(p.key)}`);
+      lines.push(`    value: ${yamlString(p.value)}`);
+      // `enabled` defaults to true; only emit when disabled to keep diffs terse.
+      if (p.enabled === false) lines.push('    enabled: false');
+    }
   }
 
   if (request.headers && Object.keys(request.headers).length > 0) {

@@ -80,7 +80,9 @@ export function resolveRequest(
     url: r(request.url),
   };
 
-  if (request.params) out.params = mapValues(request.params, r);
+  if (request.params) {
+    out.params = request.params.map((p) => ({ ...p, value: r(p.value) }));
+  }
   if (request.headers) out.headers = mapValues(request.headers, r);
   if (request.auth) out.auth = resolveAuth(request.auth, r);
   if (request.body) {

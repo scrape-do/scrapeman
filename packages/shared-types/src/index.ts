@@ -32,6 +32,18 @@ export interface RequestMeta {
 
 export type KeyValue = Record<string, string>;
 
+/**
+ * A single URL query parameter row. Stored as an ordered list (not a map) so
+ * duplicate keys and row order survive save/reload, and each value is kept
+ * verbatim — no encoding, no re-parsing from the URL string. The `enabled`
+ * flag replaces the legacy `disabledParams` key list.
+ */
+export interface QueryParam {
+  key: string;
+  value: string;
+  enabled: boolean;
+}
+
 export type OAuth2TokenPlacement =
   | { in: 'header'; name?: string; prefix?: string }
   | { in: 'query'; name: string }
@@ -169,8 +181,12 @@ export interface ScrapemanRequest {
   meta: RequestMeta;
   method: HttpMethod;
   url: string;
-  params?: KeyValue;
-  /** Keys of params that should not be included in the request URL. */
+  /** Ordered list of query-param rows. Authoritative source for the Params
+   *  table; the wire URL is derived from the enabled rows. */
+  params?: QueryParam[];
+  /** @deprecated Legacy field, read only for migrating old files where
+   *  `params` was a `Record<string,string>` map. New writers emit `enabled`
+   *  inline on each {@link QueryParam} instead. Never written. */
   disabledParams?: string[];
   headers?: KeyValue;
   auth?: AuthConfig;

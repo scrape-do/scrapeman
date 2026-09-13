@@ -46,10 +46,11 @@ export function prepareRequest(
 
   // Apply params into URL query string if not already present.
   let url = resolved.url;
-  if (resolved.params && Object.keys(resolved.params).length > 0) {
+  const enabledParams = (resolved.params ?? []).filter((p) => p.enabled && p.key);
+  if (enabledParams.length > 0) {
     const questionMark = url.includes('?');
-    const pairs = Object.entries(resolved.params).map(
-      ([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`,
+    const pairs = enabledParams.map(
+      (p) => `${encodeURIComponent(p.key)}=${encodeURIComponent(p.value)}`,
     );
     url = url + (questionMark ? '&' : '?') + pairs.join('&');
   }

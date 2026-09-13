@@ -6,6 +6,7 @@ import {
   type EnvironmentVariable,
   type ImportFolder,
   type ImportResult,
+  type QueryParam,
   type ScrapemanRequest,
 } from '@scrapeman/shared-types';
 
@@ -205,7 +206,7 @@ function convertRequest(
 
   // Query params from structured URL.
   const params = extractParams(pm.url);
-  if (params && Object.keys(params).length > 0) {
+  if (params && params.length > 0) {
     req.params = params;
   }
 
@@ -254,17 +255,17 @@ function resolveUrl(url: string | PmUrl | undefined): string {
   return `${protocol}${host}${port}${path}`;
 }
 
-function extractParams(url: string | PmUrl | undefined): Record<string, string> | null {
+function extractParams(url: string | PmUrl | undefined): QueryParam[] | null {
   if (!url || typeof url === 'string') return null;
   if (!url.query?.length) return null;
 
-  const params: Record<string, string> = {};
-  for (const q of url.query) {
-    if (!q.disabled) {
-      params[q.key] = q.value;
-    }
-  }
-  return Object.keys(params).length > 0 ? params : null;
+  // Preserve row order and Postman's per-row disabled flag.
+  const params: QueryParam[] = url.query.map((q) => ({
+    key: q.key,
+    value: q.value ?? '',
+    enabled: !q.disabled,
+  }));
+  return params.length > 0 ? params : null;
 }
 
 // ---------------------------------------------------------------------------

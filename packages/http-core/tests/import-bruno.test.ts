@@ -188,7 +188,10 @@ describe('importBrunoFolder', () => {
     const result = importBrunoFolder([
       { path: 'search.bru', content: QUERY_PARAMS_BRU },
     ]);
-    expect(result.requests[0]!.params).toEqual({ q: 'hello', page: '1' });
+    expect(result.requests[0]!.params).toEqual([
+      { key: 'q', value: 'hello', enabled: true },
+      { key: 'page', value: '1', enabled: true },
+    ]);
   });
 
   it('builds folder hierarchy from file paths', () => {

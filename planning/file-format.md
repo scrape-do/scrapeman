@@ -35,7 +35,7 @@ Version: `scrapeman/1.0`
 2. `meta` — name, description, tags
 3. `method`
 4. `url`
-5. `params` — URL query parameters as a table (optional; alternative to inlining in url)
+5. `params` — URL query parameters as an ordered list of `{key, value, enabled}` rows (optional). A list, not a map, so duplicate keys and row order survive round-trips; `enabled: false` is written only for disabled rows. Legacy files that stored `params` as a map plus a `disabledParams` key list are migrated to this form on read.
 6. `headers`
 7. `auth`
 8. `body`
@@ -48,7 +48,7 @@ Keys absent from a request are omitted (not written as `null`).
 ## Key order within nested blocks
 
 - Each nested block also has a fixed key order defined in the serializer.
-- Map entries the user controls (headers, params, variables) preserve insertion order and are written as YAML block-style maps.
+- Map entries the user controls (headers, variables) preserve insertion order and are written as YAML block-style maps. `params` is a block sequence of `{key, value, enabled}` rows instead, to preserve duplicate keys and order.
 
 ## Body handling — inline vs sidecar
 

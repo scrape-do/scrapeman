@@ -68,7 +68,7 @@ describe('applyAuth', () => {
         auth: { type: 'apiKey', key: 'api_key', value: 'abc', in: 'query' },
       }),
     );
-    expect(out.params?.['api_key']).toBe('abc');
+    expect(out.params?.find((p) => p.key === 'api_key')?.value).toBe('abc');
     expect(out.headers?.['api_key']).toBeUndefined();
   });
 

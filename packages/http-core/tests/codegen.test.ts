@@ -97,7 +97,10 @@ describe('codegen prepare', () => {
       meta: { name: 'with params' },
       method: 'GET',
       url: 'https://api.example.com/search',
-      params: { q: 'scrape', page: '2' },
+      params: [
+        { key: 'q', value: 'scrape', enabled: true },
+        { key: 'page', value: '2', enabled: true },
+      ],
     };
     const out = generateCode('curl', request, {
       inlineVariables: false,

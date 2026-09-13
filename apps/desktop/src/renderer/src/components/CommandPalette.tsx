@@ -203,7 +203,9 @@ function PreviewPanel({
   const params: [string, string][] =
     state.kind === 'tab'
       ? state.tab.builder.params.filter((p) => p.enabled && p.key).map((p) => [p.key, p.value])
-      : Object.entries(state.req.params ?? {});
+      : (state.req.params ?? [])
+          .filter((p) => p.enabled && p.key)
+          .map((p) => [p.key, p.value]);
   const headers: [string, string][] =
     state.kind === 'tab'
       ? state.tab.builder.headers.filter((h) => h.enabled && h.key).map((h) => [h.key, h.value])

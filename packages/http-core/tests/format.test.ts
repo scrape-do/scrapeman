@@ -165,21 +165,47 @@ describe('serialize + parse', () => {
     expect(scrapeDoIdx).toBeLessThan(optionsIdx);
   });
 
-  it('round-trips params with disabled entries', async () => {
+  it('round-trips the params list with order, duplicates, and disabled rows', async () => {
     const original: ScrapemanRequest = {
       scrapeman: FORMAT_VERSION,
       meta: { name: 'Param toggle test' },
       method: 'GET',
       url: 'https://api.example.com/search?q=hello',
-      params: { q: 'hello', debug: '1', secret: 'abc' },
-      // 'debug' and 'secret' are disabled; 'q' is enabled (present in URL)
-      disabledParams: ['debug', 'secret'],
+      params: [
+        { key: 'q', value: 'hello', enabled: true },
+        // A value carrying its own query — must survive verbatim.
+        { key: 'url', value: 'https://x.com?a=1&b=2', enabled: true },
+        // Duplicate key — a list preserves it; the old map could not.
+        { key: 'url', value: 'https://y.com?c=3', enabled: true },
+        { key: 'debug', value: '1', enabled: false },
+        { key: 'secret', value: 'abc', enabled: false },
+      ],
     };
     const parsed = await roundTrip(original);
     expect(parsed).toEqual(original);
-    // Verify disabled keys are preserved in the parsed result
-    expect(parsed.disabledParams).toEqual(['debug', 'secret']);
-    expect(parsed.params).toEqual({ q: 'hello', debug: '1', secret: 'abc' });
+  });
+
+  it('migrates the legacy params map + disabledParams into the list', async () => {
+    // A file written by an older version: params as a map, disabled keys in a
+    // separate list. Parsing must yield the ordered QueryParam[] form.
+    const yaml = [
+      'scrapeman: "1.0"',
+      'meta:',
+      '  name: legacy',
+      'method: GET',
+      'url: https://api.example.com/search?q=hello',
+      'params:',
+      '  q: hello',
+      '  debug: "1"',
+      'disabledParams: [debug]',
+      '',
+    ].join('\n');
+    const parsed = await parseRequest(yaml);
+    expect(parsed.params).toEqual([
+      { key: 'q', value: 'hello', enabled: true },
+      { key: 'debug', value: '1', enabled: false },
+    ]);
+    expect(parsed.disabledParams).toBeUndefined();
   });
 
   it('rejects invalid version', async () => {

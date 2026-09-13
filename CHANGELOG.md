@@ -2,6 +2,15 @@
 
 All notable changes land here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [SemVer](https://semver.org/).
 
+## [0.6.11] — 2026-09-13
+
+### Fixed
+- **Query params after a nested-URL value got swallowed into it.** With a param whose value carried its own query string (`url=https://site.com/p?a=1`), any state update that re-parsed the URL folded the params that followed into that value and dropped their rows. The folding heuristic that caused this (a scrape.do-only allowlist for where a nested URL ended) is gone. The Params table is now the source of truth: it is stored as an ordered list of rows, loaded verbatim on reload instead of being re-derived from the URL string, and it keeps duplicate keys and row order. Parsing the URL bar is now a plain `&` split where an inner `?` is a literal, matching what the server receives.
+
+### Changed
+- **Param values with an inner `&` are encoded as `%26` in the URL.** So a value like `https://site.com/p?a=1&b=2` folds into the outer URL as one param and reaches the server as one value, instead of the inner `&b=2` being read as a separate outer param. The encoding is idempotent (an existing `%26` is left alone) and the Params cell still shows the readable `&`. Only `&` and `#` are encoded; the rest of the value stays readable in the URL bar.
+- **`.sman` `params` is now an ordered list of `{key, value, enabled}` rows** instead of a map plus a `disabledParams` key list. Duplicate keys and row order now round-trip. Files in the old format are migrated to the list on the next save.
+
 ## [0.6.8] — 2026-06-24
 
 Patch release. Trims the load test panel and resolves stale merge markers that had shipped in the docs.

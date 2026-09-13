@@ -157,7 +157,10 @@ describe('parameters', () => {
     });
     const result = importOpenApiSpec(input);
     const req = result.requests[0]!;
-    expect(req.params).toEqual({ q: 'hello', limit: '10' });
+    expect(req.params).toEqual([
+      { key: 'q', value: 'hello', enabled: true },
+      { key: 'limit', value: '10', enabled: true },
+    ]);
   });
 
   it('maps header params to request.headers', () => {

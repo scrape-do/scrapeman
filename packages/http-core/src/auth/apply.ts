@@ -2,10 +2,19 @@ import type {
   AuthConfig,
   BodyConfig,
   OAuth2TokenPlacement,
+  QueryParam,
   ScrapemanRequest,
 } from '@scrapeman/shared-types';
 import { signAwsSigV4 } from './sigv4.js';
 import { OAuth2Client } from './oauth2.js';
+
+/** Upsert a query-param row: overwrite the first enabled row with this key,
+ *  else append a new enabled row. Keeps the ordered-list shape intact. */
+function setQueryParam(params: QueryParam[], key: string, value: string): void {
+  const existing = params.find((p) => p.key === key && p.enabled);
+  if (existing) existing.value = value;
+  else params.push({ key, value, enabled: true });
+}
 
 export interface ApplyAuthOptions {
   /**
@@ -34,7 +43,7 @@ export async function applyAuth(
   if (!auth || auth.type === 'none') return request;
 
   const headers = { ...(request.headers ?? {}) };
-  const params = { ...(request.params ?? {}) };
+  const params: QueryParam[] = (request.params ?? []).map((p) => ({ ...p }));
   const url = request.url;
   let body: BodyConfig | undefined = request.body;
 
@@ -53,7 +62,7 @@ export async function applyAuth(
     }
     case 'apiKey': {
       if (auth.in === 'query') {
-        params[auth.key] = auth.value;
+        setQueryParam(params, auth.key, auth.value);
       } else {
         headers[auth.key] = auth.value;
       }
@@ -123,7 +132,7 @@ export async function applyAuth(
 
   const out: ScrapemanRequest = { ...request, url };
   if (Object.keys(headers).length > 0) out.headers = headers;
-  if (Object.keys(params).length > 0) out.params = params;
+  if (params.length > 0) out.params = params;
   if (body !== request.body && body !== undefined) out.body = body;
   return out;
 }
@@ -139,7 +148,7 @@ function applyTokenPlacement(
   tokenType: string,
   placement: OAuth2TokenPlacement | undefined,
   headers: Record<string, string>,
-  params: Record<string, string>,
+  params: QueryParam[],
   request: ScrapemanRequest,
 ): BodyConfig | undefined {
   if (!placement || placement.in === 'header') {
@@ -154,7 +163,7 @@ function applyTokenPlacement(
   }
 
   if (placement.in === 'query') {
-    params[placement.name] = accessToken;
+    setQueryParam(params, placement.name, accessToken);
     return request.body;
   }
 
